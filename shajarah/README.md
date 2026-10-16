@@ -2,8 +2,10 @@
 
 Enter a family (parents, children, spouses) and Shajarah grows it into an
 ornamental, botanical nasab poster: the ancestral chain on the trunk, the
-sons of the first branching ancestor as golden main limbs, curved tapered
-branches, leaves, and generation-coloured name tags. You can export it as
+sons of the first branching ancestor as golden main limbs, and curved
+tapered branches. **Every leaf is a person** with their name written on it:
+green for sons, rose for daughters. Members with descendants sit at their
+branch forks as generation-coloured tags. You can export it as
 vector SVG or a high-DPI PDF/PNG for printing.
 
 | Generated poster (demo data) | Editor |
@@ -135,8 +137,12 @@ same input and seed always produce the same poster.
    "rise, then spread" silhouette. Width follows the pipe model
    (∝ √leaves) and is drawn as a filled, tapered outline rather than a
    stroke.
-7. **Decoration.** Twigs, side shoots and leaves are scattered with a seeded
-   RNG. **↻ Re-grow** changes the seed.
+7. **Leaves are people.** Every childless crown member becomes a leaf
+   pointing away from its parent on a thin stalk, with the name written
+   along the blade and flipped so it always reads upright. Collision boxes
+   use the rotated leaf's bounds. There are no decorative leaves, and
+   generation colours avoid green so a tag is never mistaken for a leaf.
+   **↻ Re-grow** changes the seed (branch jitter).
 
 ## Print export
 

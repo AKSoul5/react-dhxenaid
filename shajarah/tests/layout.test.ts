@@ -23,6 +23,17 @@ describe("botanical layout", () => {
     expect(layout.stubs.map((s) => s.member.name).sort()).toEqual(["غانم", "قتيبع"].sort());
   });
 
+  it("draws every childless crown member as a named leaf", () => {
+    const layout = computePosterLayout(tree);
+    // daughters are hidden by default, so only sons make a member a fork
+    const withChildren = new Set(tree.members.filter((m) => m.gender === "MALE").map((m) => m.fatherId));
+    for (const n of layout.nodes) {
+      if (n.depth === 1) expect(n.shape).toBe("medallion");
+      else expect(n.shape).toBe(withChildren.has(n.id) ? "pill" : "leaf");
+    }
+    expect(layout.nodes.filter((n) => n.shape === "leaf").length).toBeGreaterThan(50);
+  });
+
   it("produces no overlapping name tags", () => {
     const layout = computePosterLayout(tree);
     const all = [...layout.nodes, ...(layout.base ? [layout.base] : [])];
@@ -47,7 +58,7 @@ describe("botanical layout", () => {
     const b = computePosterLayout(tree, { seed: 3 });
     const c = computePosterLayout(tree, { seed: 4 });
     expect(a.branches).toEqual(b.branches);
-    expect(a.leaves.length).toBe(b.leaves.length);
+    expect(a.nodes.map((n) => n.angle)).toEqual(b.nodes.map((n) => n.angle));
     expect(a.branches).not.toEqual(c.branches);
   });
 

@@ -3,7 +3,7 @@
 import { forwardRef, memo, useMemo } from "react";
 import type { PosterLayout, PosterNode } from "@/lib/layout/botanical";
 import { BARK_DARK, LEAF_TONES, generationColor, generationLabel } from "@/lib/layout/palette";
-import { mulberry32 } from "@/lib/layout/random";
+import { hashString, mulberry32 } from "@/lib/layout/random";
 
 export interface PosterMeta {
   title: string | null;
@@ -78,8 +78,8 @@ export const TreePoster = memo(
             <stop offset="0" stopColor="#7fb04a" />
             <stop offset="1" stopColor="#3f7a26" />
           </radialGradient>
-          {/* Unit leaf pointing along +x; instances are scaled by <use>. */}
-          <path id="sh-leaf" d="M0 0C.3-.36.78-.34 1 0 .78.34.3.36 0 0Z" />
+          {/* Unit leaf pointing along +x, used by the legend key. */}
+          <path id="sh-leaf" d={leafPath(1, 0.45)} transform="translate(0.5 0)" />
           {/* Corner flourish in a 100×100 box, drawn as strokes. */}
           <g id="sh-corner" fill="none" strokeLinecap="round">
             <path d="M0 0H100M0 0V100" strokeWidth="5" />
@@ -133,19 +133,6 @@ export const TreePoster = memo(
         <g fill="#5a391c">
           {layout.branches.map((d, i) => <path key={i} d={d} />)}
         </g>
-        <g fill="#5e3d1f">
-          {layout.twigs.map((d, i) => <path key={i} d={d} />)}
-        </g>
-        <g>
-          {layout.leaves.map((l, i) => (
-            <use
-              key={i}
-              href="#sh-leaf"
-              transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${l.angle.toFixed(0)}) scale(${l.size.toFixed(1)})`}
-              fill={LEAF_TONES[l.tone % LEAF_TONES.length]}
-            />
-          ))}
-        </g>
 
         {/* Ancestral chain on the trunk */}
         {layout.trunkLabels.map((l) => (
@@ -174,6 +161,17 @@ export const TreePoster = memo(
           <NameTag key={n.id} node={n} fill="#e9843c" textFill="#fff" selected={selectedId === n.id} onSelect={onSelect} />
         ))}
         {layout.nodes.map((n) => {
+          if (n.shape === "leaf") {
+            return (
+              <NamedLeaf
+                key={n.id}
+                node={n}
+                selected={selectedId === n.id}
+                highlighted={highlightIds?.has(n.id)}
+                onSelect={onSelect}
+              />
+            );
+          }
           const c = generationColor(n.generation);
           return (
             <NameTag
@@ -241,6 +239,55 @@ function NameTag({
   );
 }
 
+const FEMALE_LEAF = "#d9708a";
+
+/** Leaf blade centred on the origin, pointing along +x: round base, pointed tip. */
+function leafPath(L: number, w: number): string {
+  const f = (n: number) => n.toFixed(1);
+  return `M${f(-L / 2)} 0C${f(-L * 0.22)} ${f(-w * 0.78)} ${f(L * 0.28)} ${f(-w * 0.62)} ${f(L / 2)} 0`
+    + `C${f(L * 0.28)} ${f(w * 0.62)} ${f(-L * 0.22)} ${f(w * 0.78)} ${f(-L / 2)} 0Z`;
+}
+
+/** A person without descendants: a leaf with their name written along it. */
+function NamedLeaf({
+  node, selected, highlighted, onSelect,
+}: {
+  node: PosterNode;
+  selected?: boolean;
+  highlighted?: boolean;
+  onSelect?: (id: string) => void;
+}) {
+  const female = node.member.gender === "FEMALE";
+  const fill = female ? FEMALE_LEAF : LEAF_TONES[hashString(node.id) % LEAF_TONES.length];
+  // Keep the text upright: flip it when the leaf points leftwards.
+  const flip = node.angle > 90 || node.angle < -90;
+  const stroke = selected ? "#b3261e" : highlighted ? "#8a5a00" : "rgba(20,40,10,0.45)";
+  return (
+    <g
+      transform={`translate(${node.x.toFixed(1)} ${node.y.toFixed(1)}) rotate(${node.angle.toFixed(1)})`}
+      style={{ cursor: onSelect ? "pointer" : undefined }}
+      onClick={onSelect ? () => onSelect(node.id) : undefined}
+    >
+      <title>{node.member.name}</title>
+      <path
+        d={leafPath(node.leafLength, node.leafWidth)}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={selected || highlighted ? node.fontSize * 0.16 : node.fontSize * 0.05}
+      />
+      <text
+        transform={flip ? "rotate(180)" : undefined}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fontSize={node.fontSize}
+        fill="#ffffff"
+      >
+        {node.member.name}
+      </text>
+    </g>
+  );
+}
+
 function Legend({ layout }: { layout: PosterLayout }) {
   const { width: W, groundY, rtl, generationsPresent } = layout;
   if (!generationsPresent.length) return null;
@@ -249,7 +296,7 @@ function Legend({ layout }: { layout: PosterLayout }) {
   const rows = Math.ceil(gens.length / cols);
   const row = W * 0.017;
   const boxW = W * 0.13 * cols + W * 0.02;
-  const boxH = row * rows + W * 0.05;
+  const boxH = row * (rows + 1.4) + W * 0.05;
   const x0 = rtl ? W * 0.05 : W * 0.95 - boxW;
   const y0 = groundY + W * 0.075;
   return (
@@ -268,6 +315,21 @@ function Legend({ layout }: { layout: PosterLayout }) {
             <rect x={rtl ? cx + W * 0.105 : cx} y={cy - row * 0.32} width={W * 0.018} height={row * 0.64} rx={row * 0.3} fill={generationColor(g).fill} stroke="rgba(0,0,0,.35)" strokeWidth={1} />
             <text x={rtl ? cx + W * 0.098 : cx + W * 0.026} y={cy} dominantBaseline="central" textAnchor={rtl ? "end" : "start"} fontSize={W * 0.0105} fill={INK}>
               {generationLabel(g, rtl)}
+            </text>
+          </g>
+        );
+      })}
+      {[
+        { fill: LEAF_TONES[1], label: rtl ? "ورقة: ابن" : "Leaf: son" },
+        { fill: FEMALE_LEAF, label: rtl ? "ورقة: ابنة" : "Leaf: daughter" },
+      ].map((k, i) => {
+        const cx = x0 + W * 0.01 + i * (boxW / 2);
+        const cy = y0 + W * 0.04 + (rows + 0.6) * row;
+        return (
+          <g key={k.label}>
+            <use href="#sh-leaf" transform={`translate(${rtl ? cx + boxW / 2 - W * 0.04 : cx} ${cy}) scale(${W * 0.022})`} fill={k.fill} />
+            <text x={rtl ? cx + boxW / 2 - W * 0.045 : cx + W * 0.028} y={cy} dominantBaseline="central" textAnchor={rtl ? "end" : "start"} fontSize={W * 0.0105} fill={INK}>
+              {k.label}
             </text>
           </g>
         );

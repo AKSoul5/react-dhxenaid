@@ -1,5 +1,6 @@
 // Generation colours, modelled on the "ألوان الأجيال" legend used on
 // traditional nasab posters. Index 0 is the first generation (tree root).
+// Greens are deliberately avoided: green is reserved for leaves (people).
 
 export interface GenerationColor {
   fill: string;
@@ -9,19 +10,19 @@ export interface GenerationColor {
 export const GENERATION_COLORS: GenerationColor[] = [
   { fill: "#e9843c", text: "#ffffff" },
   { fill: "#b7b7b2", text: "#2b2b2b" },
-  { fill: "#2f9a62", text: "#ffffff" },
+  { fill: "#3d6fb0", text: "#ffffff" },
   { fill: "#3b8c86", text: "#ffffff" },
   { fill: "#ead44f", text: "#3a2f05" },
   { fill: "#e2a92a", text: "#3a2605" },
   { fill: "#c9a24c", text: "#2e2108" },
-  { fill: "#a6d47f", text: "#1f3510" },
+  { fill: "#f2c4a0", text: "#3a240e" },
   { fill: "#f1e4b5", text: "#3b2f12" },
   { fill: "#9d6a3c", text: "#ffffff" },
-  { fill: "#62b29f", text: "#0f2e27" },
+  { fill: "#8c9aa6", text: "#ffffff" },
   { fill: "#d6ab7f", text: "#3a240e" },
   { fill: "#c8553d", text: "#ffffff" },
   { fill: "#7d8fb3", text: "#ffffff" },
-  { fill: "#8fbf4d", text: "#1f3510" },
+  { fill: "#9b8ec7", text: "#ffffff" },
   { fill: "#b07aa1", text: "#ffffff" },
 ];
 

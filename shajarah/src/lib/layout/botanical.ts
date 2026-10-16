@@ -25,7 +25,10 @@
  *     continues the parent's growth direction and whose end tangent leans
  *     upward — this produces the "rise, then spread" look of a real tree.
  *     Width ∝ sqrt(descendant leaves) (pipe model), drawn as a filled taper.
- *  7. Decoration: twigs and leaves are scattered with a seeded RNG.
+ *  7. Leaves: every childless crown member is drawn as a leaf with the
+ *     name written along it, pointing away from its parent. Members with
+ *     descendants appear as tags at their branch forks. There are no
+ *     decorative leaves — every leaf on the poster is a person.
  *
  * All coordinates are in abstract poster units (default 2400 × 3394, the
  * ISO-216 aspect ratio), so the same layout scales to any A-size paper.
@@ -59,17 +62,14 @@ export interface PosterNode {
   w: number;
   h: number;
   fontSize: number;
-  shape: "medallion" | "pill";
+  shape: "medallion" | "pill" | "leaf";
+  /** Leaf orientation in degrees (leaf points along +x before rotation). */
+  angle: number;
+  /** Leaf blade size; w/h are the axis-aligned bounds used for collisions. */
+  leafLength: number;
+  leafWidth: number;
   leafCount: number;
   parentId: string | null;
-}
-
-export interface Leaf {
-  x: number;
-  y: number;
-  angle: number;
-  size: number;
-  tone: number;
 }
 
 export interface TrunkLabel {
@@ -94,8 +94,6 @@ export interface PosterLayout {
   stubs: PosterNode[];
   nodes: PosterNode[];
   branches: string[];
-  twigs: string[];
-  leaves: Leaf[];
   /** Generations whose colour appears on crown name tags (for the legend). */
   generationsPresent: number[];
   stats: { total: number; males: number; females: number; placed: number; unplaced: number };
@@ -142,7 +140,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     width: W, height: H, rtl: true, crown, origin, groundY,
     trunkPath: trunkOutline(origin, groundY, trunkWidth), trunkWidth,
     barkLines: [], trunkLabels: [], base: null, stubs: [], nodes: [],
-    branches: [], twigs: [], leaves: [], generationsPresent: [], stats,
+    branches: [], generationsPresent: [], stats,
   };
   if (visible.length === 0) return empty;
 
@@ -274,15 +272,32 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     const R = reach(theta) * 0.95 * crownScale;
     const r = r0 + t * Math.max(0, R - r0);
     const p = add(origin, scale(dirOf(theta), r));
-    const fs = d === 1 ? baseFont * 1.15 : baseFont * Math.max(0.62, 1 - 0.07 * (d - 2));
     const medallion = d === 1;
-    const tw = textWidth(m.name, fs);
-    const w = medallion ? Math.max(fs * 2.7, tw + fs * 0.9) : tw + fs * 0.9;
-    const h = medallion ? w : fs * 1.45;
+    const isLeaf = !medallion && !n.children;
+    let fs = d === 1 ? baseFont * 1.15 : baseFont * Math.max(0.62, 1 - 0.07 * (d - 2));
+    let w: number, h: number, angle = 0, leafLength = 0, leafWidth = 0;
+    if (isLeaf) {
+      // Point the leaf away from its parent, leaning slightly upward.
+      fs *= 0.9;
+      const parentT = byId.get(n.parent?.data.member?.id ?? "");
+      const from: Vec = parentT ? { x: parentT.tx, y: parentT.ty } : origin;
+      const e = norm(add(scale(norm(sub(p, from)), 0.8), scale(UP, 0.2)));
+      angle = deg(e);
+      leafLength = textWidth(m.name, fs) + fs * 1.9;
+      leafWidth = Math.max(fs * 1.6, leafLength * 0.36);
+      const c = Math.abs(e.x), sn = Math.abs(e.y);
+      w = leafLength * c + leafWidth * sn;
+      h = leafLength * sn + leafWidth * c;
+    } else {
+      const tw = textWidth(m.name, fs);
+      w = medallion ? Math.max(fs * 2.7, tw + fs * 0.9) : tw + fs * 0.9;
+      h = medallion ? w : fs * 1.45;
+    }
     const node = {
       id: m.id, member: m, x: p.x, y: p.y, tx: p.x, ty: p.y, depth: d,
       generation: m.generation, w, h, fontSize: fs,
-      shape: (medallion ? "medallion" : "pill") as PosterNode["shape"],
+      shape: (medallion ? "medallion" : isLeaf ? "leaf" : "pill") as PosterNode["shape"],
+      angle, leafLength, leafWidth,
       leafCount: n.value ?? 1, parentId: n.parent?.data.member?.id ?? null,
       mass: medallion ? 4 : 1,
     };
@@ -303,9 +318,6 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   growth.set(baseId, UP);
 
   const branches: { d: string; w: number }[] = [];
-  const twigs: string[] = [];
-  const leaves: Leaf[] = [];
-  const leafSize = clamp(baseFont * 0.85, 12, 30);
 
   const posOf = (id: string | null): Vec =>
     id === baseId || id === null ? origin : (byId.get(id) as Vec);
@@ -313,11 +325,22 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   for (const n of crownNodes) {
     const node = byId.get(n.data.member!.id)!;
     const P = posOf(node.parentId);
+    const gP = growth.get(node.parentId) ?? UP;
+    if (node.shape === "leaf") {
+      // A thin stalk from the parent to the base of the leaf blade.
+      const a = (node.angle * Math.PI) / 180;
+      const dir: Vec = { x: Math.cos(a), y: Math.sin(a) };
+      const B = sub(node, scale(dir, node.leafLength / 2 - node.fontSize * 0.1));
+      const L = len(sub(B, P)) || 1;
+      const s = norm(add(scale(gP, 0.5), scale(norm(sub(B, P)), 0.5)));
+      const curve: Cubic = { p0: P, c1: add(P, scale(s, L * 0.4)), c2: sub(B, scale(dir, L * 0.3)), p1: B };
+      branches.push({ d: ribbonPath(curve, widthOf(1), wMin * 0.8, 10), w: widthOf(1) });
+      continue;
+    }
     const C: Vec = node;
     const v = sub(C, P);
     const L = len(v) || 1;
     const dv = scale(v, 1 / L);
-    const gP = growth.get(node.parentId) ?? UP;
     const s = norm(add(scale(gP, node.depth === 1 ? 0.55 : 0.6), scale(dv, node.depth === 1 ? 0.45 : 0.4)));
     const e = norm(add(scale(dv, 0.72), scale(UP, 0.28)));
     const curve: Cubic = { p0: P, c1: add(P, scale(s, L * 0.42)), c2: sub(C, scale(e, L * 0.33)), p1: C };
@@ -325,57 +348,6 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     const w = widthOf(node.leafCount);
     const wStart = node.depth === 1 ? w * 1.15 : w;
     branches.push({ d: ribbonPath(curve, wStart, w * 0.7), w });
-
-    // leaves along thinner branches
-    const leafy = w < W * 0.012 || node.leafCount <= Math.max(2, totalLeaves * 0.12);
-    if (leafy) {
-      const count = Math.floor(cubicLength(curve) / (leafSize * 1.05));
-      for (let i = 0; i < count; i++) {
-        const t = (i + 0.5 + (rand() - 0.5) * 0.4) / count;
-        if (t < 0.12) continue;
-        sprinkleLeaf(leaves, curve, t, i % 2 ? 1 : -1, w, leafSize, rand);
-      }
-    }
-
-    // side shoots along longer branches thicken the foliage
-    const branchLen = cubicLength(curve);
-    const shoots = leafy ? Math.floor(branchLen / (leafSize * 4)) : 0;
-    for (let k = 0; k < shoots; k++) {
-      const t = rr(0.25, 0.85);
-      const side = k % 2 === 0 ? 1 : -1;
-      const p0 = cubicPoint(curve, t);
-      const dir = norm(rotate(cubicTangent(curve, t), side * rr(0.5, 1.0)));
-      const sl = leafSize * rr(1.6, 2.8);
-      const tip = add(p0, scale(dir, sl));
-      if (!insideCrown(tip)) continue;
-      const mid = add(scale(add(p0, tip), 0.5), scale(perp(dir), side * sl * 0.15));
-      const shoot: Cubic = { p0, c1: mid, c2: mid, p1: tip };
-      twigs.push(ribbonPath(shoot, wMin * 1.3, wMin * 0.4, 6));
-      for (let i = 1; i <= 3; i++) sprinkleLeaf(leaves, shoot, i / 3.2, i % 2 ? 1 : -1, wMin, leafSize * rr(0.75, 1), rand);
-    }
-
-    // decorative twigs, more on outer (childless) members
-    const twigCount = node.leafCount === 1 && n.children == null ? 3 : 1 + (rand() < 0.4 ? 1 : 0);
-    for (let k = 0; k < twigCount; k++) {
-      const side = k % 2 === 0 ? 1 : -1;
-      const ang = side * rr(0.45, 1.15);
-      const dir = norm(rotate(e, ang));
-      let tl = node.fontSize * rr(1.6, 3.4) + node.w * 0.25;
-      let tip = add(C, scale(dir, tl));
-      for (let guard = 0; guard < 6 && !insideCrown(tip, W * 0.02); guard++) {
-        tl *= 0.7;
-        tip = add(C, scale(dir, tl));
-      }
-      const mid = add(scale(add(C, tip), 0.5), scale(perp(dir), side * tl * 0.18));
-      const twig: Cubic = { p0: C, c1: mid, c2: mid, p1: tip };
-      twigs.push(ribbonPath(twig, Math.max(w * 0.45, wMin * 1.2), wMin * 0.5, 8));
-      const leafCount = Math.max(2, Math.round(tl / (leafSize * 0.9)));
-      for (let i = 1; i <= leafCount; i++) {
-        sprinkleLeaf(leaves, twig, i / (leafCount + 0.3), i % 2 ? 1 : -1, wMin, leafSize * rr(0.8, 1.05), rand);
-      }
-      const tipT = cubicTangent(twig, 1);
-      leaves.push({ x: tip.x, y: tip.y, angle: deg(tipT), size: leafSize * rr(0.85, 1.1), tone: Math.floor(rand() * 6) });
-    }
   }
   // Thick limbs first so thin branches (and their junctions) sit on top.
   branches.sort((a, b) => b.w - a.w);
@@ -412,7 +384,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     const size = Math.max(fs * 3.2, textWidth(m.name, fs) + fs);
     stubs.push({
       id: m.id, member: m, x: end.x, y: end.y, depth: 0, generation: m.generation,
-      w: size, h: size, fontSize: fs, shape: "medallion", leafCount: 1, parentId: parentId ?? null,
+      w: size, h: size, fontSize: fs, shape: "medallion", angle: 0, leafLength: 0, leafWidth: 0, leafCount: 1, parentId: parentId ?? null,
     });
   });
 
@@ -423,6 +395,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     baseNode = {
       id: m.id, member: m, x: origin.x, y: origin.y, depth: 0, generation: m.generation,
       w: baseMedallionR * 2, h: baseMedallionR * 2, fontSize: fs, shape: "medallion",
+      angle: 0, leafLength: 0, leafWidth: 0,
       leafCount: base.value ?? 1, parentId: base.parent?.data.member?.id ?? null,
     };
   }
@@ -449,8 +422,6 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     stubs,
     nodes: nodes.map(({ tx: _tx, ty: _ty, mass: _m, ...rest }) => rest),
     branches: branches.map((b) => b.d),
-    twigs,
-    leaves,
     generationsPresent: [...gens].sort((a, b) => a - b),
   };
 }
@@ -496,17 +467,6 @@ export function textWidth(text: string, fontSize: number): number {
   let w = 0;
   for (const ch of text) w += ARABIC.test(ch) ? 0.46 : ch === " " ? 0.28 : 0.52;
   return Math.max(w, 1.2) * fontSize;
-}
-
-function sprinkleLeaf(
-  out: Leaf[], curve: Cubic, t: number, side: number, branchW: number, size: number, rand: () => number,
-) {
-  const p = cubicPoint(curve, t);
-  const tan = cubicTangent(curve, t);
-  const n = perp(tan);
-  const pos = add(p, scale(n, side * (branchW / 2 + size * 0.15)));
-  const dir = rotate(tan, side * (0.6 + rand() * 0.5));
-  out.push({ x: pos.x, y: pos.y, angle: deg(dir), size: size * (0.8 + rand() * 0.35), tone: Math.floor(rand() * 6) });
 }
 
 interface RelaxCtx {
