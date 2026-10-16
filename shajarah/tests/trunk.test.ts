@@ -59,9 +59,10 @@ describe("trunk, lineage panel and side branches", () => {
     expect(text).toContain("يريم \uFD3Fذو رعين الأكبر\uFD3E");
     // generation numbering starts at the crown base
     expect(layout.generationOffset).toBe(84);
-    // the taller base band is used, and the trunk outline matches it
-    expect(layout.groundY).toBeCloseTo(layout.height * 0.79);
-    // the trunk outline reaches the ground but its flare stays inside the soil mound
+    // the foundation panel sits below the ground, above the footer
+    expect(layout.soil!.box.y).toBeGreaterThan(layout.groundY);
+    expect(layout.soil!.box.y + layout.soil!.box.h).toBeLessThan(layout.frame.footerY);
+    // the trunk outline reaches the ground but its flare stays above the panel
     const ys = [...layout.trunkPath.matchAll(/(-?\d+\.\d) (-?\d+\.\d)/g)].map((m) => Number(m[2]));
     expect(Math.max(...ys)).toBeGreaterThan(layout.groundY);
     expect(Math.max(...ys)).toBeLessThan(layout.groundY + layout.width * 0.022);
@@ -106,14 +107,20 @@ describe("trunk, lineage panel and side branches", () => {
 describe("three tiers with an explicit trunk start (Al-Kalali)", () => {
   const tree = kalaliSample();
 
-  it("puts عبد كلال الأصغر … سالم on a zigzag trunk and آدم … نصر in the soil", () => {
+  it("puts عبد كلال الأصغر … سالم on a readable trunk and آدم … نصر in the foundation", () => {
     const layout = computePosterLayout(tree);
     expect(layout.base?.member.name).toBe("محمد");
     expect(layout.trunkLabels[0].member.name).toBe("عبد كلال الأصغر");
     expect(layout.trunkLabels.at(-1)!.member.name).toBe("سالم");
     expect(layout.trunkLabels.length).toBe(34);
-    expect(layout.trunkZigzag).toBe(true);
-    expect(layout.trunkLabels[0].fontSize).toBeGreaterThanOrEqual(18);
+    // every ancestor is legible at A2 (no tiny badges), and the two staggered
+    // columns are only used because they set the names clearly larger
+    expect(layout.legibility.ok).toBe(true);
+    const mm = (u: number) => u * (420 / layout.width);
+    expect(mm(layout.trunkLabels[0].fontSize)).toBeGreaterThanOrEqual(3.2);
+    if (layout.trunkZigzag) expect(mm(layout.trunkLabels[0].fontSize)).toBeGreaterThan(5);
+    // reading order: one step up per ancestor, eldest at the bottom
+    for (let i = 1; i < layout.trunkLabels.length; i++) expect(layout.trunkLabels[i].y).toBeLessThan(layout.trunkLabels[i - 1].y);
     const text = layout.soil!.lines.map((l) => l.text).join(" ");
     expect(text.startsWith("عبد كلال الأصغر بن نصر")).toBe(true);
     expect(text.endsWith("آدم عليه السلام")).toBe(true);

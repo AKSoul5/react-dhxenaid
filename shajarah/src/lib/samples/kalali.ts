@@ -40,6 +40,6 @@ export function kalaliTree(): TreeDTO {
     crownBaseId: byNasab("محمد", "سالم", "مبارك"),
     trunkStartId: byNasab("عبد كلال الأصغر", "نصر"),
     soilText: null,
-    settings: { showFemales: true, seed: 7, theme: { preset: "luxe" } }, members, marriages: [],
+    settings: { showFemales: true, seed: 7, theme: {} }, members, marriages: [],
   };
 }

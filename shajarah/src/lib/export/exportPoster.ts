@@ -9,13 +9,9 @@
 //   PDF text engines often get wrong. For a fully vector PDF, open the SVG
 //   in Inkscape and "Save as PDF", or add a headless-Chromium route.)
 
-export const PAPER_SIZES = {
-  A3: { w: 297, h: 420 },
-  A2: { w: 420, h: 594 },
-  A1: { w: 594, h: 841 },
-  A0: { w: 841, h: 1189 },
-} as const;
-export type PaperSize = keyof typeof PAPER_SIZES;
+import { PAPER_SIZES, SHEET_SIZES, type PaperSize, type SheetSize } from "../paper";
+
+export { PAPER_SIZES, type PaperSize };
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const XLINK_NS = "http://www.w3.org/1999/xlink";
@@ -54,6 +50,20 @@ function arrayBufferToBase64(buf: ArrayBuffer): string {
   return btoa(bin);
 }
 
+/**
+ * Removes everything that belongs to the editor rather than the poster:
+ * the selection / ancestor-highlight layer, hover tooltips and pointer
+ * cursors. Exports always show the finished poster only.
+ */
+export function stripEditorUi(root: Element) {
+  root.querySelectorAll("[data-ui]").forEach((el) => el.remove());
+  root.querySelectorAll("title").forEach((el) => el.remove());
+  root.querySelectorAll("[style]").forEach((el) => {
+    if (el instanceof SVGElement || el instanceof HTMLElement) el.style.removeProperty("cursor");
+    if (!el.getAttribute("style")) el.removeAttribute("style");
+  });
+}
+
 /** Standalone SVG markup with fonts embedded and a physical page size. */
 export async function serializePoster(svg: SVGSVGElement, paper: PaperSize = "A1"): Promise<string> {
   const clone = svg.cloneNode(true) as SVGSVGElement;
@@ -61,6 +71,7 @@ export async function serializePoster(svg: SVGSVGElement, paper: PaperSize = "A1
   clone.setAttribute("xmlns:xlink", XLINK_NS);
   clone.removeAttribute("class");
   clone.removeAttribute("style");
+  stripEditorUi(clone);
   const { w, h } = PAPER_SIZES[paper];
   clone.setAttribute("width", `${w}mm`);
   clone.setAttribute("height", `${h}mm`);
@@ -209,4 +220,43 @@ export async function exportPdf(svg: SVGSVGElement, filename: string, paper: Pap
   // High-quality JPEG keeps A0/A1 files printable without hundreds of MB.
   pdf.addImage(canvas.toDataURL("image/jpeg", 0.93), "JPEG", 0, 0, w, h, undefined, "FAST");
   download(pdf.output("blob"), `${filename}-${paper}-${dpi}dpi.pdf`);
+}
+
+/**
+ * The poster split over several A4/A3 sheets for home or copy-shop printing:
+ * each page carries a tile with 10 mm overlap, crop marks and its position
+ * (row, column), so the sheets can be trimmed and assembled.
+ */
+export async function exportTiledPdf(svg: SVGSVGElement, filename: string, paper: PaperSize, sheet: SheetSize, dpi: number) {
+  const [{ jsPDF }, canvas] = await Promise.all([import("jspdf"), rasterise(svg, paper, dpi)]);
+  const P = PAPER_SIZES[paper];
+  const S = SHEET_SIZES[sheet];
+  const margin = 10, overlap = 10;
+  const tileW = S.w - 2 * margin, tileH = S.h - 2 * margin;
+  const cols = Math.max(1, Math.ceil((P.w - overlap) / (tileW - overlap)));
+  const rows = Math.max(1, Math.ceil((P.h - overlap) / (tileH - overlap)));
+  const pxPerMm = canvas.width / P.w;
+  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: [S.w, S.h], compress: true });
+  pdf.setProperties({ title: `${filename} (${paper} on ${rows}×${cols} ${sheet} sheets)`, creator: "Shajarah" });
+  const tile = document.createElement("canvas");
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (r || c) pdf.addPage([S.w, S.h], "portrait");
+      const x = c * (tileW - overlap), y = r * (tileH - overlap);
+      const w = Math.min(tileW, P.w - x), h = Math.min(tileH, P.h - y);
+      tile.width = Math.round(w * pxPerMm);
+      tile.height = Math.round(h * pxPerMm);
+      tile.getContext("2d")!.drawImage(canvas, x * pxPerMm, y * pxPerMm, w * pxPerMm, h * pxPerMm, 0, 0, tile.width, tile.height);
+      pdf.addImage(tile.toDataURL("image/jpeg", 0.93), "JPEG", margin, margin, w, h, undefined, "FAST");
+      // crop marks at the tile corners, and the tile's position
+      pdf.setLineWidth(0.15);
+      for (const [cx, cy] of [[margin, margin], [margin + w, margin], [margin, margin + h], [margin + w, margin + h]]) {
+        pdf.line(cx - 6, cy, cx - 1, cy); pdf.line(cx + 1, cy, cx + 6, cy);
+        pdf.line(cx, cy - 6, cx, cy - 1); pdf.line(cx, cy + 1, cx, cy + 6);
+      }
+      pdf.setFontSize(7);
+      pdf.text(`${filename} · ${paper} · row ${r + 1}/${rows}, column ${c + 1}/${cols} · overlap ${overlap} mm`, margin, S.h - 4);
+    }
+  }
+  download(pdf.output("blob"), `${filename}-${paper}-tiled-${sheet}.pdf`);
 }

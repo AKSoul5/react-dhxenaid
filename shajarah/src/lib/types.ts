@@ -28,7 +28,7 @@ export interface MarriageDTO {
   endYear: number | null;
 }
 
-export type ThemePreset = "luxe" | "heritage" | "classic" | "silver-gold" | "emerald" | "mono";
+export type ThemePreset = "refined" | "luxe" | "heritage" | "classic" | "silver-gold" | "emerald" | "mono";
 
 /** User-customisable poster styling, stored in FamilyTree.settings.theme. */
 export interface PosterTheme {
@@ -66,6 +66,8 @@ export interface PosterTheme {
 
 export interface PosterSettings {
   showFemales?: boolean;
+  /** Printed size the poster is designed for (legibility is judged at it). Default A2. */
+  posterSize?: "A3" | "A2" | "A1" | "A0" | "2A0";
   seed?: number;
   theme?: Partial<PosterTheme>;
 }

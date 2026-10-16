@@ -15,6 +15,7 @@ import { NasabImport } from "./NasabImport";
 import { RelationsPanel } from "./RelationsPanel";
 import { StylePanel } from "./StylePanel";
 import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
+import { PAPER_ORDER, PAPER_SIZES, paperForScale, type PaperSize } from "@/lib/paper";
 import { apiRepository, localRepository, type FamilyRepository } from "./repository";
 
 interface Props {
@@ -43,6 +44,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
 
   const showFemales = tree.settings?.showFemales ?? false;
   const seed = tree.settings?.seed ?? 7;
+  const posterSize: PaperSize = tree.settings?.posterSize ?? "A2";
   const theme = useMemo(() => resolveTheme(tree.settings), [tree.settings]);
   // Layout is recomputed on every edit; deferring keeps typing responsive.
   const deferredTree = useDeferredValue(tree);
@@ -50,9 +52,9 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     () =>
       computePosterLayout(deferredTree, {
         showFemales, seed,
-        ...layoutOptionsFor(theme),
+        ...layoutOptionsFor(theme, posterSize),
       }),
-    [deferredTree, showFemales, seed, theme],
+    [deferredTree, showFemales, seed, theme, posterSize],
   );
 
   const mutate = useCallback(async (fn: () => Promise<TreeDTO>) => {
@@ -143,7 +145,15 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             onSoilTextChange={(soilText) => void mutate(() => repo.updateTree({ soilText }))}
             frameAvailable={frameSrc !== null}
           />
-          <ExportMenu svgRef={svgRef} filename={exportName(tree.name)} />
+          <label className="flex items-center gap-2 text-sm" title="The printed size the poster is designed for">
+            Poster
+            <select className="input w-auto py-1" value={posterSize} onChange={(e) => updateSettings({ posterSize: e.target.value as PaperSize })}>
+              {PAPER_ORDER.map((p) => (
+                <option key={p} value={p}>{p} — {PAPER_SIZES[p].w}×{PAPER_SIZES[p].h} mm</option>
+              ))}
+            </select>
+          </label>
+          <ExportMenu key={posterSize} svgRef={svgRef} filename={exportName(tree.name)} defaultPaper={posterSize} />
         </div>
       </header>
 
@@ -293,6 +303,15 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               className="block h-full w-full"
             />
           </PosterViewport>
+          {!layout.legibility.ok && (
+            <LegibilityNotice
+              smallestMm={layout.legibility.smallestTextMm}
+              minMm={layout.legibility.minTextMm}
+              paper={posterSize}
+              suggestion={paperForScale(posterSize, layout.legibility.scaleNeeded)}
+              onChoose={(p) => updateSettings({ posterSize: p })}
+            />
+          )}
           {layout.stats.unplaced > 0 && (
             <div className="absolute start-4 top-4 rounded-md bg-white/90 px-3 py-2 text-xs shadow">
               {layout.stats.unplaced} member(s) are not connected to the main lineage and are not drawn
@@ -338,4 +357,35 @@ function useFrameArtwork(): string | null | undefined {
     };
   }, []);
   return src;
+}
+
+/**
+ * Shown when the family cannot be set legibly on the chosen poster size:
+ * offers the size that fits, or tiled printing when even A0 is too small.
+ */
+function LegibilityNotice({
+  smallestMm, minMm, paper, suggestion, onChoose,
+}: {
+  smallestMm: number;
+  minMm: number;
+  paper: PaperSize;
+  suggestion: PaperSize | null;
+  onChoose: (p: PaperSize) => void;
+}) {
+  return (
+    <div className="absolute end-4 top-4 z-10 max-w-sm rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 shadow">
+      <p className="font-semibold">Too dense for {paper}</p>
+      <p className="mt-1">
+        The smallest names would print at {smallestMm.toFixed(1)} mm (minimum {minMm.toFixed(1)} mm).
+        {suggestion
+          ? ` On ${suggestion} every name stays readable.`
+          : " Even 2A0 is too small: hide daughters, or set where the trunk starts so older ancestors move into the foundation."}
+      </p>
+      {suggestion && (
+        <button type="button" className="btn-outline mt-2 py-1 text-xs" onClick={() => onChoose(suggestion)}>
+          Use {suggestion}
+        </button>
+      )}
+    </div>
+  );
 }

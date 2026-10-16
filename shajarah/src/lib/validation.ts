@@ -19,7 +19,7 @@ const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Colours must be #rrggbb"
 
 export const themeSchema = z
   .object({
-    preset: z.enum(["luxe", "heritage", "classic", "silver-gold", "emerald", "mono"]),
+    preset: z.enum(["refined", "luxe", "heritage", "classic", "silver-gold", "emerald", "mono"]),
     colorBy: z.enum(["generation", "gender"]),
     male: hexColor,
     female: hexColor,
@@ -49,6 +49,7 @@ export const updateTreeSchema = createTreeSchema.partial().extend({
   settings: z
     .object({
       showFemales: z.boolean().optional(),
+      posterSize: z.enum(["A3", "A2", "A1", "A0", "2A0"]).optional(),
       seed: z.number().int().optional(),
       theme: themeSchema.optional(),
     })

@@ -2,13 +2,18 @@
 
 Enter a family (parents, children, spouses) and Shajarah grows it into an
 ornamental, botanical nasab poster: the ancestral chain on the trunk, the
-sons of the first branching ancestor as golden main limbs, and curved
-tapered branches. **Every leaf is a person** with their name written on it:
-green for sons, rose for daughters. Members with descendants sit at their
-branch forks as generation-coloured tags. You can export it as
-vector SVG or a high-DPI PDF/PNG for printing.
+sons of the first branching ancestor as main limbs, and curved tapered
+branches. **Every leaf is a person** with their name written on it:
+satin-silver leaves for sons, soft-gold capsules for daughters. Members
+with descendants are ivory capsules with a gold rim at their branch forks.
+You can export it as vector SVG, a high-DPI PDF/PNG, or a tiled PDF for
+printing on smaller sheets.
 
-| Generated poster (demo data) | Al-Kalali lineage: soil, trunk, canopy | Editor |
+The genealogy is the primary element. The layout sizes itself from the
+family, keeps every name legible at the chosen poster size, and says so
+when a family needs a larger poster.
+
+| Generated poster (demo data) | Al-Kalali lineage: foundation, trunk, canopy | Editor |
 | --- | --- | --- |
 | ![poster](docs/demo-poster.jpg) | ![kalali](docs/kalali-tiers.jpg) | ![editor](docs/editor.jpg) |
 
@@ -55,79 +60,85 @@ first:
 - A preview shows how many names are reused and how many are new. It warns
   when a line fits in two places equally well.
 
-## The three tiers: soil, trunk, canopy
+## The three tiers: foundation, trunk, canopy
 
 The ancestral chain is split into three tiers. You set the two boundaries
 on any member's panel:
 
 | Tier | Who | Drawn as | Set with |
 | --- | --- | --- | --- |
-| **Soil** | ancestors older than the trunk start (e.g. آدم … نصر) | the lineage inscribed in a gilt cartouche set in the soil, among the roots | 🪵 **Start the trunk here** → `FamilyTree.trunkStartId` |
-| **Trunk** | trunk start … the canopy's father (e.g. عبد كلال الأصغر … سالم) | golden oval medallions up the trunk | — |
-| **Canopy** | the canopy base and all descendants | Bézier branches, leaves / badges | 🌳 **Start the canopy here** → `FamilyTree.crownBaseId` |
+| **Foundation** (soil) | ancestors older than the trunk start (e.g. آدم … نصر) | the lineage as running text in a gold-ruled panel below the trunk, reached by fine roots | 🪵 **Start the trunk here** → `FamilyTree.trunkStartId` |
+| **Trunk** | trunk start … the canopy's father (e.g. عبد كلال الأصغر … سالم) | ivory badges up the trunk, eldest at the bottom, joined by a gold thread | — |
+| **Canopy** | the canopy base and all descendants | Bézier branches, leaves and capsules | 🌳 **Start the canopy here** → `FamilyTree.crownBaseId` |
 
-- **Long trunks:** short trunks use one column of medallions. Longer ones
-  grow taller, as the canopy gives up height, and then stagger into a
-  two-column zigzag. The Al-Kalali trunk of 33 ancestors fits this way.
-  Only beyond that do the oldest move into the soil.
-- **Automatic mode:** without a trunk start, the nearest ~11 ancestors go
-  on the trunk and the rest into the soil. Without a canopy base, the
-  canopy starts at the first real fork.
-- **Custom soil text:** to inscribe a lineage exactly as a source writes
-  it, paste it under **Style → Soil inscription** (`FamilyTree.soilText`).
-- **Laqabs** in the soil use the classical ornate brackets «يريم ﴿ذو رعين
-  الأكبر﴾».
+- **Long trunks stay readable.** The trunk gets the height it needs: one
+  row per ancestor at about the size of the names. When two staggered
+  columns let every name print clearly larger (at least 25% larger), the
+  trunk uses them, with the gold thread showing the order. The
+  34-ancestor Al-Kalali trunk prints at about 8 mm on A2.
+- **Automatic mode:** without a trunk start, up to 12 of the nearest
+  ancestors go on the trunk (fewer if they would not fit legibly) and the
+  rest into the foundation. Without a canopy base, the canopy starts at
+  the first real fork.
+- **Custom foundation text:** to inscribe a lineage exactly as a source
+  writes it, paste it under **Style → Soil inscription**
+  (`FamilyTree.soilText`).
+- **Laqabs and honorifics** appear as a quiet second line under the name
+  (الشيخ، رحمه الله …). In the foundation text they use the classical ornate
+  brackets «يريم ﴿ذو رعين الأكبر﴾».
 - **Side branches:** brothers of trunk ancestors grow as side branches with
-  their own small canopy. Brothers without descendants become short stubs.
+  their own small canopy. Brothers without descendants become small
+  medallions beside the trunk.
+- **Several marriages:** half-siblings are kept together, grouped by mother
+  in the order the mothers first appear, with birth order kept within each
+  group.
 
-## The frame: Canva artwork + code-drawn tree (hybrid)
+## Design and the optional Canva frame
 
-The poster has two layers:
+**Default style: Refined ivory.** The genealogy is the primary element:
 
-1. **Frame artwork (Canva).** The gold-foil border, the corner arabesques
-   and the parchment texture are a single image, `public/poster-frame.jpg`.
-   It was designed in Canva and is drawn full-bleed behind everything.
-2. **The tree (code).** The trunk, branches, name leaves, capsules,
-   medallions, title and panels are computed and drawn as vector SVG on top
-   of the frame, so they stay sharp and editable.
+- **Paper:** flat ivory paper inside a fine double gold rule.
+- **Sons:** satin-silver leaves with the name on the leaf.
+- **Daughters:** soft-gold capsules.
+- **Fathers:** members with descendants are ivory capsules with a gold
+  rim.
+- **Branch heads:** ivory medallions with a fine double gold ring. The
+  crown base gets a scalloped outer ring.
+- **Branches:** clean, flat bronze, with no shadows or textures.
+- **Type:** the title is gilded Aref Ruqaa; names are Amiri.
+- **Footer:** one quiet line with the key and the family counts.
 
-The frame is never a picture of a tree. All names come from the data.
+There are no heavy shadows, gloss, grass or soil mound.
+
+**Luxe preset: the Canva frame (hybrid).**
+
+1. **Frame artwork.** The gold-foil border, corner arabesques and
+   parchment texture are one image, `public/poster-frame.jpg`. It was
+   designed in Canva and is drawn full-bleed behind everything.
+2. **Tree.** Everything else is computed and drawn as vector SVG on top
+   of the frame. The frame is never a picture of a tree.
+
+The frame is a flexible layer, not a constraint. In framed mode the
+content area shrinks to the frame's inner field, and the layout sizes the
+genealogy to that field:
+
+- the canopy stays inside the mid-side rosettes;
+- the header sits below the top rosette;
+- the verse and hadith medallions sit inside the corner arabesques;
+- the footer sits above the bottom rosette.
 
 **Replacing the frame.** Export the frame page from Canva at 4000×6000 and
 save it as `public/poster-frame.jpg`. A quality-92 JPEG is about 2 MB and
-looks the same as the 16 MB PNG. A `.png` with the same name also works.
-The editor checks for the file on load. If the file is missing, the poster uses plain
-parchment and **Style → Ornaments** shows a note. The poster is A-series
-(1:√2), so the 2:3 artwork is stretched about 6% vertically.
-
-**Keep-out zones.** With **Gold-foil frame** on, the layout keeps clear of
-the artwork:
-
-- The crown is narrower than without the frame, so it stays inside the
-  mid-side rosettes.
-- The basmala and title sit below the top rosette.
-- The verse and hadith medallions sit inside the corner arabesques.
-- The legend and statistics panels sit on either side of the trunk.
-- The footer sits above the bottom rosette.
-
-Names are pushed off the medallions and panels during collision
-relaxation.
-
-**Default Luxe style:**
-
-- **Sons:** metallic silver leaves (`#E8E8E8 / #C0C0C0 / #999999`) with the
-  name on the leaf.
-- **Daughters:** metallic gold capsules (`#FFE57F / #D4AF37 / #AA7C11`).
-- **Ancestors:** gold scalloped medallions on the trunk.
-- **Branches:** clean tapered vector branches in a soft walnut gradient.
-- **Title:** gilded Aref Ruqaa calligraphy.
-- **Names and text:** Amiri.
+looks the same as the 16 MB PNG; a `.png` with the same name also works.
+The editor checks for the file on load. Without it, a fine gold rule is
+drawn instead and **Style → Ornaments** shows a note. The 2:3 artwork is
+stretched about 6% vertically to fit the A-series page.
 
 ## Foliage and ornaments
 
 Ornaments are toggled under **Style → Ornaments**:
 
-- the frame;
+- the Canva gold-foil frame;
 - daughters as gold capsules;
 - the leafy canopy;
 - the basmala ﷽;
@@ -152,35 +163,39 @@ added. Each ornament can be toggled under **Style → Ornaments**.
 
 ## Rendering details
 
-The tree is pure vector SVG. The only bitmap is the frame artwork, which is
-embedded into the exported file.
+The tree is pure vector SVG. The only bitmap is the optional frame
+artwork, which is embedded into the exported file.
 
-- **Wood:** clean tapered branches in a walnut gradient
-  (`#3B2314 → #6E472A → #24140B`), with rounded joints and soft drop
-  shadows.
-- **Metal:**
-  - Male nodes use a silver bevel (`#E8E8E8 / #C0C0C0 / #999999`).
-  - Female nodes use a gold bevel (`#FFE57F / #D4AF37 / #AA7C11`).
-  - Both have dark borders, a specular gloss and a drop shadow.
-  - Trunk and canopy-base medallions are gold with a parchment field and
-    a beaded inner ring.
-- **Paper:** the Canva frame artwork, or flat parchment (`#f4ecd8`) when
-  it is absent.
-- **Panels:** legend, statistics and the soil inscription sit on
-  semi-transparent parchment with gilt double borders and corner lozenges.
-- **Canopy:** a soft oval or teardrop silhouette behind the canopy keeps
-  the tree shape balanced, even for a small family.
+- **Branches:** flat, tapered filled outlines in the branch colour, with
+  rounded joints. The trunk has a gentle side-to-side tone. No shadows.
+- **Names:** a soft three-stop satin finish (`satinStops`: highlight, body,
+  shade), a thin darker rim, and dark ink text. No gloss or drop shadows.
+- **Hierarchy:**
+  - Medallions mark sons who head a branch.
+  - Ivory capsules mark fathers.
+  - Leaves and capsules mark childless members.
+  - Text size steps down gently with generation, never below the legible
+    minimum.
+- **Foundation:** running text in an ivory panel with a fine double gold
+  rule, under a thin ground line and a few fine roots.
+- **Canopy:** a faint warm wash behind the canopy gives a sparse tree its
+  shape.
 - **Type:** names in Amiri, falling back to Traditional Arabic. Headings
   in Aref Ruqaa. Both fonts are embedded in exports.
+- **Editor vs. print:** selection and ancestor highlights are drawn in a
+  separate `data-ui` layer. Export removes that layer, along with hover
+  tooltips and pointer cursors, so prints show the finished poster only.
 
 ## Styles
 
-**🎨 Style** has six presets, and every setting can be overridden. Settings
-are saved per tree in `settings.theme`.
+**🎨 Style** has seven presets, and every setting can be overridden.
+Settings are saved per tree in `settings.theme`; the poster size is saved
+in `settings.posterSize`.
 
 | Preset | Look |
 | --- | --- |
-| Luxe (default) | Canva gold-foil frame, silver name leaves for sons, gold capsules for daughters, gold trunk medallions, Ruqaa title |
+| Refined ivory (default) | fine gold rule on ivory, satin-silver leaves for sons, soft-gold capsules for daughters, ivory medallions, basmala and Ruqaa title |
+| Luxe | the same tree inside the Canva gold-foil frame, with the verse and hadith medallions |
 | Heritage | ivory roundels with gold rims, gold scalloped medallions, leafy canopy, basmala, verse and hadith medallions |
 | Silver & Gold | metallic silver (male) and gold (female) ovals, framed ancestor badges |
 | Classic botanical | green leaves, generation-coloured forks, names carved in the bark |
@@ -289,62 +304,88 @@ reconcile partial state.
 
 ## The layout algorithm
 
-`computePosterLayout(tree, { seed, showFemales })` is a pure function. The
-same input and seed always produce the same poster.
+`computePosterLayout(tree, options)` is a pure function. The same input and
+seed always produce the same poster.
 
 1. **Hierarchy.** It builds the lineage tree (father-first or mother-first,
-   depending on `lineage`) with d3-hierarchy and counts each subtree's
-   leaves.
+   depending on `lineage`) with d3-hierarchy. Half-siblings are grouped by
+   mother.
 2. **Tiers.** The chain from the root to the crown base (the chosen
    `crownBaseId`, or else the first real fork) is split at `trunkStartId`
-   into soil and trunk.
-   - The poster switches to a taller base band for the soil.
-   - A long trunk pushes the crown base up and the canopy shrinks to fit.
-     Beyond one column the medallions zigzag.
-   - Soil text is wrapped onto curved baselines, drawn with `<textPath>`,
-     inside a soil mound drawn over the trunk base.
-   - Brothers of trunk ancestors become stubs if childless, like غانم and
-     قتيبع in the sample. Otherwise they become side branches: a small
-     canopy fanning out from the trunk at their father's height.
-3. **Partition.** Each crown node gets a slice of a 0–1 axis proportional to
-   `leaves^0.8`. That axis maps to an angle around the crown base by the
-   arc length of the crown outline (a superellipse), so the rim fills
-   evenly. Sibling order is kept, so branches never cross. In RTL (Arabic)
-   trees the eldest son sits on the right.
-4. **Radius.** Distance from the crown base blends absolute generation depth
-   with how much a branch still has to grow. Small families get a
-   proportionally smaller crown.
-5. **Collision relaxation.** Label boxes are pushed apart along their axis of
-   least overlap. A uniform grid keeps each pass O(n), and springs pull
-   tags back toward their targets. Trunk labels and stubs take part as
-   fixed obstacles. The engine is tested to leave zero overlaps for every
-   node shape.
-6. **Branches.** Each edge is a cubic Bézier. Its start tangent continues the
-   parent's growth direction and its end leans upward, which gives the
-   "rise, then spread" silhouette. Width follows the pipe model
-   (∝ √leaves) and is drawn as a filled, tapered outline rather than a
-   stroke.
-7. **Leaves are people.** Every childless crown member becomes a leaf
-   pointing away from its parent on a thin stalk, with the name written
-   along the blade and flipped so it always reads upright. Collision boxes
-   use the rotated leaf's bounds. There are no decorative leaves, and
-   generation colours avoid green so a tag is never mistaken for a leaf.
-   **↻ Re-grow** changes the seed (branch jitter).
+   into foundation and trunk.
+3. **Space allocation from the content.** Nothing uses fixed page
+   fractions.
+   - For a name size *f* the engine estimates what each part needs:
+     - **Canopy:** the summed area of its name tags times a packing
+       factor, as an egg-shaped crown as wide as the page allows.
+     - **Trunk:** one row per ancestor.
+     - **Foundation:** the wrapped lines of its text.
+   - It picks the largest *f* (up to a cap) at which everything fits
+     between the header and the footer.
+   - A small family's canopy then spreads into the spare height, and the
+     whole is centred. Space therefore follows the actual family.
+4. **Legibility for the paper.** `paperWidthMm` and `minTextMm` (default
+   A2 and 3.2 mm ≈ 9 pt) set the smallest acceptable printed text.
+   - The arrangements are tried most-faithful first: one trunk column, a
+     two-column trunk, and in automatic mode fewer trunk ancestors.
+   - If none fits legibly, the family is still laid out, smaller.
+     `layout.legibility` then reports `ok: false` and how much larger the
+     paper must be. The editor offers that size.
+5. **Partition.** Each crown node gets a slice of a 0–1 axis proportional to
+   the number of names in its sub-branch, so big branches get more room.
+   - The axis maps to an angle around the crown base by the arc length of
+     the crown outline.
+   - Sibling order is kept, so branches never cross at their roots.
+   - In RTL (Arabic) trees the eldest sits on the right.
+6. **Radius.** Distance from the crown base is mostly generation depth
+   (rings), partly how far the line still grows, so childless members
+   reach toward the rim.
+7. **Collision relaxation.** Label boxes are pushed apart along their axis
+   of least overlap, on a uniform grid. Trunk badges, the crown-base
+   medallion, stubs and corner medallions are fixed obstacles.
+8. **Verification.** Remaining overlaps are counted. If any remain, the
+   layout is redone with slightly smaller type, and legibility is judged
+   from the type actually used. A family is never silently shrunk.
+9. **Branches.** Each edge is a cubic Bézier. Its start continues the
+   parent's growth direction and its end leans upward. Width follows the
+   pipe model (∝ √leaves), with a minimum tied to the name size so stalks
+   never become hairlines.
+10. **Leaves are people.** Every childless son is a leaf pointing away from
+    his parent but kept near horizontal (at most 30° up, 12° down), with
+    the name on the blade. Daughters are capsules.
 
 ## Print export
 
-- **SVG** is vector, with the Amiri fonts embedded as base64 and a physical
-  size in mm. It opens unchanged in Illustrator, Inkscape or a print shop's
+- **Poster size.** Choose A3, A2, A1, A0 or 2A0 in the header. The layout
+  is designed for that size, and the export menu defaults to it.
+- **SVG** is vector, with the fonts embedded as base64 and a physical size
+  in mm. It opens unchanged in Illustrator, Inkscape or a print shop's
   software.
-- **PDF / PNG** are rendered in the browser at the chosen A3–A0 size and
+- **PDF / PNG** are rendered in the browser at the chosen size and
   150/200/300 DPI. Rendering in the browser guarantees correct Arabic letter
   joining, which many PDF text engines get wrong.
+- **Tiled PDF** splits the poster over A4 or A3 sheets for home or
+  copy-shop printing. Each sheet has 10 mm overlap, crop marks and its
+  row/column.
+- **Clean output.** Exports never contain editor marks: selection,
+  highlights, tooltips and cursors are removed.
 - **Font loading:** an SVG rendered as an image loads its fonts
   asynchronously, so a cold first export could paint invisible text. Before
-  rendering, the exporter paints a small probe image and waits until all
-  four Amiri faces have actually drawn.
+  rendering, the exporter paints a small probe image and waits until every
+  embedded face has actually drawn.
 
 For a fully vector PDF today, open the SVG in Inkscape and use "Save as PDF".
+
+**Validation families.** `/demo?sample=` with one of the following values
+loads each family used by `tests/composition.test.ts`:
+
+- `small`: three generations;
+- `marriages`: several marriages and many daughters;
+- `names`: long names and honorifics;
+- `kalali`: an 85-name chain;
+- `huge`: about 500 people.
+
+Without a sample value, `/demo` loads the large demo family.
 
 ## Next steps
 

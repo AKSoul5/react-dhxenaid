@@ -10,7 +10,8 @@ describe("decorative foliage", () => {
       const layout = computePosterLayout(tree, { nodeShape: "circle", foliage: true, cornerMedallions: true, headerBand: 0.125 });
       const ms = performance.now() - t0;
       const f = layout.foliage!;
-      expect(f.leaves.length).toBeGreaterThan(300);
+      // the canopy is sized to its names, so a three-person crown is small
+      expect(f.leaves.length).toBeGreaterThan(name === "large family" ? 300 : 100);
       expect(f.twigs.length).toBeGreaterThan(0);
       for (const leaf of f.leaves) {
         for (const n of layout.nodes) {

@@ -1,10 +1,19 @@
+import { PAPER_SIZES, type PaperSize } from "./paper";
 import type { PosterSettings, PosterTheme, ThemePreset } from "./types";
 
 const ORNAMENTS = { bismillah: true, verse: true, hadith: true, frame: true };
 
 export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }> = {
+  refined: {
+    label: "Refined ivory (recommended)",
+    preset: "refined", colorBy: "gender",
+    male: "#c9cbc7", female: "#dcbc6a", ancestor: "#b08a2e", branch: "#6e5538",
+    background: "parchment", metallic: true, nodeRim: "#8d8f8a",
+    nodeShape: "leaf", femaleCapsule: true, labelMode: "name", showYears: false, trunkStyle: "badges",
+    foliage: false, bismillah: true, verse: false, hadith: false, frame: false,
+  },
   luxe: {
-    label: "Luxe (silver leaves & gold)",
+    label: "Luxe (Canva gold-foil frame)",
     preset: "luxe", colorBy: "gender",
     male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#5b4128",
     background: "parchment", metallic: true, nodeRim: "#6f6f6f",
@@ -56,8 +65,8 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
 /** Merges a tree's saved overrides onto its preset. */
 export function resolveTheme(settings: PosterSettings | null | undefined): PosterTheme {
   const saved = settings?.theme ?? {};
-  // Luxe (Canva frame, silver leaves, gold capsules) is the default look.
-  const preset = THEME_PRESETS[saved.preset ?? "luxe"] ?? THEME_PRESETS.luxe;
+  // Refined ivory (fine gold rule, satin leaves and capsules) is the default look.
+  const preset = THEME_PRESETS[saved.preset ?? "refined"] ?? THEME_PRESETS.refined;
   const { label: _label, ...base } = preset;
   return { ...base, ...saved, preset: base.preset };
 }
@@ -104,8 +113,13 @@ export function metalStops(c: string): [string, string, string] {
   return [shade(c, 0.55), c, shade(c, -0.25)];
 }
 
-/** Layout options implied by a theme (shape, labels, foliage, header space). */
-export function layoutOptionsFor(theme: PosterTheme) {
+/** A soft satin finish (highlight, body, shade): metal without the glare. */
+export function satinStops(c: string): [string, string, string] {
+  return [shade(c, 0.55), shade(c, 0.12), shade(c, -0.1)];
+}
+
+/** Layout options implied by a theme and poster size (shape, labels, legibility, header space). */
+export function layoutOptionsFor(theme: PosterTheme, paper: PaperSize = "A2") {
   return {
     nodeShape: theme.nodeShape,
     labelMode: theme.labelMode,
@@ -115,7 +129,9 @@ export function layoutOptionsFor(theme: PosterTheme) {
     cornerMedallions: theme.verse || theme.hadith,
     framed: theme.frame,
     femaleCapsule: theme.femaleCapsule,
+    paperWidthMm: PAPER_SIZES[paper].w,
     // inside the frame the header starts below its top rosette
-    headerBand: theme.frame ? 0.19 : theme.bismillah || theme.verse || theme.hadith ? 0.125 : 0.095,
+    // (room for basmala, title, subtitle and the divider under them)
+    headerBand: theme.frame ? 0.19 : theme.verse || theme.hadith || theme.bismillah ? 0.13 : 0.105,
   };
 }
