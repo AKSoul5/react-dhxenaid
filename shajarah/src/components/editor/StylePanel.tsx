@@ -116,6 +116,27 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange }: Prop
           </section>
 
           <section className="space-y-1.5">
+            <h4 className="section-title">Ornaments</h4>
+            {(
+              [
+                ["foliage", "Leafy canopy (with roundel / oval names)"],
+                ["bismillah", "Basmala header ﷽"],
+                ["verse", "Verse medallion (الحجرات ١٣)"],
+                ["hadith", "Hadith medallion (تعلموا من أنسابكم)"],
+              ] as const
+            ).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={theme[key]} onChange={(e) => onChange({ [key]: e.target.checked })} />
+                {label}
+              </label>
+            ))}
+            <label className="flex items-center justify-between gap-2 text-sm">
+              Roundel rim
+              <input type="color" className="h-7 w-12 cursor-pointer rounded border border-parchment-300" value={theme.nodeRim} onChange={(e) => onChange({ nodeRim: e.target.value })} />
+            </label>
+          </section>
+
+          <section className="space-y-1.5">
             <h4 className="section-title">Soil inscription</h4>
             <p className="text-xs text-gray-500">
               Leave empty to inscribe the ancestors older than the trunk. Or paste the lineage exactly as

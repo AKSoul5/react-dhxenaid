@@ -61,8 +61,17 @@ describe("trunk, lineage panel and side branches", () => {
     expect(layout.generationOffset).toBe(84);
     // the taller base band is used, and the trunk outline matches it
     expect(layout.groundY).toBeCloseTo(layout.height * 0.79);
-    expect(layout.trunkPath).toContain(`${(layout.groundY + layout.trunkWidth * 0.18).toFixed(1)}`);
+    // the trunk outline reaches the ground but its flare stays inside the soil mound
+    const ys = [...layout.trunkPath.matchAll(/(-?\d+\.\d) (-?\d+\.\d)/g)].map((m) => Number(m[2]));
+    expect(Math.max(...ys)).toBeGreaterThan(layout.groundY);
+    expect(Math.max(...ys)).toBeLessThan(layout.groundY + layout.width * 0.022);
     expect(layout.soil!.fontSize).toBeGreaterThanOrEqual(18);
+    // no surface roots (or their bark grain) on top of the soil
+    expect(layout.surfaceRoots).toHaveLength(0);
+    for (const d of layout.barkStrands) {
+      const ys = [...d.matchAll(/(-?\d+\.\d) (-?\d+\.\d)/g)].map((m) => Number(m[2]));
+      expect(Math.max(...ys)).toBeLessThan(layout.groundY - layout.width * 0.02);
+    }
   });
 
   it("grows brothers of trunk ancestors with descendants as side branches", () => {

@@ -1,0 +1,31 @@
+import { describe, expect, it } from "vitest";
+import { computePosterLayout } from "@/lib/layout/botanical";
+import { generateSampleTree } from "@/lib/sampleData";
+import { kalaliTree } from "@/lib/samples/kalali";
+
+describe("decorative foliage", () => {
+  for (const [name, tree] of [["large family", generateSampleTree()], ["sparse Al-Kalali canopy", kalaliTree()]] as const) {
+    it(`fills the canopy of the ${name} without covering any name`, () => {
+      const t0 = performance.now();
+      const layout = computePosterLayout(tree, { nodeShape: "circle", foliage: true, cornerMedallions: true, headerBand: 0.125 });
+      const ms = performance.now() - t0;
+      const f = layout.foliage!;
+      expect(f.leaves.length).toBeGreaterThan(300);
+      expect(f.twigs.length).toBeGreaterThan(0);
+      for (const leaf of f.leaves) {
+        for (const n of layout.nodes) {
+          const inside = Math.abs(leaf.x - n.x) < n.w / 2 && Math.abs(leaf.y - n.y) < n.h / 2;
+          expect(inside, `leaf on ${n.label}`).toBe(false);
+        }
+        for (const m of layout.medallions) expect(Math.hypot(leaf.x - m.x, leaf.y - m.y)).toBeGreaterThan(m.r);
+      }
+      console.log(`${name}: ${f.leaves.length} leaves, layout ${ms.toFixed(0)} ms`);
+      expect(ms).toBeLessThan(2500);
+    });
+  }
+
+  it("is off when names are leaves (every leaf stays a person)", () => {
+    const layout = computePosterLayout(generateSampleTree(), { nodeShape: "leaf", foliage: true });
+    expect(layout.foliage).toBeNull();
+  });
+});

@@ -46,9 +46,10 @@ import { hierarchy, type HierarchyNode } from "d3-hierarchy";
 import { childrenIndex } from "../genealogy";
 import type { MemberDTO, TreeDTO } from "../types";
 import {
-  add, circlePath, cubicTangent, len, norm, offsetCubic, perp, ribbonPath, scale, strandPath, sub,
+  add, circlePath, cubicPoint as cubicPointAt, cubicTangent, len, norm, offsetCubic, perp, ribbonPath, scale, strandPath, sub,
   type Cubic, type Vec,
 } from "./geometry";
+import { growFoliage, type Box, type Foliage } from "./foliage";
 import { mulberry32 } from "./random";
 
 export type NodeShape = "leaf" | "circle" | "oval";
@@ -72,6 +73,12 @@ export interface LayoutOptions {
   maxTrunkLabels?: number;
   /** Branch thickness multiplier (line-art themes use thin branches). */
   branchScale?: number;
+  /** Decorative twigs and leaves filling the canopy (roundel/oval names only). */
+  foliage?: boolean;
+  /** Reserve the top corners for the verse / hadith medallions. */
+  cornerMedallions?: boolean;
+  /** Top of the canopy as a fraction of the height (room for a header). */
+  headerBand?: number;
 }
 
 export type PosterShape = "medallion" | "pill" | "leaf" | "circle" | "oval";
@@ -158,6 +165,12 @@ export interface PosterLayout {
   barkStrands: string[];
   /** Soft silhouette around the canopy (balanced oval). */
   canopy: string | null;
+  /** Decorative twigs and leaves (null when names are leaves themselves). */
+  foliage: Foliage | null;
+  /** Roots spreading over the ground from the trunk base. */
+  surfaceRoots: Branch[];
+  /** Circular corner medallions (verse / hadith), when reserved. */
+  medallions: { x: number; y: number; r: number }[];
   /** Generation of the crown base; legend numbering and colours start here. */
   generationOffset: number;
   /** Generations present on crown / side-branch tags (for the legend). */
@@ -209,7 +222,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // base (origin) up, and the crown shrinks to fit between it and the title.
   const TW = W * 0.075;
   const baseMedallionR = TW * 0.62;
-  const crownTop = H * 0.095;
+  const crownTop = H * (opts.headerBand ?? 0.095);
   const span = (originY: number, ground: number) => ground - TW * 0.55 - (originY + baseMedallionR + TW * 0.4);
   const geometry = (soil: boolean, trunkSpan = 0) => {
     const ground = H * (soil ? 0.79 : 0.835);
@@ -227,7 +240,8 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     width: W, height: H, rtl: true, crown, origin, groundY,
     trunkPath: trunkOutline(origin, groundY, trunkWidth), trunkWidth,
     barkLines: [], trunkLabels: [], soil: null, trunkZigzag: false, base: null, stubs: [], nodes: [],
-    branches: [], barkStrands: [], canopy: null, generationOffset: 0, generationsPresent: [], stats,
+    branches: [], barkStrands: [], canopy: null, foliage: null, surfaceRoots: [], medallions: [],
+    generationOffset: 0, generationsPresent: [], stats,
   };
   if (visible.length === 0) return empty;
 
@@ -346,9 +360,12 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   const shownSet = new Set(shownTrunk);
 
   // ── 3. Arc-length parameterisation of the crown outline ──────────────
-  const insideCrown = (p: Vec, inflate = 0) =>
-    Math.abs((p.x - crown.cx) / (crown.rx + inflate)) ** crown.exponent +
-      Math.abs((p.y - crown.cy) / (crown.ry + inflate)) ** crown.exponent <= 1;
+  // Egg-shaped crown, a little narrower at the top than at the bottom.
+  const insideCrown = (p: Vec, inflate = 0) => {
+    const ny = (p.y - crown.cy) / (crown.ry + inflate);
+    const k = 1 + 0.13 * Math.max(-1, Math.min(1, ny));
+    return Math.abs((p.x - crown.cx) / ((crown.rx + inflate) * k)) ** crown.exponent + Math.abs(ny) ** crown.exponent <= 1;
+  };
   const dirOf = (theta: number): Vec => ({ x: Math.cos(theta), y: -Math.sin(theta) });
   const reach = (theta: number) => {
     let lo = 0, hi = Math.max(crown.rx, crown.ry) * 2.5;
@@ -446,8 +463,10 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     } else {
       const tw = Math.max(textWidth(label, fs), subLabel ? textWidth(subLabel, fs * 0.7) : 0);
       if (nodeShape === "circle") {
+        // Uniform roundels (like engraved family charts); long names shrink to fit.
         shape = "circle";
-        w = h = Math.max(tw + fs * 0.8, fs * 2.1 + subH);
+        w = h = fs * 2.55 + subH * 0.6;
+        fs = Math.min(fs, (w * 0.8) / Math.max(1, tw / fs));
       } else if (nodeShape === "oval") {
         shape = "oval";
         w = tw + fs * 1.5;
@@ -637,6 +656,10 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   const widthOf = (leaves: number) => wMin + wK * Math.sqrt(leaves);
   const growth = new Map<string, Vec>();
   const branches: Branch[] = [...branchesOut];
+  const seeds: { p: Vec; dir: Vec }[] = [];
+  const seedFrom = (curve: Cubic) => {
+    for (const t of [0.25, 0.45, 0.65, 0.85, 1]) seeds.push({ p: cubicPointAt(curve, t), dir: cubicTangent(curve, t) });
+  };
 
   for (const node of growing) {
     const parent = node.parentId ? byId.get(node.parentId) : undefined;
@@ -651,6 +674,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       const s = norm(add(scale(gP, 0.5), scale(norm(sub(B, P)), 0.5)));
       const curve: Cubic = { p0: P, c1: add(P, scale(s, L * 0.4)), c2: sub(B, scale(dir, L * 0.3)), p1: B };
       branches.push({ d: ribbonPath(curve, widthOf(1), wMin * 0.8, 10), w: widthOf(1) });
+      seedFrom(curve);
       continue;
     }
     const C: Vec = node;
@@ -664,6 +688,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     growth.set(node.id, e);
     const w = widthOf(node.leafCount);
     branches.push(shaded(curve, limb ? w * 1.15 : w, w * 0.7));
+    seedFrom(curve);
   }
   // Thick limbs first so thin branches (and their junctions) sit on top.
   branches.sort((a, b) => b.w - a.w);
@@ -689,6 +714,50 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       pts.push(`${(origin.x + rx * k * Math.sign(c) * Math.abs(c) ** (2 / 2.6)).toFixed(1)} ${(cy + ry * Math.sign(sn) * Math.abs(sn) ** (2 / 2.6)).toFixed(1)}`);
     }
     canopy = `M${pts.join("L")}Z`;
+  }
+
+  // ── Corner medallions (verse / hadith) ──────────────────────────────
+  const medallions = opts.cornerMedallions
+    ? [{ x: W * 0.18, y: H * 0.112, r: W * 0.094 }, { x: W * 0.82, y: H * 0.112, r: W * 0.094 }]
+    : [];
+
+  // ── Decorative foliage ───────────────────────────────────────────────
+  let foliage: Foliage | null = null;
+  if (opts.foliage && nodeShape !== "leaf") {
+    const obstacles: Box[] = [
+      ...nodes.map((n) => ({ x: n.x, y: n.y, w: n.w + W * 0.006, h: n.h + W * 0.006 })),
+      { x: origin.x, y: origin.y, w: baseMedallionR * 2.3, h: baseMedallionR * 2.3 },
+      ...medallions.map((m) => ({ x: m.x, y: m.y, w: m.r * 2.2, h: m.r * 2.2 })),
+    ];
+    if (!seeds.length) seeds.push({ p: origin, dir: UP });
+    seeds.push({ p: { x: origin.x, y: origin.y - baseMedallionR }, dir: UP });
+    foliage = growFoliage({
+      W, rand, seeds, obstacles,
+      bounds: { x0: crown.cx - crown.rx * 1.15, y0: crown.cy - crown.ry, x1: crown.cx + crown.rx * 1.15, y1: crown.cy + crown.ry },
+      inside: (p) => insideCrown(p),
+      // keep the trunk column and the space under the crown base clear
+      excluded: (p) => p.y > origin.y - baseMedallionR && Math.abs(p.x - origin.x) < trunkWidth * 1.2,
+    });
+  }
+
+  // ── Surface roots spreading from the trunk base ─────────────────────
+  // (with a soil tier the roots are underground, drawn as part of the soil)
+  const surfaceRoots: Branch[] = [];
+  for (let i = 0; i < (useSoil ? 0 : 8); i++) {
+    const side = i % 2 === 0 ? 1 : -1;
+    const k = Math.floor(i / 2);
+    const start: Vec = { x: origin.x + side * trunkWidth * (0.2 + 0.08 * k), y: groundY - TW * (0.35 - 0.05 * k) };
+    const end: Vec = {
+      x: origin.x + side * (trunkWidth * 0.6 + TW * (1.3 + k * 0.75 + rand() * 0.3)),
+      y: groundY + TW * (0.12 + 0.06 * k + rand() * 0.06),
+    };
+    const curve: Cubic = {
+      p0: start,
+      c1: { x: start.x + side * TW * 0.25, y: start.y + TW * 0.35 },
+      c2: { x: end.x - side * TW * 0.7, y: end.y - TW * (0.18 + rand() * 0.1) },
+      p1: end,
+    };
+    surfaceRoots.push(shaded(curve, TW * (0.42 - k * 0.07), TW * 0.03, 16));
   }
 
   // ── Base medallion ───────────────────────────────────────────────────
@@ -786,7 +855,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     ...empty,
     // geometry may have switched to the tall-base variant
     crown, origin, groundY,
-    trunkPath: trunkOutline(origin, groundY, trunkWidth, TW, TW),
+    trunkPath: trunkOutline(origin, groundY, trunkWidth, TW, TW, soil ? 0.55 : 1),
     trunkWidth,
     rtl,
     trunkLabels,
@@ -799,6 +868,9 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     branches,
     barkStrands,
     canopy,
+    foliage,
+    surfaceRoots,
+    medallions,
     generationOffset: base.data.member?.generation ?? 0,
     generationsPresent: [...gens].sort((a, b) => a - b),
   };
@@ -841,11 +913,12 @@ function wrapWords(words: string[], width: number, fs: number): string[] {
  * Trunk silhouette: narrow under the crown (topW), swelling to its full
  * width w where the medallions sit, then flaring into roots at the ground.
  */
-function trunkOutline(o: Vec, groundY: number, w: number, flareW = w, topW = w): string {
+function trunkOutline(o: Vec, groundY: number, w: number, flareW = w, topW = w, spread = 1): string {
   const h = groundY - o.y;
   const f = (n: number) => n.toFixed(1);
-  // root flare: widens with the base trunk, only partly with a zigzag trunk
-  const fl = flareW + (w - flareW) * 0.35;
+  // root flare: widens with the base trunk, only partly with a zigzag trunk;
+  // `spread` < 1 keeps it inside a soil mound
+  const fl = (flareW + (w - flareW) * 0.35) * spread;
   const side = (s: 1 | -1) => (dx: number) => f(o.x + s * dx);
   const L = side(-1);
   const R = side(1);

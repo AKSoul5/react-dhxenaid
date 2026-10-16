@@ -1,41 +1,55 @@
 import type { PosterSettings, PosterTheme, ThemePreset } from "./types";
 
+const ORNAMENTS = { bismillah: true, verse: true, hadith: true };
+
 export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }> = {
-  classic: {
-    label: "Classic botanical",
-    preset: "classic", colorBy: "generation",
-    male: "#3f8434", female: "#d9708a", ancestor: "#d4af37", branch: "#4a2e1a",
-    background: "parchment", metallic: false,
-    nodeShape: "leaf", labelMode: "name", showYears: false, trunkStyle: "carved",
+  heritage: {
+    label: "Heritage (ivory & gold)",
+    preset: "heritage", colorBy: "gender",
+    male: "#fbf3dc", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
+    background: "parchment", metallic: true, nodeRim: "#b8892f",
+    nodeShape: "circle", labelMode: "name", showYears: false, trunkStyle: "badges",
+    foliage: true, ...ORNAMENTS,
   },
   "silver-gold": {
     label: "Silver & Gold",
     preset: "silver-gold", colorBy: "gender",
     male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
-    background: "parchment", metallic: true,
+    background: "parchment", metallic: true, nodeRim: "#6f6f6f",
     nodeShape: "oval", labelMode: "name", showYears: false, trunkStyle: "badges",
+    foliage: true, ...ORNAMENTS,
+  },
+  classic: {
+    label: "Classic botanical",
+    preset: "classic", colorBy: "generation",
+    male: "#3f8434", female: "#d9708a", ancestor: "#d4af37", branch: "#4a2e1a",
+    background: "parchment", metallic: false, nodeRim: "#2f4a1a",
+    nodeShape: "leaf", labelMode: "name", showYears: false, trunkStyle: "carved",
+    foliage: true, ...ORNAMENTS,
   },
   emerald: {
     label: "Parchment & Emerald",
     preset: "emerald", colorBy: "gender",
     male: "#1f7a4d", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
-    background: "parchment", metallic: false,
+    background: "parchment", metallic: false, nodeRim: "#0f3d26",
     nodeShape: "leaf", labelMode: "name", showYears: false, trunkStyle: "badges",
+    foliage: true, ...ORNAMENTS,
   },
   mono: {
     label: "Minimal black & white",
     preset: "mono", colorBy: "gender",
     male: "#ffffff", female: "#e6e6e6", ancestor: "#111111", branch: "#1a1a1a",
-    background: "white", metallic: false,
+    background: "white", metallic: false, nodeRim: "#111111",
     nodeShape: "circle", labelMode: "name", showYears: false, trunkStyle: "badges",
+    foliage: false, bismillah: true, verse: false, hadith: false,
   },
 };
 
 /** Merges a tree's saved overrides onto its preset. */
 export function resolveTheme(settings: PosterSettings | null | undefined): PosterTheme {
   const saved = settings?.theme ?? {};
-  // Silver (male) & gold (female) is the default look.
-  const preset = THEME_PRESETS[saved.preset ?? "silver-gold"] ?? THEME_PRESETS["silver-gold"];
+  // Heritage (ivory roundels, gold medallions, green foliage) is the default look.
+  const preset = THEME_PRESETS[saved.preset ?? "heritage"] ?? THEME_PRESETS.heritage;
   const { label: _label, ...base } = preset;
   return { ...base, ...saved, preset: base.preset };
 }
@@ -80,4 +94,17 @@ export function metalStops(c: string): [string, string, string] {
   if (k === "#c0c0c0") return ["#E8E8E8", "#C0C0C0", "#999999"]; // silver
   if (k === "#d4af37") return ["#FFE57F", "#D4AF37", "#AA7C11"]; // gold
   return [shade(c, 0.55), c, shade(c, -0.25)];
+}
+
+/** Layout options implied by a theme (shape, labels, foliage, header space). */
+export function layoutOptionsFor(theme: PosterTheme) {
+  return {
+    nodeShape: theme.nodeShape,
+    labelMode: theme.labelMode,
+    showYears: theme.showYears,
+    branchScale: theme.background === "white" ? 0.35 : 1,
+    foliage: theme.foliage,
+    cornerMedallions: theme.verse || theme.hadith,
+    headerBand: theme.bismillah || theme.verse || theme.hadith ? 0.125 : 0.095,
+  };
 }

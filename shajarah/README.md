@@ -80,6 +80,34 @@ on any member's panel:
 - **Side branches:** brothers of trunk ancestors grow as side branches with
   their own small canopy. Brothers without descendants become short stubs.
 
+## Foliage and ornaments
+
+The default **Heritage** style follows traditional printed family charts.
+
+- **Names:** ivory roundels with gold rims. Key people get gold scalloped
+  (sun-edged) medallions.
+- **Canopy:** a lush, egg-shaped canopy of leaves fills the crown.
+- **Frame:** baroque gold corner scrollwork.
+- **Header:** the basmala ﷽ above the title.
+- **Corner medallions:** Al-Hujurat 49:13 and the Tirmidhi hadith
+  «تعلموا من أنسابكم ما تصلون به أرحامكم…».
+
+**How the foliage grows.** `src/lib/layout/foliage.ts` uses *space
+colonization*:
+
+1. Attraction points are scattered through the egg-shaped canopy.
+2. Twigs grow in small steps from seeds on the real genealogical branches
+   toward the points around them, removing points as they reach them.
+3. Twig thickness follows the pipe model.
+4. Leaves form fans at the tips and alternate along the twigs.
+
+As a result even a small family gets a full, natural canopy. Names repel
+the growth, so foliage never covers a name.
+
+**Rule: leaves only decorate when names are roundels or ovals.** With
+leaf-shaped names, every leaf is a person and no decorative leaves are
+added. Each ornament can be toggled under **Style → Ornaments**.
+
 ## Rendering details
 
 Everything is vector SVG with no bitmaps, so it stays sharp at any size.
@@ -110,7 +138,8 @@ are saved per tree in `settings.theme`.
 
 | Preset | Look |
 | --- | --- |
-| Silver & Gold (default) | metallic silver (male) and gold (female) ovals, framed ancestor badges |
+| Heritage (default) | ivory roundels with gold rims, gold scalloped medallions, leafy canopy, basmala, verse and hadith medallions |
+| Silver & Gold | metallic silver (male) and gold (female) ovals, framed ancestor badges |
 | Classic botanical | green leaves, generation-coloured forks, names carved in the bark |
 | Parchment & Emerald | emerald and gold leaves on parchment |
 | Minimal black & white | white circles, fine line branches, like hand-drawn family charts |

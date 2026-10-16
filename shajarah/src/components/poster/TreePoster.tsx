@@ -4,7 +4,9 @@ import { forwardRef, memo, useMemo, type ReactNode } from "react";
 import type { PosterLayout, PosterNode } from "@/lib/layout/botanical";
 import { LEAF_TONES, generationColor, generationLabel } from "@/lib/layout/palette";
 import { hashString, mulberry32 } from "@/lib/layout/random";
+import { textWidth } from "@/lib/layout/botanical";
 import { barkStops, metalStops, shade, textOn } from "@/lib/theme";
+import { HADITH, VERSE, baroqueCorner, scallopPath, textInCircle } from "./ornaments";
 import type { PosterTheme } from "@/lib/types";
 
 export interface PosterMeta {
@@ -27,6 +29,14 @@ interface Props {
 const FONT = "Amiri, 'Traditional Arabic', 'Noto Naskh Arabic', 'Times New Roman', serif";
 const GOLD = ["#FFE57F", "#D4AF37", "#AA7C11"] as const;
 const PARCHMENT = "#fbf5e6";
+/** Foliage leaf tones: [light, dark] pairs from yellow-green to deep green. */
+const FOLIAGE = [
+  ["#b9d36a", "#5d8f2c"],
+  ["#8fc057", "#2f6b25"],
+  ["#a7c95e", "#4a7d2a"],
+  ["#6fa848", "#22561d"],
+] as const;
+const CORNER = baroqueCorner();
 
 interface Palette {
   ink: string;
@@ -63,7 +73,7 @@ function makePalette(theme: PosterTheme, layout: PosterLayout): Palette {
         return {
           fill: theme.metallic ? metal(n.member.gender) : base,
           base,
-          border: shade(metalStops(base)[2], -0.4),
+          border: n.member.gender === "FEMALE" ? shade(metalStops(base)[2], -0.35) : theme.nodeRim,
         };
       }
       const c = generationColor(n.generation - layout.generationOffset).fill;
@@ -133,11 +143,15 @@ export const TreePoster = memo(
             <feTurbulence type="fractalNoise" baseFrequency="0.0035" numOctaves="3" seed="11" />
             <feColorMatrix type="matrix" values="0 0 0 0 0.55  0 0 0 0 0.38  0 0 0 0 0.14  0 0 0 0.22 -0.04" />
           </filter>
-          <pattern id="sh-girih" width="160" height="160" patternUnits="userSpaceOnUse">
-            <path
-              d="M80 8 L101 59 L152 80 L101 101 L80 152 L59 101 L8 80 L59 59 Z M80 30 L80 130 M30 80 L130 80 M0 0 L160 160 M160 0 L0 160"
-              fill="none" stroke="#c4a764" strokeWidth="1.2" opacity="0.2"
-            />
+          {/* Eight-pointed star (khatam) lattice, very faint, as on classic charts. */}
+          <pattern id="sh-girih" width="180" height="180" patternUnits="userSpaceOnUse">
+            <g fill="none" stroke="#b9a479" strokeWidth="1.3" opacity="0.32">
+              <rect x="54" y="54" width="72" height="72" />
+              <rect x="54" y="54" width="72" height="72" transform="rotate(45 90 90)" />
+              <path d="M90 39V0M90 141V180M39 90H0M141 90H180M54 54L0 0M126 54L180 0M54 126L0 180M126 126L180 180" />
+              <path d="M0 39L39 0M141 0L180 39M180 141L141 180M39 180L0 141" />
+              <circle cx="90" cy="90" r="18" />
+            </g>
           </pattern>
 
           {/* Wood */}
@@ -186,6 +200,23 @@ export const TreePoster = memo(
             <feDropShadow dx="0" dy={W * 0.0012} stdDeviation={W * 0.001} floodColor="#1d1006" floodOpacity="0.35" />
           </filter>
 
+          {/* Foliage leaves: unit leaf along +x with a gradient, midrib and veins. */}
+          {FOLIAGE.map(([light, dark], i) => (
+            <linearGradient key={`lg${i}`} id={`sh-leafg-${i}`} x1="0" y1="0" x2="0.2" y2="1">
+              <stop offset="0" stopColor={light} />
+              <stop offset="1" stopColor={dark} />
+            </linearGradient>
+          ))}
+          {FOLIAGE.map((_, i) => (
+            <g key={`ls${i}`} id={`sh-fol-${i}`}>
+              <path d={leafPath(1, 0.5)} fill={`url(#sh-leafg-${i})`} stroke="#264a16" strokeWidth={0.018} />
+              <path d="M-0.5 0Q0 -0.03 0.46 0" stroke="#eef5c8" strokeWidth={0.025} fill="none" opacity={0.55} />
+              <path d="M-0.2 -0.02L0 -0.15M0.05 -0.02L0.22 -0.12M-0.2 0.02L0 0.15M0.05 0.02L0.22 0.12" stroke="#eef5c8" strokeWidth={0.014} fill="none" opacity={0.4} />
+            </g>
+          ))}
+          <g id="sh-baroque">
+            {CORNER.map((d, i) => <path key={i} d={d} />)}
+          </g>
           {/* Unit leaf pointing along +x, used by the legend key. */}
           <path id="sh-leaf" d={leafPath(1, 0.45)} transform="translate(0.5 0)" />
           {/* Corner flourish in a 100×100 box, drawn as strokes. */}
@@ -220,24 +251,28 @@ export const TreePoster = memo(
           [W * 0.03, H - W * 0.03, 1, -1],
           [W * 0.97, H - W * 0.03, -1, -1],
         ].map(([x, y, sx, sy], i) => (
-          <use key={i} href="#sh-corner" transform={`translate(${x} ${y}) scale(${sx * W * 0.0009} ${sy * W * 0.0009})`} stroke={pal.frameFlat} color={pal.frameFlat} />
+          <use
+            key={i}
+            href="#sh-baroque"
+            transform={`translate(${x} ${y}) scale(${sx * W * 0.00064} ${sy * W * 0.00064})`}
+            fill={pal.mono ? "#111" : "url(#sh-gold-line)"}
+            stroke={pal.mono ? "none" : "#7a5410"}
+            strokeWidth={0.8}
+            filter={pal.mono ? undefined : "url(#sh-node-shadow)"}
+          />
         ))}
 
-        {/* Title with a gilt divider */}
-        {meta.title && (
-          <text x={W / 2} y={H * 0.052} textAnchor="middle" fontSize={W * 0.036} fontWeight={700} fill={pal.ink} direction={rtl ? "rtl" : "ltr"}>
-            {meta.title}
-          </text>
-        )}
-        {meta.subtitle && (
-          <text x={W / 2} y={H * 0.075} textAnchor="middle" fontSize={W * 0.019} fill={pal.mono ? "#444" : "#6b4a22"} direction={rtl ? "rtl" : "ltr"}>
-            {meta.subtitle}
-          </text>
-        )}
-        <Divider x={W / 2} y={H * (meta.subtitle ? 0.086 : 0.066)} w={W * 0.34} pal={pal} />
+        {/* Header: basmala, title fitted between the corner medallions, gilt divider */}
+        <Header layout={layout} meta={meta} theme={theme} pal={pal} />
+        {layout.medallions.map((m, i) => {
+          // RTL: the verse sits on the right, the hadith on the left
+          const isVerse = (m.x > W / 2) === rtl;
+          const show = isVerse ? theme.verse : theme.hadith;
+          return show ? <TextMedallion key={i} {...m} content={isVerse ? VERSE : HADITH} pal={pal} /> : null;
+        })}
 
         {/* Canopy silhouette */}
-        {layout.canopy && !pal.mono && <path d={layout.canopy} fill="url(#sh-canopy)" />}
+        {layout.canopy && !pal.mono && !layout.foliage && <path d={layout.canopy} fill="url(#sh-canopy)" />}
         {layout.canopy && pal.mono && (
           <path d={layout.canopy} fill="none" stroke="#111" strokeWidth={W * 0.0008} strokeDasharray={`${W * 0.004} ${W * 0.004}`} opacity={0.5} />
         )}
@@ -251,6 +286,9 @@ export const TreePoster = memo(
             <path d={grass} stroke="#4c8a2c" strokeWidth={W * 0.0013} strokeLinecap="round" fill="none" />
           </>
         )}
+
+        {/* Surface roots (lawn); with a soil tier they are drawn on the soil */}
+        {!layout.soil && <Roots layout={layout} pal={pal} />}
 
         {/* Trunk: bark gradient, sheen, grain */}
         <g filter={shadow}>
@@ -268,6 +306,13 @@ export const TreePoster = memo(
         {/* Soil over the trunk base: roots and the ancient lineage */}
         {layout.soil && <Soil layout={layout} pal={pal} grass={grass} />}
 
+        {/* Foliage twigs grow out of the real branches, so they go underneath */}
+        {layout.foliage && (
+          <g stroke={pal.mono ? "#1a1a1a" : shade(bark0, 0.08)} fill="none" strokeLinecap="round" strokeLinejoin="round">
+            {layout.foliage.twigs.map((t, i) => <path key={i} d={t.d} strokeWidth={t.w} />)}
+          </g>
+        )}
+
         {/* Branches: bark body, lit-side highlight, grain */}
         <g filter={shadow} fill={pal.mono ? "#1a1a1a" : "url(#sh-bark)"}>
           {layout.branches.map((b, i) => <path key={i} d={b.d} />)}
@@ -281,6 +326,19 @@ export const TreePoster = memo(
               {layout.barkStrands.map((d, i) => <path key={i} d={d} />)}
             </g>
           </>
+        )}
+
+        {/* Leaves (decorative) above the branches, below the names */}
+        {layout.foliage && (
+          <g filter={pal.mono ? undefined : "url(#sh-node-shadow)"}>
+            {layout.foliage.leaves.map((l, i) => (
+              <use
+                key={i}
+                href={`#sh-fol-${l.tone % FOLIAGE.length}`}
+                transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${l.angle.toFixed(0)}) scale(${l.size.toFixed(1)})`}
+              />
+            ))}
+          </g>
         )}
 
         {/* Ancestral chain on the trunk */}
@@ -386,7 +444,7 @@ function OrnateMedallion({ cx, cy, r, pal, selected }: { cx: number; cy: number;
   }
   return (
     <g>
-      <circle cx={cx} cy={cy} r={r * 1.08} fill="url(#sh-m-gold)" stroke={shade(GOLD[2], -0.35)} strokeWidth={r * 0.025} />
+      <path d={scallopPath(cx, cy, r * 1.06, r * 1.06, 22, 0.035)} fill="url(#sh-m-gold)" stroke={shade(GOLD[2], -0.35)} strokeWidth={r * 0.025} />
       <circle cx={cx} cy={cy} r={r * 0.9} fill={PARCHMENT} stroke={selected ? "#b3261e" : shade(GOLD[2], -0.2)} strokeWidth={selected ? r * 0.08 : r * 0.03} />
       <circle cx={cx} cy={cy} r={r * 0.82} fill="none" stroke={GOLD[2]} strokeWidth={r * 0.022} strokeDasharray={`${r * 0.025} ${r * 0.045}`} strokeLinecap="round" />
     </g>
@@ -406,7 +464,7 @@ function TrunkMedallion({ x, y, w, h, pal, selected }: { x: number; y: number; w
   }
   return (
     <g>
-      <ellipse cx={x} cy={y} rx={w / 2} ry={h / 2} fill="url(#sh-m-gold)" stroke={shade(GOLD[2], -0.4)} strokeWidth={h * 0.03} />
+      <path d={scallopPath(x, y, w / 2, h / 2, 16, 0.045)} fill="url(#sh-m-gold)" stroke={shade(GOLD[2], -0.4)} strokeWidth={h * 0.03} />
       <ellipse cx={x} cy={y} rx={w / 2 - t} ry={h / 2 - t} fill={PARCHMENT} stroke={selected ? "#b3261e" : shade(GOLD[2], -0.15)} strokeWidth={selected ? h * 0.08 : h * 0.025} />
       <ellipse cx={x} cy={y} rx={w / 2 - t * 0.5} ry={h / 2 - t * 0.5} fill="none" stroke={GOLD[0]} strokeWidth={h * 0.02} strokeDasharray={`${h * 0.03} ${h * 0.06}`} strokeLinecap="round" opacity={0.9} />
     </g>
@@ -441,7 +499,7 @@ function PersonNode({
         <circle r={node.w / 2} fill="#fff" stroke={edge} strokeWidth={Math.max(sw, node.w * 0.04)} />
       ) : (
         <>
-          <circle r={node.w / 2} fill={fill} stroke={selected ? edge : border} strokeWidth={Math.max(sw, node.w * 0.03)} />
+          <path d={scallopPath(0, 0, node.w / 2, node.w / 2, 18, 0.04)} fill={fill} stroke={selected ? edge : border} strokeWidth={Math.max(sw, node.w * 0.025)} />
           <circle r={node.w * 0.42} fill="none" stroke={shade(GOLD[2], -0.1)} strokeWidth={node.w * 0.012} strokeDasharray={`${node.w * 0.015} ${node.w * 0.03}`} strokeLinecap="round" />
         </>
       );
@@ -460,7 +518,12 @@ function PersonNode({
       );
       break;
     case "circle":
-      body = <circle r={node.w / 2} fill={fill} stroke={edge} strokeWidth={Math.max(sw, fs * 0.07)} />;
+      body = (
+        <>
+          <circle r={node.w / 2} fill={fill} stroke={edge} strokeWidth={Math.max(sw, node.w * 0.045)} />
+          {!pal.mono && <circle r={node.w * 0.41} fill="none" stroke={edge} strokeWidth={node.w * 0.012} opacity={0.6} />}
+        </>
+      );
       break;
     case "oval":
       body = <ellipse rx={node.w / 2} ry={node.h / 2} fill={fill} stroke={edge} strokeWidth={Math.max(sw, fs * 0.07)} />;
@@ -539,6 +602,71 @@ function Soil({ layout, pal, grass }: { layout: PosterLayout; pal: Palette; gras
           </textPath>
         ))}
       </text>
+    </g>
+  );
+}
+
+/** Roots spreading over the ground from the trunk base. */
+function Roots({ layout, pal }: { layout: PosterLayout; pal: Palette }) {
+  const W = layout.width;
+  return (
+    <g>
+      <g fill={pal.mono ? "#fff" : "url(#sh-bark)"} stroke={pal.mono ? "#111" : "none"} strokeWidth={W * 0.001} filter={pal.mono ? undefined : "url(#sh-shadow)"}>
+        {layout.surfaceRoots.map((r, i) => <path key={i} d={r.d} />)}
+      </g>
+      {!pal.mono && (
+        <g fill="#b98a5c" opacity={0.3}>
+          {layout.surfaceRoots.map((r, i) => (r.hl ? <path key={i} d={r.hl} /> : null))}
+        </g>
+      )}
+    </g>
+  );
+}
+
+/** Basmala, the title fitted to the space between the medallions, subtitle, divider. */
+function Header({ layout, meta, theme, pal }: { layout: PosterLayout; meta: PosterMeta; theme: PosterTheme; pal: Palette }) {
+  const { width: W, height: H, rtl } = layout;
+  const avail = layout.medallions.length ? W * 0.44 : W * 0.8;
+  const top = theme.bismillah ? H * 0.026 : 0;
+  const titleFs = meta.title ? Math.min(W * 0.036, avail / (textWidth(meta.title, 1) || 1)) : 0;
+  const titleY = H * 0.052 + top;
+  const subY = titleY + H * 0.022;
+  return (
+    <g>
+      {theme.bismillah && (
+        // Amiri draws the basmala (U+FDFD) as one wide calligraphic glyph (~11 em)
+        <text x={W / 2} y={H * 0.041} textAnchor="middle" fontSize={W * 0.029} fill={pal.ink}>
+          ﷽
+        </text>
+      )}
+      {meta.title && (
+        <text x={W / 2} y={titleY} textAnchor="middle" fontSize={titleFs} fontWeight={700} fill={pal.ink} direction={rtl ? "rtl" : "ltr"}>
+          {meta.title}
+        </text>
+      )}
+      {meta.subtitle && (
+        <text x={W / 2} y={subY} textAnchor="middle" fontSize={Math.min(W * 0.019, titleFs * 0.6)} fill={pal.mono ? "#444" : "#6b4a22"} direction={rtl ? "rtl" : "ltr"}>
+          {meta.subtitle}
+        </text>
+      )}
+      <Divider x={W / 2} y={(meta.subtitle ? subY : titleY) + H * 0.012} w={Math.min(W * 0.34, avail * 0.8)} pal={pal} />
+    </g>
+  );
+}
+
+/** Round gilt medallion with a scalloped rim carrying a verse or hadith. */
+function TextMedallion({ x, y, r, content, pal }: { x: number; y: number; r: number; content: typeof VERSE; pal: Palette }) {
+  const set = textInCircle(r * 0.78, content.heading, content.body, content.footer);
+  return (
+    <g filter={pal.mono ? undefined : "url(#sh-node-shadow)"}>
+      <path d={scallopPath(x, y, r, r, 36, 0.025)} fill={pal.mono ? "#fff" : "url(#sh-m-gold)"} stroke={pal.mono ? "#111" : shade(GOLD[2], -0.4)} strokeWidth={r * 0.012} />
+      <circle cx={x} cy={y} r={r * 0.9} fill={pal.mono ? "#fff" : PARCHMENT} stroke={pal.mono ? "#111" : GOLD[2]} strokeWidth={r * 0.012} />
+      <circle cx={x} cy={y} r={r * 0.86} fill="none" stroke={pal.mono ? "#111" : GOLD[1]} strokeWidth={r * 0.008} strokeDasharray={`${r * 0.012} ${r * 0.025}`} />
+      {set.lines.map((l, i) => (
+        <text key={i} x={x} y={y + l.y} textAnchor="middle" dominantBaseline="central" direction="rtl" fontSize={l.size} fontWeight={l.bold ? 700 : 400} fill={pal.ink}>
+          {l.text}
+        </text>
+      ))}
     </g>
   );
 }

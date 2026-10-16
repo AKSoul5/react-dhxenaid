@@ -14,7 +14,7 @@ import { MemberForm, emptyDraft, type MemberDraft } from "./MemberForm";
 import { NasabImport } from "./NasabImport";
 import { RelationsPanel } from "./RelationsPanel";
 import { StylePanel } from "./StylePanel";
-import { resolveTheme } from "@/lib/theme";
+import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
 import { apiRepository, localRepository, type FamilyRepository } from "./repository";
 
 interface Props {
@@ -49,10 +49,9 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     () =>
       computePosterLayout(deferredTree, {
         showFemales, seed,
-        nodeShape: theme.nodeShape, labelMode: theme.labelMode, showYears: theme.showYears,
-        branchScale: theme.background === "white" ? 0.35 : 1,
+        ...layoutOptionsFor(theme),
       }),
-    [deferredTree, showFemales, seed, theme.nodeShape, theme.labelMode, theme.showYears, theme.background],
+    [deferredTree, showFemales, seed, theme],
   );
 
   const mutate = useCallback(async (fn: () => Promise<TreeDTO>) => {

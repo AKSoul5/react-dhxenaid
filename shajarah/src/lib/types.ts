@@ -28,7 +28,7 @@ export interface MarriageDTO {
   endYear: number | null;
 }
 
-export type ThemePreset = "classic" | "silver-gold" | "emerald" | "mono";
+export type ThemePreset = "heritage" | "classic" | "silver-gold" | "emerald" | "mono";
 
 /** User-customisable poster styling, stored in FamilyTree.settings.theme. */
 export interface PosterTheme {
@@ -48,6 +48,16 @@ export interface PosterTheme {
   showYears: boolean;
   /** Ancestors carved into the bark, or stacked as framed badges. */
   trunkStyle: "carved" | "badges";
+  /** Decorative twigs and leaves (only with roundel / oval names). */
+  foliage: boolean;
+  /** Rim colour of name roundels. */
+  nodeRim: string;
+  /** "بسم الله الرحمن الرحيم" header. */
+  bismillah: boolean;
+  /** Corner medallion with Al-Hujurat 49:13. */
+  verse: boolean;
+  /** Corner medallion with the hadith on learning one's lineage. */
+  hadith: boolean;
 }
 
 export interface PosterSettings {
