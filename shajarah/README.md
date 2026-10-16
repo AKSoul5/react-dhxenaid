@@ -85,7 +85,7 @@ on any member's panel:
 The poster has two layers:
 
 1. **Frame artwork (Canva).** The gold-foil border, the corner arabesques
-   and the parchment texture are a single image, `public/poster-frame.png`.
+   and the parchment texture are a single image, `public/poster-frame.jpg`.
    It was designed in Canva and is drawn full-bleed behind everything.
 2. **The tree (code).** The trunk, branches, name leaves, capsules,
    medallions, title and panels are computed and drawn as vector SVG on top
@@ -93,9 +93,10 @@ The poster has two layers:
 
 The frame is never a picture of a tree. All names come from the data.
 
-**Adding the frame.** Export the frame page of the Canva design as a PNG
-(4000×6000 or larger) and save it as `public/poster-frame.png`. The editor
-checks for it on load. If the file is missing, the poster uses plain
+**Replacing the frame.** Export the frame page from Canva at 4000×6000 and
+save it as `public/poster-frame.jpg`. A quality-92 JPEG is about 2 MB and
+looks the same as the 16 MB PNG. A `.png` with the same name also works.
+The editor checks for the file on load. If the file is missing, the poster uses plain
 parchment and **Style → Ornaments** shows a note. The poster is A-series
 (1:√2), so the 2:3 artwork is stretched about 6% vertically.
 

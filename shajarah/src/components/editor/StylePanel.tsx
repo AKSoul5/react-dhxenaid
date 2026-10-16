@@ -9,7 +9,7 @@ interface Props {
   onChange: (theme: Partial<PosterTheme>) => void;
   soilText: string | null;
   onSoilTextChange: (text: string | null) => void;
-  /** Whether the frame artwork (public/poster-frame.png) was found. */
+  /** Whether the frame artwork (public/poster-frame.jpg or .png) was found. */
   frameAvailable?: boolean;
 }
 
@@ -136,8 +136,8 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange, frameA
             ))}
             {theme.frame && !frameAvailable && (
               <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
-                Frame artwork not found. Export the frame page from Canva as PNG and save it as{" "}
-                <code>public/poster-frame.png</code>; until then the paper is plain.
+                Frame artwork not found. Save the Canva frame as{" "}
+                <code>public/poster-frame.jpg</code> (or <code>.png</code>); until then the paper is plain.
               </p>
             )}
             <label className="flex items-center justify-between gap-2 text-sm">

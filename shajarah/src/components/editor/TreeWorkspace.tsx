@@ -316,15 +316,23 @@ function exportName(name: string) {
   return slug ? `shajarah-${slug}` : "shajarah-poster";
 }
 
-/** The frame artwork's URL, or null when public/poster-frame.png is missing. */
-const FRAME_URL = "/poster-frame.png";
+/** The frame artwork's URL, or null when neither public/poster-frame.jpg nor .png exists. */
+const FRAME_URLS = ["/poster-frame.jpg", "/poster-frame.png"];
 function useFrameArtwork(): string | null | undefined {
   const [src, setSrc] = useState<string | null | undefined>(undefined);
   useEffect(() => {
     let live = true;
-    fetch(FRAME_URL, { method: "HEAD" })
-      .then((r) => live && setSrc(r.ok && (r.headers.get("content-type") ?? "").startsWith("image/") ? FRAME_URL : null))
-      .catch(() => live && setSrc(null));
+    (async () => {
+      for (const url of FRAME_URLS) {
+        try {
+          const r = await fetch(url, { method: "HEAD" });
+          if (r.ok && (r.headers.get("content-type") ?? "").startsWith("image/")) return url;
+        } catch {
+          // try the next one
+        }
+      }
+      return null;
+    })().then((url) => live && setSrc(url));
     return () => {
       live = false;
     };

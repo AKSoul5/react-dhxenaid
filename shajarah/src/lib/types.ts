@@ -58,7 +58,7 @@ export interface PosterTheme {
   verse: boolean;
   /** Corner medallion with the hadith on learning one's lineage. */
   hadith: boolean;
-  /** Use the frame artwork (public/poster-frame.png, made in Canva) as the background. */
+  /** Use the frame artwork (public/poster-frame.jpg or .png, made in Canva) as the background. */
   frame: boolean;
   /** Daughters as capsules even when sons are leaves. */
   femaleCapsule: boolean;
