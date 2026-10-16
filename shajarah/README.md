@@ -80,17 +80,58 @@ on any member's panel:
 - **Side branches:** brothers of trunk ancestors grow as side branches with
   their own small canopy. Brothers without descendants become short stubs.
 
+## The frame: Canva artwork + code-drawn tree (hybrid)
+
+The poster has two layers:
+
+1. **Frame artwork (Canva).** The gold-foil border, the corner arabesques
+   and the parchment texture are a single image, `public/poster-frame.png`.
+   It was designed in Canva and is drawn full-bleed behind everything.
+2. **The tree (code).** The trunk, branches, name leaves, capsules,
+   medallions, title and panels are computed and drawn as vector SVG on top
+   of the frame, so they stay sharp and editable.
+
+The frame is never a picture of a tree. All names come from the data.
+
+**Adding the frame.** Export the frame page of the Canva design as a PNG
+(4000×6000 or larger) and save it as `public/poster-frame.png`. The editor
+checks for it on load. If the file is missing, the poster uses plain
+parchment and **Style → Ornaments** shows a note. The poster is A-series
+(1:√2), so the 2:3 artwork is stretched about 6% vertically.
+
+**Keep-out zones.** With **Gold-foil frame** on, the layout keeps clear of
+the artwork:
+
+- The crown is narrower than without the frame, so it stays inside the
+  mid-side rosettes.
+- The basmala and title sit below the top rosette.
+- The verse and hadith medallions sit inside the corner arabesques.
+- The legend and statistics panels sit on either side of the trunk.
+- The footer sits above the bottom rosette.
+
+Names are pushed off the medallions and panels during collision
+relaxation.
+
+**Default Luxe style:**
+
+- **Sons:** metallic silver leaves (`#E8E8E8 / #C0C0C0 / #999999`) with the
+  name on the leaf.
+- **Daughters:** metallic gold capsules (`#FFE57F / #D4AF37 / #AA7C11`).
+- **Ancestors:** gold scalloped medallions on the trunk.
+- **Branches:** clean tapered vector branches in a soft walnut gradient.
+- **Title:** gilded Aref Ruqaa calligraphy.
+- **Names and text:** Amiri.
+
 ## Foliage and ornaments
 
-The default **Heritage** style follows traditional printed family charts.
+Ornaments are toggled under **Style → Ornaments**:
 
-- **Names:** ivory roundels with gold rims. Key people get gold scalloped
-  (sun-edged) medallions.
-- **Canopy:** a lush, egg-shaped canopy of leaves fills the crown.
-- **Frame:** baroque gold corner scrollwork.
-- **Header:** the basmala ﷽ above the title.
-- **Corner medallions:** Al-Hujurat 49:13 and the Tirmidhi hadith
-  «تعلموا من أنسابكم ما تصلون به أرحامكم…».
+- the frame;
+- daughters as gold capsules;
+- the leafy canopy;
+- the basmala ﷽;
+- Al-Hujurat 49:13;
+- the Tirmidhi hadith «تعلموا من أنسابكم ما تصلون به أرحامكم…».
 
 **How the foliage grows.** `src/lib/layout/foliage.ts` uses *space
 colonization*:
@@ -110,35 +151,36 @@ added. Each ornament can be toggled under **Style → Ornaments**.
 
 ## Rendering details
 
-Everything is vector SVG with no bitmaps, so it stays sharp at any size.
+The tree is pure vector SVG. The only bitmap is the frame artwork, which is
+embedded into the exported file.
 
-- **Wood:** walnut bark gradient (`#3B2314 → #6E472A → #24140B`) with a
-  sheen. Each branch gets a highlight strip on its lit (upper-left) side,
-  bark-grain strands on thick limbs, and rounded joints. Soft drop shadows
-  give depth.
+- **Wood:** clean tapered branches in a walnut gradient
+  (`#3B2314 → #6E472A → #24140B`), with rounded joints and soft drop
+  shadows.
 - **Metal:**
   - Male nodes use a silver bevel (`#E8E8E8 / #C0C0C0 / #999999`).
   - Female nodes use a gold bevel (`#FFE57F / #D4AF37 / #AA7C11`).
   - Both have dark borders, a specular gloss and a drop shadow.
   - Trunk and canopy-base medallions are gold with a parchment field and
     a beaded inner ring.
-- **Paper:** a procedural grain and mottling (`feTurbulence`), a faint
-  girih pattern and a vignette.
+- **Paper:** the Canva frame artwork, or flat parchment (`#f4ecd8`) when
+  it is absent.
 - **Panels:** legend, statistics and the soil inscription sit on
   semi-transparent parchment with gilt double borders and corner lozenges.
 - **Canopy:** a soft oval or teardrop silhouette behind the canopy keeps
   the tree shape balanced, even for a small family.
-- **Type:** set in Amiri, falling back to Traditional Arabic, with
-  geometric-precision text rendering.
+- **Type:** names in Amiri, falling back to Traditional Arabic. Headings
+  in Aref Ruqaa. Both fonts are embedded in exports.
 
 ## Styles
 
-**🎨 Style** has four presets, and every setting can be overridden. Settings
+**🎨 Style** has six presets, and every setting can be overridden. Settings
 are saved per tree in `settings.theme`.
 
 | Preset | Look |
 | --- | --- |
-| Heritage (default) | ivory roundels with gold rims, gold scalloped medallions, leafy canopy, basmala, verse and hadith medallions |
+| Luxe (default) | Canva gold-foil frame, silver name leaves for sons, gold capsules for daughters, gold trunk medallions, Ruqaa title |
+| Heritage | ivory roundels with gold rims, gold scalloped medallions, leafy canopy, basmala, verse and hadith medallions |
 | Silver & Gold | metallic silver (male) and gold (female) ovals, framed ancestor badges |
 | Classic botanical | green leaves, generation-coloured forks, names carved in the bark |
 | Parchment & Emerald | emerald and gold leaves on parchment |

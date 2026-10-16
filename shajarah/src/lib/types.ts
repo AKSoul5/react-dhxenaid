@@ -28,7 +28,7 @@ export interface MarriageDTO {
   endYear: number | null;
 }
 
-export type ThemePreset = "heritage" | "classic" | "silver-gold" | "emerald" | "mono";
+export type ThemePreset = "luxe" | "heritage" | "classic" | "silver-gold" | "emerald" | "mono";
 
 /** User-customisable poster styling, stored in FamilyTree.settings.theme. */
 export interface PosterTheme {
@@ -58,6 +58,10 @@ export interface PosterTheme {
   verse: boolean;
   /** Corner medallion with the hadith on learning one's lineage. */
   hadith: boolean;
+  /** Use the frame artwork (public/poster-frame.png, made in Canva) as the background. */
+  frame: boolean;
+  /** Daughters as capsules even when sons are leaves. */
+  femaleCapsule: boolean;
 }
 
 export interface PosterSettings {

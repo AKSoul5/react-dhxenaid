@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@fontsource/amiri": "5.1.0",
+    "@fontsource/aref-ruqaa": "^5.1.0",
     "@prisma/client": "5.22.0",
     "d3-hierarchy": "3.1.2",
     "d3-selection": "3.0.0",

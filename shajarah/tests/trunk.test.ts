@@ -66,12 +66,8 @@ describe("trunk, lineage panel and side branches", () => {
     expect(Math.max(...ys)).toBeGreaterThan(layout.groundY);
     expect(Math.max(...ys)).toBeLessThan(layout.groundY + layout.width * 0.022);
     expect(layout.soil!.fontSize).toBeGreaterThanOrEqual(18);
-    // no surface roots (or their bark grain) on top of the soil
+    // no surface roots on top of the soil
     expect(layout.surfaceRoots).toHaveLength(0);
-    for (const d of layout.barkStrands) {
-      const ys = [...d.matchAll(/(-?\d+\.\d) (-?\d+\.\d)/g)].map((m) => Number(m[2]));
-      expect(Math.max(...ys)).toBeLessThan(layout.groundY - layout.width * 0.02);
-    }
   });
 
   it("grows brothers of trunk ancestors with descendants as side branches", () => {

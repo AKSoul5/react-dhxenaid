@@ -9,10 +9,12 @@ interface Props {
   onChange: (theme: Partial<PosterTheme>) => void;
   soilText: string | null;
   onSoilTextChange: (text: string | null) => void;
+  /** Whether the frame artwork (public/poster-frame.png) was found. */
+  frameAvailable?: boolean;
 }
 
 /** Theme presets, colour pickers, node shape and label options. */
-export function StylePanel({ theme, onChange, soilText, onSoilTextChange }: Props) {
+export function StylePanel({ theme, onChange, soilText, onSoilTextChange, frameAvailable = true }: Props) {
   const [open, setOpen] = useState(false);
   const [soilDraft, setSoilDraft] = useState(soilText ?? "");
   const color = (key: "male" | "female" | "ancestor" | "branch", label: string) => (
@@ -119,6 +121,8 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange }: Prop
             <h4 className="section-title">Ornaments</h4>
             {(
               [
+                ["frame", "Gold-foil frame & parchment (Canva artwork)"],
+                ["femaleCapsule", "Daughters as gold capsules"],
                 ["foliage", "Leafy canopy (with roundel / oval names)"],
                 ["bismillah", "Basmala header ﷽"],
                 ["verse", "Verse medallion (الحجرات ١٣)"],
@@ -130,6 +134,12 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange }: Prop
                 {label}
               </label>
             ))}
+            {theme.frame && !frameAvailable && (
+              <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+                Frame artwork not found. Export the frame page from Canva as PNG and save it as{" "}
+                <code>public/poster-frame.png</code>; until then the paper is plain.
+              </p>
+            )}
             <label className="flex items-center justify-between gap-2 text-sm">
               Roundel rim
               <input type="color" className="h-7 w-12 cursor-pointer rounded border border-parchment-300" value={theme.nodeRim} onChange={(e) => onChange({ nodeRim: e.target.value })} />

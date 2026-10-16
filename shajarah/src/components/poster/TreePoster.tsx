@@ -6,7 +6,7 @@ import { LEAF_TONES, generationColor, generationLabel } from "@/lib/layout/palet
 import { hashString, mulberry32 } from "@/lib/layout/random";
 import { textWidth } from "@/lib/layout/botanical";
 import { barkStops, metalStops, shade, textOn } from "@/lib/theme";
-import { HADITH, VERSE, baroqueCorner, scallopPath, textInCircle } from "./ornaments";
+import { HADITH, VERSE, scallopPath, textInCircle } from "./ornaments";
 import type { PosterTheme } from "@/lib/types";
 
 export interface PosterMeta {
@@ -24,11 +24,21 @@ interface Props {
   highlightIds?: Set<string>;
   onSelect?: (memberId: string) => void;
   className?: string;
+  /**
+   * URL of the frame artwork (gold-foil border, corner arabesques and
+   * parchment texture, designed in Canva). Drawn full-bleed behind the
+   * tree when the theme's frame is on; without it the paper is plain.
+   */
+  frameSrc?: string | null;
 }
 
 const FONT = "Amiri, 'Traditional Arabic', 'Noto Naskh Arabic', 'Times New Roman', serif";
+/** Calligraphic face for headings (title, panel captions). */
+const RUQAA = "'Aref Ruqaa', Amiri, 'Traditional Arabic', serif";
 const GOLD = ["#FFE57F", "#D4AF37", "#AA7C11"] as const;
 const PARCHMENT = "#fbf5e6";
+/** Flat paper colour under (or instead of) the frame artwork. */
+const PAPER = "#f4ecd8";
 /** Foliage leaf tones: [light, dark] pairs from yellow-green to deep green. */
 const FOLIAGE = [
   ["#b9d36a", "#5d8f2c"],
@@ -36,7 +46,6 @@ const FOLIAGE = [
   ["#a7c95e", "#4a7d2a"],
   ["#6fa848", "#22561d"],
 ] as const;
-const CORNER = baroqueCorner();
 
 interface Palette {
   ink: string;
@@ -103,7 +112,7 @@ function MetalGradient({ id, color }: { id: string; color: string }) {
  */
 export const TreePoster = memo(
   forwardRef<SVGSVGElement, Props>(function TreePoster(
-    { layout, meta, theme, selectedId, highlightIds, onSelect, className },
+    { layout, meta, theme, selectedId, highlightIds, onSelect, className, frameSrc },
     ref,
   ) {
     const { width: W, height: H, rtl } = layout;
@@ -124,48 +133,12 @@ export const TreePoster = memo(
         aria-label={meta.title ?? meta.name}
       >
         <defs>
-          {/* Paper */}
-          <linearGradient id="sh-parchment" x1="0" y1="0" x2="0.3" y2="1">
-            <stop offset="0" stopColor="#fbf4e2" />
-            <stop offset="0.55" stopColor="#f3e6c6" />
-            <stop offset="1" stopColor="#e8d4a6" />
-          </linearGradient>
-          <radialGradient id="sh-vignette" cx="0.5" cy="0.45" r="0.78">
-            <stop offset="0.55" stopColor="#000" stopOpacity="0" />
-            <stop offset="1" stopColor="#5a3a12" stopOpacity="0.28" />
-          </radialGradient>
-          {/* Paper grain and mottling, generated procedurally (no bitmaps). */}
-          <filter id="sh-grain" x="0" y="0" width="100%" height="100%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.55" numOctaves="2" seed="7" result="fine" />
-            <feColorMatrix in="fine" type="matrix" values="0 0 0 0 0.35  0 0 0 0 0.24  0 0 0 0 0.1  0 0 0 0.09 0" />
-          </filter>
-          <filter id="sh-mottle" x="0" y="0" width="100%" height="100%">
-            <feTurbulence type="fractalNoise" baseFrequency="0.0035" numOctaves="3" seed="11" />
-            <feColorMatrix type="matrix" values="0 0 0 0 0.55  0 0 0 0 0.38  0 0 0 0 0.14  0 0 0 0.22 -0.04" />
-          </filter>
-          {/* Eight-pointed star (khatam) lattice, very faint, as on classic charts. */}
-          <pattern id="sh-girih" width="180" height="180" patternUnits="userSpaceOnUse">
-            <g fill="none" stroke="#b9a479" strokeWidth="1.3" opacity="0.32">
-              <rect x="54" y="54" width="72" height="72" />
-              <rect x="54" y="54" width="72" height="72" transform="rotate(45 90 90)" />
-              <path d="M90 39V0M90 141V180M39 90H0M141 90H180M54 54L0 0M126 54L180 0M54 126L0 180M126 126L180 180" />
-              <path d="M0 39L39 0M141 0L180 39M180 141L141 180M39 180L0 141" />
-              <circle cx="90" cy="90" r="18" />
-            </g>
-          </pattern>
-
           {/* Wood */}
           <linearGradient id="sh-bark" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0" stopColor={bark0} />
             <stop offset="0.38" stopColor={bark1} />
             <stop offset="0.62" stopColor={shade(bark1, -0.18)} />
             <stop offset="1" stopColor={bark2} />
-          </linearGradient>
-          <linearGradient id="sh-bark-sheen" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#fff" stopOpacity="0" />
-            <stop offset="0.3" stopColor="#d9a877" stopOpacity="0.14" />
-            <stop offset="0.48" stopColor="#fff" stopOpacity="0" />
-            <stop offset="1" stopColor="#000" stopOpacity="0.32" />
           </linearGradient>
           <linearGradient id="sh-soil" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0" stopColor="#6b4a2b" />
@@ -185,6 +158,11 @@ export const TreePoster = memo(
             <stop offset="0" stopColor={GOLD[0]} />
             <stop offset="0.5" stopColor={GOLD[1]} />
             <stop offset="1" stopColor={GOLD[2]} />
+          </linearGradient>
+          <linearGradient id="sh-gold-text" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#c99a2e" />
+            <stop offset="0.45" stopColor="#8a6114" />
+            <stop offset="1" stopColor="#5e400a" />
           </linearGradient>
           <radialGradient id="sh-canopy" cx="0.5" cy="0.45" r="0.55">
             <stop offset="0" stopColor={theme.preset === "classic" ? "#d9e8b8" : "#f6e3a8"} stopOpacity="0.55" />
@@ -214,53 +192,15 @@ export const TreePoster = memo(
               <path d="M-0.2 -0.02L0 -0.15M0.05 -0.02L0.22 -0.12M-0.2 0.02L0 0.15M0.05 0.02L0.22 0.12" stroke="#eef5c8" strokeWidth={0.014} fill="none" opacity={0.4} />
             </g>
           ))}
-          <g id="sh-baroque">
-            {CORNER.map((d, i) => <path key={i} d={d} />)}
-          </g>
           {/* Unit leaf pointing along +x, used by the legend key. */}
           <path id="sh-leaf" d={leafPath(1, 0.45)} transform="translate(0.5 0)" />
-          {/* Corner flourish in a 100×100 box, drawn as strokes. */}
-          <g id="sh-corner" fill="none" strokeLinecap="round">
-            <path d="M0 0H100M0 0V100" strokeWidth="5" />
-            <path d="M14 14H64M14 14V64" strokeWidth="2" />
-            <path d="M14 14C34 14 44 24 44 44 24 44 14 34 14 14Z" strokeWidth="2.5" />
-            <path d="M64 14c10 0 14 8 8 14s-14 0-10-6M14 64c0 10 8 14 14 8s0-14-6-10" strokeWidth="2" />
-            <circle cx="30" cy="30" r="4" fill="currentColor" stroke="none" />
-          </g>
         </defs>
 
-        {/* Background: parchment, grain, mottling, faint girih, vignette */}
-        {pal.mono ? (
-          <rect width={W} height={H} fill="#ffffff" />
-        ) : (
-          <>
-            <rect width={W} height={H} fill="url(#sh-parchment)" />
-            <rect width={W} height={H} filter="url(#sh-mottle)" />
-            <rect width={W} height={H} filter="url(#sh-grain)" />
-            <rect width={W} height={H} fill="url(#sh-girih)" />
-            <rect width={W} height={H} fill="url(#sh-vignette)" />
-          </>
+        {/* Background: flat paper, then the frame artwork (border, arabesques, texture) */}
+        <rect width={W} height={H} fill={pal.mono ? "#ffffff" : PAPER} />
+        {theme.frame && frameSrc && (
+          <image href={frameSrc} x={0} y={0} width={W} height={H} preserveAspectRatio="none" />
         )}
-
-        {/* Ornamental frame */}
-        <rect x={W * 0.018} y={W * 0.018} width={W * 0.964} height={H - W * 0.036} fill="none" stroke={pal.frame} strokeWidth={W * 0.0045} />
-        <rect x={W * 0.028} y={W * 0.028} width={W * 0.944} height={H - W * 0.056} fill="none" stroke={pal.frame} strokeWidth={W * 0.0012} />
-        {[
-          [W * 0.03, W * 0.03, 1, 1],
-          [W * 0.97, W * 0.03, -1, 1],
-          [W * 0.03, H - W * 0.03, 1, -1],
-          [W * 0.97, H - W * 0.03, -1, -1],
-        ].map(([x, y, sx, sy], i) => (
-          <use
-            key={i}
-            href="#sh-baroque"
-            transform={`translate(${x} ${y}) scale(${sx * W * 0.00064} ${sy * W * 0.00064})`}
-            fill={pal.mono ? "#111" : "url(#sh-gold-line)"}
-            stroke={pal.mono ? "none" : "#7a5410"}
-            strokeWidth={0.8}
-            filter={pal.mono ? undefined : "url(#sh-node-shadow)"}
-          />
-        ))}
 
         {/* Header: basmala, title fitted between the corner medallions, gilt divider */}
         <Header layout={layout} meta={meta} theme={theme} pal={pal} />
@@ -290,18 +230,10 @@ export const TreePoster = memo(
         {/* Surface roots (lawn); with a soil tier they are drawn on the soil */}
         {!layout.soil && <Roots layout={layout} pal={pal} />}
 
-        {/* Trunk: bark gradient, sheen, grain */}
+        {/* Trunk: clean vector body with a soft bark gradient */}
         <g filter={shadow}>
           <path d={layout.trunkPath} fill={pal.mono ? "#ffffff" : "url(#sh-bark)"} stroke={pal.mono ? "#111" : "none"} strokeWidth={W * 0.002} />
         </g>
-        {!pal.mono && (
-          <>
-            <path d={layout.trunkPath} fill="url(#sh-bark-sheen)" />
-            {layout.barkLines.map((d, i) => (
-              <path key={i} d={d} stroke={bark2} strokeWidth={W * 0.0018} opacity={0.45} fill="none" strokeLinecap="round" />
-            ))}
-          </>
-        )}
 
         {/* Soil over the trunk base: roots and the ancient lineage */}
         {layout.soil && <Soil layout={layout} pal={pal} grass={grass} />}
@@ -313,20 +245,10 @@ export const TreePoster = memo(
           </g>
         )}
 
-        {/* Branches: bark body, lit-side highlight, grain */}
+        {/* Branches: clean tapered vector lines */}
         <g filter={shadow} fill={pal.mono ? "#1a1a1a" : "url(#sh-bark)"}>
           {layout.branches.map((b, i) => <path key={i} d={b.d} />)}
         </g>
-        {!pal.mono && (
-          <>
-            <g fill="#b98a5c" opacity={0.3}>
-              {layout.branches.map((b, i) => (b.hl ? <path key={i} d={b.hl} /> : null))}
-            </g>
-            <g stroke={bark2} strokeWidth={W * 0.0009} fill="none" opacity={0.4} strokeLinecap="round">
-              {layout.barkStrands.map((d, i) => <path key={i} d={d} />)}
-            </g>
-          </>
-        )}
 
         {/* Leaves (decorative) above the branches, below the names */}
         {layout.foliage && (
@@ -404,7 +326,7 @@ export const TreePoster = memo(
 
         <Legend layout={layout} theme={theme} pal={pal} />
         <Stats layout={layout} pal={pal} />
-        <text x={W / 2} y={H - W * 0.045} textAnchor="middle" fontSize={W * 0.011} fill={pal.mono ? "#555" : "#7a5a2c"}>
+        <text x={W / 2} y={layout.frame.footerY} textAnchor="middle" fontSize={W * 0.011} fill={pal.mono ? "#555" : "#7a5a2c"}>
           {rtl ? `${meta.name} — صُمّمت بواسطة شجرة` : `${meta.name} — made with Shajarah`}
         </text>
       </svg>
@@ -610,37 +532,34 @@ function Soil({ layout, pal, grass }: { layout: PosterLayout; pal: Palette; gras
 function Roots({ layout, pal }: { layout: PosterLayout; pal: Palette }) {
   const W = layout.width;
   return (
-    <g>
-      <g fill={pal.mono ? "#fff" : "url(#sh-bark)"} stroke={pal.mono ? "#111" : "none"} strokeWidth={W * 0.001} filter={pal.mono ? undefined : "url(#sh-shadow)"}>
-        {layout.surfaceRoots.map((r, i) => <path key={i} d={r.d} />)}
-      </g>
-      {!pal.mono && (
-        <g fill="#b98a5c" opacity={0.3}>
-          {layout.surfaceRoots.map((r, i) => (r.hl ? <path key={i} d={r.hl} /> : null))}
-        </g>
-      )}
+    <g fill={pal.mono ? "#fff" : "url(#sh-bark)"} stroke={pal.mono ? "#111" : "none"} strokeWidth={W * 0.001} filter={pal.mono ? undefined : "url(#sh-shadow)"}>
+      {layout.surfaceRoots.map((r, i) => <path key={i} d={r.d} />)}
     </g>
   );
 }
 
-/** Basmala, the title fitted to the space between the medallions, subtitle, divider. */
+/** Basmala, the calligraphic title fitted between the medallions, subtitle, divider. */
 function Header({ layout, meta, theme, pal }: { layout: PosterLayout; meta: PosterMeta; theme: PosterTheme; pal: Palette }) {
   const { width: W, height: H, rtl } = layout;
-  const avail = layout.medallions.length ? W * 0.44 : W * 0.8;
-  const top = theme.bismillah ? H * 0.026 : 0;
-  const titleFs = meta.title ? Math.min(W * 0.036, avail / (textWidth(meta.title, 1) || 1)) : 0;
-  const titleY = H * 0.052 + top;
+  const hd = layout.frame.header;
+  const avail = layout.medallions.length ? hd.maxTitleWidth : W * 0.8;
+  // Ruqaa runs a little wider than Amiri, which textWidth is tuned for
+  const titleFs = meta.title ? Math.min(W * 0.04, avail / ((textWidth(meta.title, 1) || 1) * 1.1)) : 0;
+  const titleY = theme.bismillah || layout.frame.framed ? hd.title : H * 0.052;
   const subY = titleY + H * 0.022;
+  const ink = pal.mono ? pal.ink : "#3a230c";
   return (
     <g>
       {theme.bismillah && (
         // Amiri draws the basmala (U+FDFD) as one wide calligraphic glyph (~11 em)
-        <text x={W / 2} y={H * 0.041} textAnchor="middle" fontSize={W * 0.029} fill={pal.ink}>
+        <text x={W / 2} y={hd.basmala} textAnchor="middle" fontSize={W * 0.029} fill={ink}>
           ﷽
         </text>
       )}
       {meta.title && (
-        <text x={W / 2} y={titleY} textAnchor="middle" fontSize={titleFs} fontWeight={700} fill={pal.ink} direction={rtl ? "rtl" : "ltr"}>
+        <text x={W / 2} y={titleY} textAnchor="middle" fontFamily={RUQAA} fontSize={titleFs} fontWeight={700}
+          fill={pal.mono ? pal.ink : "url(#sh-gold-text)"} stroke={pal.mono ? "none" : "#5a3d0a"} strokeWidth={titleFs * 0.012}
+          direction={rtl ? "rtl" : "ltr"}>
           {meta.title}
         </text>
       )}
@@ -649,7 +568,7 @@ function Header({ layout, meta, theme, pal }: { layout: PosterLayout; meta: Post
           {meta.subtitle}
         </text>
       )}
-      <Divider x={W / 2} y={(meta.subtitle ? subY : titleY) + H * 0.012} w={Math.min(W * 0.34, avail * 0.8)} pal={pal} />
+      <Divider x={W / 2} y={(meta.subtitle ? subY : titleY) + H * 0.012} w={Math.min(W * 0.3, avail * 0.75)} pal={pal} />
     </g>
   );
 }
@@ -672,7 +591,7 @@ function TextMedallion({ x, y, r, content, pal }: { x: number; y: number; r: num
 }
 
 function Legend({ layout, theme, pal }: { layout: PosterLayout; theme: PosterTheme; pal: Palette }) {
-  const { width: W, groundY, rtl, generationsPresent, generationOffset } = layout;
+  const { width: W, rtl, generationsPresent, generationOffset } = layout;
   const row = W * 0.018;
   type Item = { key: string; label: string; swatch: ReactNode };
   const swatch = (fill: string, kind: "pill" | "leaf" | "badge") =>
@@ -704,12 +623,11 @@ function Legend({ layout, theme, pal }: { layout: PosterLayout; theme: PosterThe
   const colW = W * 0.13;
   const boxW = Math.max(colW * cols + W * 0.03, W * 0.17);
   const boxH = row * rows + W * 0.058;
-  const x0 = rtl ? W * 0.05 : W * 0.95 - boxW;
-  const y0 = groundY + W * 0.075;
+  const { x: x0, y: y0 } = layout.frame.legend;
   return (
     <g>
       <OrnatePanel x={x0} y={y0} w={boxW} h={boxH} pal={pal} W={W} />
-      <text x={x0 + boxW / 2} y={y0 + W * 0.026} textAnchor="middle" fontSize={W * 0.0135} fontWeight={700} fill={pal.ink}>
+      <text x={x0 + boxW / 2} y={y0 + W * 0.026} textAnchor="middle" fontFamily={RUQAA} fontSize={W * 0.0145} fontWeight={700} fill={pal.ink}>
         {theme.colorBy === "generation" ? (rtl ? "ألوان الأجيال" : "Generations") : rtl ? "دليل الألوان" : "Key"}
       </text>
       {items.map((it, i) => {
@@ -731,10 +649,9 @@ function Legend({ layout, theme, pal }: { layout: PosterLayout; theme: PosterThe
 }
 
 function Stats({ layout, pal }: { layout: PosterLayout; pal: Palette }) {
-  const { width: W, groundY, rtl, stats } = layout;
+  const { width: W, rtl, stats } = layout;
   const boxW = W * 0.2;
-  const x0 = rtl ? W * 0.95 - boxW : W * 0.05;
-  const y0 = groundY + W * 0.075;
+  const { x: x0, y: y0 } = layout.frame.stats;
   const rows: [string, string, number][] = [
     ["الذكور", "Males", stats.males],
     ["الإناث", "Females", stats.females],
@@ -743,7 +660,7 @@ function Stats({ layout, pal }: { layout: PosterLayout; pal: Palette }) {
   return (
     <g>
       <OrnatePanel x={x0} y={y0} w={boxW} h={W * 0.11} pal={pal} W={W} />
-      <text x={x0 + boxW / 2} y={y0 + W * 0.026} textAnchor="middle" fontSize={W * 0.0135} fontWeight={700} fill={pal.ink}>
+      <text x={x0 + boxW / 2} y={y0 + W * 0.026} textAnchor="middle" fontFamily={RUQAA} fontSize={W * 0.0145} fontWeight={700} fill={pal.ink}>
         {rtl ? "إحصائية أفراد الأسرة" : "Family statistics"}
       </text>
       {rows.map(([ar, en, v], i) => (

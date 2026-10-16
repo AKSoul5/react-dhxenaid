@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useDeferredValue, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { computePosterLayout } from "@/lib/layout/botanical";
 import { generationColor } from "@/lib/layout/palette";
 import { nasab } from "@/lib/genealogy";
@@ -39,6 +39,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const svgRef = useRef<SVGSVGElement>(null);
+  const frameSrc = useFrameArtwork();
 
   const showFemales = tree.settings?.showFemales ?? false;
   const seed = tree.settings?.seed ?? 7;
@@ -140,6 +141,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             onChange={(patch) => updateSettings({ theme: { ...theme, ...patch } })}
             soilText={tree.soilText}
             onSoilTextChange={(soilText) => void mutate(() => repo.updateTree({ soilText }))}
+            frameAvailable={frameSrc !== null}
           />
           <ExportMenu svgRef={svgRef} filename={exportName(tree.name)} />
         </div>
@@ -287,6 +289,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               selectedId={selectedId}
               highlightIds={highlightIds}
               onSelect={select}
+              frameSrc={frameSrc}
               className="block h-full w-full"
             />
           </PosterViewport>
@@ -311,4 +314,20 @@ function exportName(name: string) {
     .replace(/\s+/g, "-")
     .toLowerCase();
   return slug ? `shajarah-${slug}` : "shajarah-poster";
+}
+
+/** The frame artwork's URL, or null when public/poster-frame.png is missing. */
+const FRAME_URL = "/poster-frame.png";
+function useFrameArtwork(): string | null | undefined {
+  const [src, setSrc] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let live = true;
+    fetch(FRAME_URL, { method: "HEAD" })
+      .then((r) => live && setSrc(r.ok && (r.headers.get("content-type") ?? "").startsWith("image/") ? FRAME_URL : null))
+      .catch(() => live && setSrc(null));
+    return () => {
+      live = false;
+    };
+  }, []);
+  return src;
 }

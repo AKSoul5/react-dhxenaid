@@ -1,14 +1,22 @@
 import type { PosterSettings, PosterTheme, ThemePreset } from "./types";
 
-const ORNAMENTS = { bismillah: true, verse: true, hadith: true };
+const ORNAMENTS = { bismillah: true, verse: true, hadith: true, frame: true };
 
 export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }> = {
+  luxe: {
+    label: "Luxe (silver leaves & gold)",
+    preset: "luxe", colorBy: "gender",
+    male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#5b4128",
+    background: "parchment", metallic: true, nodeRim: "#6f6f6f",
+    nodeShape: "leaf", femaleCapsule: true, labelMode: "name", showYears: false, trunkStyle: "badges",
+    foliage: false, ...ORNAMENTS,
+  },
   heritage: {
     label: "Heritage (ivory & gold)",
     preset: "heritage", colorBy: "gender",
     male: "#fbf3dc", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: true, nodeRim: "#b8892f",
-    nodeShape: "circle", labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "circle", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "badges",
     foliage: true, ...ORNAMENTS,
   },
   "silver-gold": {
@@ -16,7 +24,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "silver-gold", colorBy: "gender",
     male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: true, nodeRim: "#6f6f6f",
-    nodeShape: "oval", labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "oval", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "badges",
     foliage: true, ...ORNAMENTS,
   },
   classic: {
@@ -24,7 +32,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "classic", colorBy: "generation",
     male: "#3f8434", female: "#d9708a", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false, nodeRim: "#2f4a1a",
-    nodeShape: "leaf", labelMode: "name", showYears: false, trunkStyle: "carved",
+    nodeShape: "leaf", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "carved",
     foliage: true, ...ORNAMENTS,
   },
   emerald: {
@@ -32,7 +40,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "emerald", colorBy: "gender",
     male: "#1f7a4d", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false, nodeRim: "#0f3d26",
-    nodeShape: "leaf", labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "leaf", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "badges",
     foliage: true, ...ORNAMENTS,
   },
   mono: {
@@ -40,16 +48,16 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "mono", colorBy: "gender",
     male: "#ffffff", female: "#e6e6e6", ancestor: "#111111", branch: "#1a1a1a",
     background: "white", metallic: false, nodeRim: "#111111",
-    nodeShape: "circle", labelMode: "name", showYears: false, trunkStyle: "badges",
-    foliage: false, bismillah: true, verse: false, hadith: false,
+    nodeShape: "circle", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    foliage: false, bismillah: true, verse: false, hadith: false, frame: false,
   },
 };
 
 /** Merges a tree's saved overrides onto its preset. */
 export function resolveTheme(settings: PosterSettings | null | undefined): PosterTheme {
   const saved = settings?.theme ?? {};
-  // Heritage (ivory roundels, gold medallions, green foliage) is the default look.
-  const preset = THEME_PRESETS[saved.preset ?? "heritage"] ?? THEME_PRESETS.heritage;
+  // Luxe (Canva frame, silver leaves, gold capsules) is the default look.
+  const preset = THEME_PRESETS[saved.preset ?? "luxe"] ?? THEME_PRESETS.luxe;
   const { label: _label, ...base } = preset;
   return { ...base, ...saved, preset: base.preset };
 }
@@ -105,6 +113,9 @@ export function layoutOptionsFor(theme: PosterTheme) {
     branchScale: theme.background === "white" ? 0.35 : 1,
     foliage: theme.foliage,
     cornerMedallions: theme.verse || theme.hadith,
-    headerBand: theme.bismillah || theme.verse || theme.hadith ? 0.125 : 0.095,
+    framed: theme.frame,
+    femaleCapsule: theme.femaleCapsule,
+    // inside the frame the header starts below its top rosette
+    headerBand: theme.frame ? 0.19 : theme.bismillah || theme.verse || theme.hadith ? 0.125 : 0.095,
   };
 }

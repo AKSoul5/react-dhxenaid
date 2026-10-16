@@ -22,7 +22,9 @@ const XLINK_NS = "http://www.w3.org/1999/xlink";
 /** Chrome's canvas area limit is ~268M px; stay well below it. */
 const MAX_CANVAS_PIXELS = 180_000_000;
 
-const FONT_FILES = [
+const FONT_FILES: { file: string; weight: number; range: string; family?: string }[] = [
+  { family: "Aref Ruqaa", file: "aref-ruqaa-arabic-400-normal.woff2", weight: 400, range: "U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF" },
+  { family: "Aref Ruqaa", file: "aref-ruqaa-arabic-700-normal.woff2", weight: 700, range: "U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF" },
   { file: "amiri-arabic-400-normal.woff2", weight: 400, range: "U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF" },
   { file: "amiri-arabic-700-normal.woff2", weight: 700, range: "U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF" },
   { file: "amiri-latin-400-normal.woff2", weight: 400, range: "U+0000-00FF, U+2000-206F" },
@@ -33,11 +35,11 @@ let fontCssCache: Promise<string> | null = null;
 
 function embeddedFontCss(): Promise<string> {
   fontCssCache ??= Promise.all(
-    FONT_FILES.map(async ({ file, weight, range }) => {
+    FONT_FILES.map(async ({ file, weight, range, family = "Amiri" }) => {
       const res = await fetch(`/fonts/${file}`);
       if (!res.ok) return "";
       const b64 = arrayBufferToBase64(await res.arrayBuffer());
-      return `@font-face{font-family:Amiri;font-weight:${weight};font-style:normal;unicode-range:${range};src:url(data:font/woff2;base64,${b64}) format("woff2");}`;
+      return `@font-face{font-family:"${family}";font-weight:${weight};font-style:normal;unicode-range:${range};src:url(data:font/woff2;base64,${b64}) format("woff2");}`;
     }),
   ).then((rules) => rules.join(""));
   return fontCssCache;
@@ -67,6 +69,18 @@ export async function serializePoster(svg: SVGSVGElement, paper: PaperSize = "A1
     const href = u.getAttribute("href");
     if (href) u.setAttributeNS(XLINK_NS, "xlink:href", href);
   });
+  // Inline the frame artwork: an SVG rendered as an image cannot load URLs.
+  await Promise.all(
+    [...clone.querySelectorAll("image")].map(async (img) => {
+      const href = img.getAttribute("href");
+      if (!href || href.startsWith("data:")) return;
+      const res = await fetch(href);
+      if (!res.ok) return;
+      const type = res.headers.get("content-type") ?? "image/png";
+      img.setAttribute("href", `data:${type};base64,${arrayBufferToBase64(await res.arrayBuffer())}`);
+      img.setAttributeNS(XLINK_NS, "xlink:href", img.getAttribute("href")!);
+    }),
+  );
   const style = document.createElementNS(SVG_NS, "style");
   style.textContent = await embeddedFontCss();
   let defs = clone.querySelector("defs");
@@ -95,21 +109,22 @@ let fontsWarm: Promise<void> | null = null;
 function warmUpFonts(): Promise<void> {
   fontsWarm ??= (async () => {
     const css = await embeddedFontCss();
-    // One sample per embedded face (Arabic/Latin × regular/bold), each in
+    // One sample per embedded face (Amiri Arabic/Latin × regular/bold, Ruqaa), each in
     // its own quarter of the probe, so every face must have painted.
     const samples = [
-      { text: "أبجد", weight: 400 }, { text: "أبجد", weight: 700 },
-      { text: "Abc", weight: 400 }, { text: "Abc", weight: 700 },
+      { text: "أبجد", weight: 400, family: "Amiri" }, { text: "أبجد", weight: 700, family: "Amiri" },
+      { text: "Abc", weight: 400, family: "Amiri" }, { text: "Abc", weight: 700, family: "Amiri" },
+      { text: "أبجد", weight: 400, family: "Aref Ruqaa" },
     ];
     const probe =
-      `<svg xmlns="${SVG_NS}" width="400" height="60"><style>${css}</style>` +
+      `<svg xmlns="${SVG_NS}" width="${samples.length * 100}" height="60"><style>${css}</style>` +
       samples
-        .map((s, i) => `<text x="${i * 100 + 8}" y="42" font-family="Amiri" font-weight="${s.weight}" font-size="36" fill="#000">${s.text}</text>`)
+        .map((s, i) => `<text x="${i * 100 + 8}" y="42" font-family="${s.family}" font-weight="${s.weight}" font-size="36" fill="#000">${s.text}</text>`)
         .join("") +
       `</svg>`;
     const url = URL.createObjectURL(new Blob([probe], { type: "image/svg+xml;charset=utf-8" }));
     const canvas = document.createElement("canvas");
-    canvas.width = 400;
+    canvas.width = samples.length * 100;
     canvas.height = 60;
     const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
     try {
@@ -117,7 +132,7 @@ function warmUpFonts(): Promise<void> {
         const img = new Image();
         img.src = url;
         await img.decode();
-        ctx.clearRect(0, 0, 400, 60);
+        ctx.clearRect(0, 0, canvas.width, 60);
         ctx.drawImage(img, 0, 0);
         const painted = samples.every((_, i) => {
           const px = ctx.getImageData(i * 100, 0, 100, 60).data;

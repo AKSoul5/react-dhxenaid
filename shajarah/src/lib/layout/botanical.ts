@@ -46,7 +46,7 @@ import { hierarchy, type HierarchyNode } from "d3-hierarchy";
 import { childrenIndex } from "../genealogy";
 import type { MemberDTO, TreeDTO } from "../types";
 import {
-  add, circlePath, cubicPoint as cubicPointAt, cubicTangent, len, norm, offsetCubic, perp, ribbonPath, scale, strandPath, sub,
+  add, circlePath, cubicPoint as cubicPointAt, cubicTangent, len, norm, ribbonPath, scale, sub,
   type Cubic, type Vec,
 } from "./geometry";
 import { growFoliage, type Box, type Foliage } from "./foliage";
@@ -79,6 +79,13 @@ export interface LayoutOptions {
   cornerMedallions?: boolean;
   /** Top of the canopy as a fraction of the height (room for a header). */
   headerBand?: number;
+  /**
+   * The poster sits inside a frame artwork: keep the tree, header and
+   * panels clear of its corner flourishes and mid-side rosettes.
+   */
+  framed?: boolean;
+  /** Daughters are drawn as capsules even where sons are leaves. */
+  femaleCapsule?: boolean;
 }
 
 export type PosterShape = "medallion" | "pill" | "leaf" | "circle" | "oval";
@@ -111,8 +118,6 @@ export interface PosterNode {
 export interface Branch {
   d: string;
   w: number;
-  /** Highlight strip on the lit side, for a rounded, 3-D look. */
-  hl?: string;
 }
 
 export interface TrunkLabel {
@@ -151,7 +156,6 @@ export interface PosterLayout {
   groundY: number;
   trunkPath: string;
   trunkWidth: number;
-  barkLines: string[];
   trunkLabels: TrunkLabel[];
   soil: SoilInscription | null;
   /** Trunk medallions are staggered in two columns (long trunks). */
@@ -161,8 +165,6 @@ export interface PosterLayout {
   nodes: PosterNode[];
   /** Branch outlines (filled with bark), with an optional light-side highlight. */
   branches: Branch[];
-  /** Thin bark-grain strands along the thicker branches. */
-  barkStrands: string[];
   /** Soft silhouette around the canopy (balanced oval). */
   canopy: string | null;
   /** Decorative twigs and leaves (null when names are leaves themselves). */
@@ -171,6 +173,15 @@ export interface PosterLayout {
   surfaceRoots: Branch[];
   /** Circular corner medallions (verse / hadith), when reserved. */
   medallions: { x: number; y: number; r: number }[];
+  /** Placement of the header and the legend / statistics panels. */
+  frame: {
+    framed: boolean;
+    /** y of the basmala and title baselines, and the widest title allowed. */
+    header: { basmala: number; title: number; maxTitleWidth: number };
+    legend: { x: number; y: number };
+    stats: { x: number; y: number };
+    footerY: number;
+  };
   /** Generation of the crown base; legend numbering and colours start here. */
   generationOffset: number;
   /** Generations present on crown / side-branch tags (for the legend). */
@@ -192,8 +203,6 @@ type LiveNode = PosterNode & {
 
 const ARABIC = /[؀-ۿ]/;
 const UP: Vec = { x: 0, y: -1 };
-/** Light comes from the upper left; branches are highlighted on that side. */
-const LIGHT: Vec = norm({ x: -1, y: -1.3 });
 const HONORIFICS = /^(عليه السلام|رضي الله عنه|رحمه الله|صلى الله عليه وسلم)$/;
 
 export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): PosterLayout {
@@ -224,23 +233,26 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   const baseMedallionR = TW * 0.62;
   const crownTop = H * (opts.headerBand ?? 0.095);
   const span = (originY: number, ground: number) => ground - TW * 0.55 - (originY + baseMedallionR + TW * 0.4);
+  const framed = !!opts.framed;
   const geometry = (soil: boolean, trunkSpan = 0) => {
-    const ground = H * (soil ? 0.79 : 0.835);
+    const ground = H * (framed ? (soil ? 0.755 : 0.79) : soil ? 0.79 : 0.835);
     let oy = H * (soil ? 0.59 : 0.626);
     if (trunkSpan > span(oy, ground)) oy = Math.max(H * 0.47, ground - TW * 0.55 - trunkSpan - baseMedallionR - TW * 0.4);
     const ry = (oy - crownTop) / 1.8;
-    const c = { cx: W / 2, cy: crownTop + ry, rx: W * 0.44, ry, exponent: 2.4 };
+    // inside a frame the crown stays clear of the mid-side rosettes
+    const c = { cx: W / 2, cy: crownTop + ry, rx: W * (framed ? 0.37 : 0.44), ry, exponent: 2.4 };
     return { crown: c, origin: { x: c.cx, y: oy } as Vec, groundY: ground };
   };
   let { crown, origin, groundY } = geometry(false);
   let trunkWidth = TW;
-  const margin = W * 0.045;
+  const margin = W * (framed ? 0.1 : 0.045);
 
   const empty: PosterLayout = {
     width: W, height: H, rtl: true, crown, origin, groundY,
     trunkPath: trunkOutline(origin, groundY, trunkWidth), trunkWidth,
-    barkLines: [], trunkLabels: [], soil: null, trunkZigzag: false, base: null, stubs: [], nodes: [],
-    branches: [], barkStrands: [], canopy: null, foliage: null, surfaceRoots: [], medallions: [],
+    trunkLabels: [], soil: null, trunkZigzag: false, base: null, stubs: [], nodes: [],
+    branches: [], canopy: null, foliage: null, surfaceRoots: [], medallions: [],
+    frame: framePlacement(W, H, framed, H * 0.835),
     generationOffset: 0, generationsPresent: [], stats,
   };
   if (visible.length === 0) return empty;
@@ -448,7 +460,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       shape = "medallion";
       const tw = Math.max(textWidth(label, fs), subLabel ? textWidth(subLabel, fs * 0.7) : 0);
       w = h = Math.max(fs * 2.7, tw + fs * 0.9) + subH * 0.5;
-    } else if (terminal && nodeShape === "leaf") {
+    } else if (terminal && nodeShape === "leaf" && !(opts.femaleCapsule && m.gender === "FEMALE")) {
       // Point the leaf away from its parent, leaning slightly upward.
       shape = "leaf";
       fs *= 0.9;
@@ -535,23 +547,11 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // ── Offshoots: stubs (childless) and side branches (with descendants) ─
   const stubs: PosterNode[] = [];
   const branchesOut: Branch[] = [];
-  const barkStrands: string[] = [];
-  /**
-   * A tapered branch with a highlight strip on its lit (upper-left) side,
-   * bark-grain strands when thick, and a rounded joint where it starts.
-   */
-  const shaded = (curve: Cubic, w0: number, w1: number, samples = 14): Branch => {
-    const n = perp(cubicTangent(curve, 0.5));
-    const lit = n.x * LIGHT.x + n.y * LIGHT.y > 0 ? 1 : -1;
-    const b: Branch = { d: ribbonPath(curve, w0, w1, samples) + circlePath(curve.p0, w0 / 2), w: w0 };
-    if (w0 > W * 0.004) {
-      b.hl = ribbonPath(offsetCubic(curve, lit * w0 * 0.2), w0 * 0.28, w1 * 0.18, samples);
-    }
-    if (w0 > W * 0.009) {
-      for (const k of [-0.28, 0.05, 0.3]) barkStrands.push(strandPath(curve, k * (w0 + w1) * 0.5));
-    }
-    return b;
-  };
+  /** A clean tapered branch with a rounded joint where it starts. */
+  const shaded = (curve: Cubic, w0: number, w1: number, samples = 14): Branch => ({
+    d: ribbonPath(curve, w0, w1, samples) + circlePath(curve.p0, w0 / 2),
+    w: w0,
+  });
   const stemStart = new Map<string, Vec>();
   const stemDir = new Map<string, Vec>();
   const visibleOffshoots = offshoots.filter((o) => shownSet.has(o.anchor));
@@ -615,9 +615,49 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     });
   }
 
+  // ── Corner medallions (verse / hadith) ──────────────────────────────
+  const medallions = opts.cornerMedallions
+    ? framed
+      ? [{ x: W * 0.205, y: H * 0.205, r: W * 0.07 }, { x: W * 0.795, y: H * 0.205, r: W * 0.07 }]
+      : [{ x: W * 0.18, y: H * 0.112, r: W * 0.094 }, { x: W * 0.82, y: H * 0.112, r: W * 0.094 }]
+    : [];
+  // Inside a frame the legend and statistics panels sit beside the trunk,
+  // within reach of the canopy, so names keep clear of them too.
+  const place = framePlacement(W, H, framed, groundY);
+  const panels: Box[] = framed
+    ? [place.legend, place.stats].map((p) => ({ x: p.x + W * 0.1, y: p.y + W * 0.0575, w: W * 0.2, h: W * 0.115 }))
+    : [];
+
+  // The medallions and panels are fixed obstacles for the final separation.
+  const keepOut: Box[] = [...medallions.map((m) => ({ x: m.x, y: m.y, w: m.r * 2, h: m.r * 2 })), ...panels];
+  keepOut.forEach((b, i) => {
+    nodes.push({ ...fixedObstacle(tree.members[0], b.x, b.y, b.w, b.h), id: `frame:${i}` });
+  });
+
   // ── 5. Collision relaxation ──────────────────────────────────────────
   const constrain = (n: LiveNode) => {
     if (n.region === "fixed") return;
+    for (const m of medallions) {
+      const half = Math.hypot(n.w, n.h) / 2;
+      const d = { x: n.x - m.x, y: n.y - m.y };
+      const dist = Math.hypot(d.x, d.y);
+      const minD = m.r * 1.04 + half;
+      if (dist < minD) {
+        const k = minD / (dist || 1);
+        n.x = m.x + d.x * k;
+        n.y = m.y + (dist ? d.y * k : minD);
+      }
+    }
+    for (const b of panels) {
+      const pad = W * 0.008;
+      const ox = (b.w + n.w) / 2 + pad - Math.abs(n.x - b.x);
+      const oy = (b.h + n.h) / 2 + pad - Math.abs(n.y - b.y);
+      if (ox > 0 && oy > 0) {
+        // out sideways towards the trunk, or up over the panel
+        if (ox < oy) n.x += Math.sign(W / 2 - b.x) * ox;
+        else n.y -= oy;
+      }
+    }
     const half = Math.max(n.w, n.h) / 2;
     // keep clear of the base medallion
     const d = { x: n.x - origin.x, y: n.y - origin.y };
@@ -716,11 +756,6 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     canopy = `M${pts.join("L")}Z`;
   }
 
-  // ── Corner medallions (verse / hadith) ──────────────────────────────
-  const medallions = opts.cornerMedallions
-    ? [{ x: W * 0.18, y: H * 0.112, r: W * 0.094 }, { x: W * 0.82, y: H * 0.112, r: W * 0.094 }]
-    : [];
-
   // ── Decorative foliage ───────────────────────────────────────────────
   let foliage: Foliage | null = null;
   if (opts.foliage && nodeShape !== "leaf") {
@@ -785,7 +820,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     const x0 = W * 0.26, x1 = W * 0.74, cx = W / 2;
     const edgeY = groundY + W * 0.022;
     const peak = groundY - W * 0.022;
-    const bottom = H - W * 0.078;
+    const bottom = framed ? H * 0.9 : H - W * 0.078;
     const f = (n: number) => n.toFixed(1);
     const mound =
       `M${f(x0)} ${f(edgeY)}Q${f(cx)} ${f(2 * peak - edgeY)} ${f(x1)} ${f(edgeY)}` +
@@ -833,16 +868,6 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     };
   }
 
-  // ── Bark texture ─────────────────────────────────────────────────────
-  const barkLines: string[] = [];
-  for (let i = 0; i < 9; i++) {
-    const x = origin.x + (rand() - 0.5) * trunkWidth * 0.75;
-    const y0 = origin.y + rr(0.05, 0.4) * (groundY - origin.y);
-    const y1 = y0 + rr(0.15, 0.4) * (groundY - origin.y);
-    const wob = (rand() - 0.5) * trunkWidth * 0.12;
-    barkLines.push(`M${x.toFixed(1)} ${y0.toFixed(1)}Q${(x + wob).toFixed(1)} ${((y0 + y1) / 2).toFixed(1)} ${x.toFixed(1)} ${Math.min(y1, groundY).toFixed(1)}`);
-  }
-
   const gens = new Set<number>();
   for (const n of growing) if (n.shape !== "medallion") gens.add(n.generation);
 
@@ -861,22 +886,45 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     trunkLabels,
     soil,
     trunkZigzag,
-    barkLines,
     base: baseNode,
     stubs: stubs.map((s) => strip(s as LiveNode)),
     nodes: growing.map(strip),
     branches,
-    barkStrands,
     canopy,
     foliage,
     surfaceRoots,
     medallions,
+    frame: framePlacement(W, H, framed, groundY),
     generationOffset: base.data.member?.generation ?? 0,
     generationsPresent: [...gens].sort((a, b) => a - b),
   };
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────
+
+/**
+ * Where the header and panels go. Inside a frame artwork they keep clear of
+ * the top/bottom centre rosettes and the corner flourishes; the legend and
+ * statistics then sit on either side of the trunk, above the ground.
+ */
+function framePlacement(W: number, H: number, framed: boolean, groundY: number): PosterLayout["frame"] {
+  if (!framed) {
+    return {
+      framed,
+      header: { basmala: H * 0.041, title: H * 0.078, maxTitleWidth: W * 0.44 },
+      legend: { x: W * 0.05, y: groundY + W * 0.075 },
+      stats: { x: W * 0.75, y: groundY + W * 0.075 },
+      footerY: H - W * 0.045,
+    };
+  }
+  return {
+    framed,
+    header: { basmala: H * 0.112, title: H * 0.145, maxTitleWidth: W * 0.42 },
+    legend: { x: W * 0.115, y: groundY - W * 0.2 },
+    stats: { x: W * 0.685, y: groundY - W * 0.2 },
+    footerY: H * 0.912,
+  };
+}
 
 function fixedObstacle(m: MemberDTO, x: number, y: number, w: number, h: number): LiveNode {
   return {

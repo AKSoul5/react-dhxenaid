@@ -19,7 +19,7 @@ const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Colours must be #rrggbb"
 
 export const themeSchema = z
   .object({
-    preset: z.enum(["heritage", "classic", "silver-gold", "emerald", "mono"]),
+    preset: z.enum(["luxe", "heritage", "classic", "silver-gold", "emerald", "mono"]),
     colorBy: z.enum(["generation", "gender"]),
     male: hexColor,
     female: hexColor,
@@ -36,6 +36,8 @@ export const themeSchema = z
     bismillah: z.boolean(),
     verse: z.boolean(),
     hadith: z.boolean(),
+    frame: z.boolean(),
+    femaleCapsule: z.boolean(),
   })
   .partial();
 

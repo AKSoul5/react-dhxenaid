@@ -104,3 +104,39 @@ describe("genealogy rules", () => {
     expect(parentAssignmentError(members, "c", "a", "father")).toBeNull();
   });
 });
+
+describe("framed (Canva frame) mode", () => {
+  const tree = generateSampleTree();
+
+  it("keeps the tree and panels clear of the frame artwork's border and corners", () => {
+    const layout = computePosterLayout(tree, { framed: true, cornerMedallions: true, headerBand: 0.19 });
+    const { width: W, height: H } = layout;
+    expect(layout.frame.framed).toBe(true);
+    for (const n of layout.nodes) {
+      expect(n.x - n.w / 2).toBeGreaterThan(W * 0.09);
+      expect(n.x + n.w / 2).toBeLessThan(W * 0.91);
+      expect(n.y - n.h / 2).toBeGreaterThan(H * 0.15);
+    }
+    // header below the top rosette, footer above the bottom one
+    expect(layout.frame.header.basmala).toBeGreaterThan(H * 0.083);
+    expect(layout.frame.footerY).toBeLessThan(H * 0.92);
+    expect(layout.frame.legend.x).toBeGreaterThan(W * 0.09);
+    expect(layout.frame.stats.x + W * 0.2).toBeLessThan(W * 0.91);
+    // names stay off the verse / hadith medallions and the two panels
+    for (const n of layout.nodes) {
+      for (const m of layout.medallions) expect(Math.hypot(n.x - m.x, n.y - m.y)).toBeGreaterThan(m.r);
+      for (const p of [layout.frame.legend, layout.frame.stats]) {
+        const box = { x: p.x + W * 0.1, y: p.y + W * 0.0575, w: W * 0.2, h: W * 0.115 };
+        expect(overlaps(n, box)).toBe(false);
+      }
+    }
+  });
+
+  it("draws daughters as capsules and sons as leaves when femaleCapsule is on", () => {
+    const layout = computePosterLayout(tree, { showFemales: true, femaleCapsule: true, nodeShape: "leaf" });
+    const females = layout.nodes.filter((n) => n.member.gender === "FEMALE");
+    expect(females.length).toBeGreaterThan(0);
+    for (const n of females) expect(n.shape).not.toBe("leaf");
+    expect(layout.nodes.some((n) => n.member.gender === "MALE" && n.shape === "leaf")).toBe(true);
+  });
+});
