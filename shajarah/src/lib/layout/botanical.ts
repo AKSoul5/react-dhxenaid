@@ -43,7 +43,7 @@
  * ISO-216 aspect ratio), so the same layout scales to any A-size paper.
  */
 import { hierarchy, type HierarchyNode } from "d3-hierarchy";
-import { childrenIndex } from "../genealogy";
+import { childrenIndex, lineagePath } from "../genealogy";
 import type { MemberDTO, TreeDTO } from "../types";
 import {
   add, circlePath, cubicPoint as cubicPointAt, cubicTangent, len, norm, ribbonPath, scale, sub,
@@ -63,6 +63,11 @@ export interface LayoutOptions {
   seed?: number;
   /** Eldest on the right (Arabic reading order). Auto-detected when omitted. */
   rtl?: boolean;
+  /**
+   * Focus on one branch: only this person, their ancestors (on the trunk)
+   * and their descendants (the canopy). Defaults to settings.focusId.
+   */
+  focusId?: string | null;
   /** Where the canopy starts. Defaults to tree.crownBaseId, then automatic. */
   crownBaseId?: string | null;
   nodeShape?: NodeShape;
@@ -218,6 +223,8 @@ export interface PosterLayout {
   overlaps: number;
   /** Relationship-clarity check of the drawn connections (see clarity.ts). */
   clarity: ClarityReport;
+  /** Set when the poster shows one branch only (see LayoutOptions.focusId). */
+  focus: { id: string; label: string } | null;
   /** Generation of the crown base; legend numbering and colours start here. */
   generationOffset: number;
   /** Generations present on crown / side-branch tags (for the legend). */
@@ -309,12 +316,31 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const rand = mulberry32(seed);
   const rr = (a: number, b: number) => a + (b - a) * rand();
 
-  const visible = showFemales ? tree.members : tree.members.filter((m) => m.gender !== "FEMALE");
+  // "Hide daughters" only applies where the line runs through fathers: in a
+  // matrilineal tree the women ARE the line, and hiding them would detach
+  // their children.
+  let visible = showFemales || tree.lineage === "MATRILINEAL"
+    ? tree.members
+    : tree.members.filter((m) => m.gender !== "FEMALE");
   const byMemberId = new Map(tree.members.map((m) => [m.id, m]));
+  // Focus: one branch of the family on its own poster (for families too
+  // large to draw clearly on one sheet): the person's ancestors and
+  // descendants only, with the canopy starting at the person.
+  const requestedFocus = opts.focusId !== undefined ? opts.focusId : (tree.settings?.focusId ?? null);
+  const focusMember = requestedFocus ? byMemberId.get(requestedFocus) : undefined;
+  let counted = tree.members;
+  if (focusMember) {
+    const { ancestors, descendants } = lineagePath(tree.members, tree.lineage, focusMember.id);
+    const keep = new Set([focusMember.id, ...ancestors, ...descendants]);
+    // the focused person is drawn even when daughters are otherwise hidden
+    const shown = new Set(visible);
+    visible = tree.members.filter((m) => keep.has(m.id) && (m.id === focusMember.id || shown.has(m)));
+    counted = tree.members.filter((m) => keep.has(m.id));
+  }
   const stats = {
-    total: tree.members.length,
-    males: tree.members.filter((m) => m.gender === "MALE").length,
-    females: tree.members.filter((m) => m.gender === "FEMALE").length,
+    total: counted.length,
+    males: counted.filter((m) => m.gender === "MALE").length,
+    females: counted.filter((m) => m.gender === "FEMALE").length,
     placed: 0,
     unplaced: 0,
   };
@@ -347,6 +373,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     legibility: { minTextMm, smallestTextMm: minTextMm, ok: true, scaleNeeded: 1 },
     overlaps: 0,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },
+    focus: null,
     generationOffset: 0, generationsPresent: [], stats,
   };
   if (visible.length === 0) return empty;
@@ -400,7 +427,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   };
 
   // ── 2. Trunk chain, crown base and offshoots ─────────────────────────
-  const crownBaseId = opts.crownBaseId !== undefined ? opts.crownBaseId : tree.crownBaseId;
+  const crownBaseId = focusMember ? focusMember.id : opts.crownBaseId !== undefined ? opts.crownBaseId : tree.crownBaseId;
   const explicitBase = crownBaseId
     ? (root.descendants() as HNode[]).find((n) => n.data.member?.id === crownBaseId)
     : undefined;
@@ -1002,10 +1029,15 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       }
       n.y = Math.min(n.y, groundY - n.h / 2 - W * 0.01);
     }
+    onPage(n);
+  };
+  const onPage = (n: LiveNode) => {
+    if (n.region === "fixed") return;
     n.x = clamp(n.x, margin + n.w / 2, W - margin - n.w / 2);
     n.y = Math.max(n.y, contentTop + n.h / 2);
+    if (n.region !== "crown") n.y = Math.min(n.y, groundY - n.h / 2 - W * 0.01);
   };
-  relax(nodes, constrain);
+  relax(nodes, constrain, undefined, onPage);
 
   // ── 5b. Connections, and clearing them of unrelated names ─────────────
   // Each connection is a gentle cubic from parent to child that stays
@@ -1352,6 +1384,15 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     legibility,
     overlaps,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },
+    focus: focusMember
+      ? {
+        id: focusMember.id,
+        label: (() => {
+          const father = focusMember.fatherId ? byMemberId.get(focusMember.fatherId) : undefined;
+          return father ? `${focusMember.name} ${focusMember.gender === "FEMALE" ? "بنت" : "بن"} ${father.name}` : focusMember.name;
+        })(),
+      }
+      : null,
   };
 }
 
@@ -1465,7 +1506,7 @@ type Body = { x: number; y: number; tx: number; ty: number; w: number; h: number
  * penetration, mass-weighted so medallions and fixed obstacles barely move.
  * Springs pull nodes back toward their targets so branch order is kept.
  */
-export function relax<T extends Body>(nodes: T[], constrain: (n: T) => void, iterations = 120) {
+export function relax<T extends Body>(nodes: T[], constrain: (n: T) => void, iterations = 120, bound?: (n: T) => void) {
   if (nodes.length === 0) return;
   const gap = 3;
   const cell = Math.max(...nodes.map((n) => Math.max(n.w, n.h))) + gap;
@@ -1517,6 +1558,11 @@ export function relax<T extends Body>(nodes: T[], constrain: (n: T) => void, ite
     }
     separate();
   }
-  // Final clean-up: pure separation until no overlaps remain.
+  // Final clean-up: separation until no overlaps remain, then the hard
+  // bounds (on the page, above the ground) once more, since separation can
+  // push a name past them. The softer constraints (a name on its ray) are
+  // not re-applied: in dense canopies they push names back together, and
+  // the separation would never settle.
   for (let it = 0; it < 200 && separate() > 0; it++);
+  if (bound) for (const n of nodes) bound(n);
 }

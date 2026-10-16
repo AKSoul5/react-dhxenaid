@@ -89,6 +89,9 @@ on any member's panel:
 - **Side branches:** brothers of trunk ancestors grow as side branches with
   their own small canopy. Brothers without descendants become small
   medallions beside the trunk.
+- **Matrilineal trees:** the women are the line, so they are always shown
+  (the "Show daughters" toggle only appears for patrilineal trees). Hiding
+  them would detach their children from the tree.
 - **Several marriages:** half-siblings are kept together, grouped by mother
   in the order the mothers first appear, with birth order kept within each
   group.
@@ -302,6 +305,11 @@ reconcile partial state.
 | DELETE | `/api/marriages/:marriageId` | unlink spouses |
 | POST | `/api/trees/:treeId/import-nasab` | import pasted nasab lines (`{ text }`) in one transaction |
 
+- Setting a `deathYear` on a member also marks them deceased.
+- `settings: null` resets the poster settings to the defaults.
+- Poster settings change optimistically in the editor. If the save fails,
+  they go back to what was saved and the error is shown.
+
 ## The layout algorithm
 
 `computePosterLayout(tree, options)` is a pure function. The same input and
@@ -403,10 +411,30 @@ legible size, clean means zero issues):
 | Three wives, interleaved half-siblings | 82 | A2 |
 | Large | 195 | A1 |
 | Dense (7–11 children per father) | 220 | A1 |
-| Very large | 496 | not fully: 3 spots remain on 2A0, circled in the editor |
+| Very large | 496 | not fully: 3 spots remain on 2A0, circled in the editor; use a branch poster (below) |
 
 Passing these checks is necessary, not sufficient: the renders are also
 inspected at print scale.
+
+### Families too large for one clear poster
+
+When no single sheet up to 2A0 is clear and legible, the warning offers
+three ways out instead of only reporting the problem:
+
+- **Poster of one branch.** Pick a branch (largest first). The poster then
+  shows that person's ancestors on the trunk and all their descendants in
+  the canopy, and says whose branch it is under the title ("فرع عبدالله بن
+  نصار"). Any member's panel has the same button ("🌿 Poster of this branch
+  only"). A banner in the editor shows the number of people on the poster,
+  and "Show the whole family" goes back. A branch that is still too big
+  offers its own sub-branches. Saved as `settings.focusId`; a focus on a
+  deleted person falls back to the whole family.
+- **Hide daughters** (patrilineal trees only).
+- **Use 2A0, printed as a Tiled PDF.**
+
+Measured on the 496-person family (`tests/hardening.test.ts`): every branch
+except the largest is clean and legible on A1 alone. The largest (282 people)
+is clean once narrowed to its biggest sub-branch.
 
 ## Print export
 

@@ -71,6 +71,8 @@ export interface PosterTheme {
 
 export interface PosterSettings {
   showFemales?: boolean;
+  /** Show one branch only: this member, their ancestors and descendants. */
+  focusId?: string | null;
   /** Printed size the poster is designed for (legibility is judged at it). Default A2. */
   posterSize?: "A3" | "A2" | "A1" | "A0" | "2A0";
   seed?: number;

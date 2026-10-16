@@ -1,5 +1,5 @@
 import "server-only";
-import type { Member, Prisma } from "@prisma/client";
+import { Prisma, type Member } from "@prisma/client";
 import { computeGenerations, parentAssignmentError } from "../genealogy";
 import type { MemberDTO, PosterSettings, TreeDTO, TreeSummary } from "../types";
 import { parseNasab, planNasabImport, splitNasabLines } from "../nasab";
@@ -66,7 +66,8 @@ export async function updateTree(treeId: string, input: UpdateTreeInput): Promis
       ...(rootMemberId !== undefined ? { rootMemberId } : {}),
       ...(crownBaseId !== undefined ? { crownBaseId } : {}),
       ...(trunkStartId !== undefined ? { trunkStartId } : {}),
-      ...(settings !== undefined ? { settings: (settings ?? undefined) as Prisma.InputJsonValue } : {}),
+      // null clears the settings (a JSON null), undefined leaves them as they are
+      ...(settings !== undefined ? { settings: settings === null ? Prisma.JsonNull : (settings as Prisma.InputJsonValue) } : {}),
     },
   });
   if (input.lineage) await refreshGenerations(treeId);
@@ -107,7 +108,9 @@ export async function updateMember(memberId: string, input: UpdateMemberInput): 
   const fatherId = input.fatherId === undefined ? existing.fatherId : input.fatherId;
   const motherId = input.motherId === undefined ? existing.motherId : input.motherId;
   assertParents(tree.members, memberId, fatherId, motherId);
-  await prisma.member.update({ where: { id: memberId }, data: input });
+  // a recorded death year implies deceased, unless the caller says otherwise
+  const isDeceased = input.isDeceased ?? (input.deathYear ? true : undefined);
+  await prisma.member.update({ where: { id: memberId }, data: { ...input, ...(isDeceased !== undefined ? { isDeceased } : {}) } });
   return refreshGenerations(existing.treeId);
 }
 
@@ -153,39 +156,50 @@ export async function importNasab(treeId: string, input: ImportNasabInput): Prom
   const lines = splitNasabLines(input.text);
   if (!lines.length) throw new DomainError("Paste at least one nasab.");
   await prisma.$transaction(async (tx) => {
+    // Read once, then keep an in-memory copy up to date as rows are created,
+    // so later lines see earlier imports without re-reading the tree.
+    const tree = await getTreeWith(tx, treeId);
+    const members: MemberDTO[] = [...tree.members];
+    let rootMemberId = tree.rootMemberId;
+    const create = async (e: { name: string; laqab: string | null }, fatherId: string | null, female: boolean) => {
+      const row = await tx.member.create({
+        data: { treeId, name: e.name, laqab: e.laqab, gender: female ? "FEMALE" : "MALE", fatherId },
+      });
+      members.push(toMemberDTO(row));
+      return row.id;
+    };
     for (const line of lines) {
-      // Re-read inside the loop so later lines see earlier imports.
-      const tree = await getTreeWith(tx, treeId);
       const { entries, gender } = parseNasab(line);
       if (entries.length === 0) continue;
-      const plan = planNasabImport(tree.members, tree.lineage, entries);
-      const create = async (e: { name: string; laqab: string | null }, fatherId: string | null, female: boolean) =>
-        tx.member.create({
-          data: { treeId, name: e.name, laqab: e.laqab, gender: female ? "FEMALE" : "MALE", fatherId },
-        });
+      const plan = planNasabImport(members, tree.lineage, entries);
       // 1. older ancestors above an existing root
       let parentId: string | null = null;
       let top: string | null = null;
       for (const e of plan.ancestorsToCreate) {
-        parentId = (await create(e, parentId, false)).id;
+        parentId = await create(e, parentId, false);
         top ??= parentId;
       }
       if (plan.adoptedRootId) {
         await tx.member.update({ where: { id: plan.adoptedRootId }, data: { fatherId: parentId } });
-        if (top && (tree.rootMemberId === plan.adoptedRootId || !tree.rootMemberId)) {
+        const adopted = members.find((m) => m.id === plan.adoptedRootId);
+        if (adopted) adopted.fatherId = parentId;
+        if (top && (rootMemberId === plan.adoptedRootId || !rootMemberId)) {
           await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: top } });
+          rootMemberId = top;
         }
       }
       // 2. new descendants below the matched chain
+      const hadMembers = members.length > 0;
       parentId = plan.matched.at(-1)?.id ?? null;
       let firstCreated: string | null = null;
       for (const [i, e] of plan.descendantsToCreate.entries()) {
         const female = gender === "FEMALE" && i === plan.descendantsToCreate.length - 1;
-        parentId = (await create(e, parentId, female)).id;
+        parentId = await create(e, parentId, female);
         firstCreated ??= parentId;
       }
-      if (!tree.rootMemberId && tree.members.length === 0 && firstCreated) {
+      if (!rootMemberId && !hadMembers && firstCreated) {
         await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: firstCreated } });
+        rootMemberId = firstCreated;
       }
     }
   }, { timeout: 60_000 }); // long nasabs create ~100 rows sequentially

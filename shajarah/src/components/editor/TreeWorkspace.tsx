@@ -105,9 +105,26 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   };
 
   const updateSettings = (patch: Partial<NonNullable<TreeDTO["settings"]>>) => {
+    const previous = tree.settings;
     const settings = { ...tree.settings, showFemales, seed, ...patch };
     setTree((t) => ({ ...t, settings })); // optimistic
-    void mutate(() => repo.updateTree({ settings }));
+    void mutate(() => repo.updateTree({ settings })).then((saved) => {
+      // not saved: put the poster back as it was (the error is shown)
+      if (!saved) setTree((t) => (t.settings === settings ? { ...t, settings: previous } : t));
+    });
+  };
+
+  // What to offer when no single poster size is enough for the whole family
+  const branchHeads = useMemo(
+    () => layout.nodes.filter((n) => n.depth === 1 && !n.terminal).sort((a, b) => b.leafCount - a.leafCount),
+    [layout.nodes],
+  );
+  const fallbacks: Fallbacks = {
+    // inside a focused branch these are its sub-branches: a branch that is still too big can be narrowed again
+    branches: branchHeads.map((n) => ({ id: n.id, name: n.member.name, size: n.leafCount })),
+    onFocus: (id) => updateSettings({ focusId: id }),
+    onHideDaughters: showFemales && tree.lineage !== "MATRILINEAL" ? () => updateSettings({ showFemales: false }) : null,
+    onTiled: posterSize !== "2A0" ? () => updateSettings({ posterSize: "2A0" }) : null,
   };
 
   const filtered = useMemo(() => {
@@ -128,10 +145,13 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
           </p>
         </div>
         <div className="ms-auto flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={showFemales} onChange={(e) => updateSettings({ showFemales: e.target.checked })} />
-            Show daughters
-          </label>
+          {/* in a matrilineal tree the women are the line: they are always shown */}
+          {tree.lineage !== "MATRILINEAL" && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={showFemales} onChange={(e) => updateSettings({ showFemales: e.target.checked })} />
+              Show daughters
+            </label>
+          )}
           <label className="flex items-center gap-2 text-sm" title="Select a person to highlight their ancestors and descendants">
             <input type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />
             Trace lineage
@@ -282,6 +302,15 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                     🪵 Start the trunk here (older ancestors go in the soil)
                   </button>
                 )}
+                {tree.settings?.focusId === selected.id ? (
+                  <button type="button" className="btn-outline w-full" onClick={() => updateSettings({ focusId: null })}>
+                    ✓ Poster shows only this branch — show the whole family
+                  </button>
+                ) : (
+                  <button type="button" className="btn-outline w-full" onClick={() => updateSettings({ focusId: selected.id })}>
+                    🌿 Poster of this branch only (their ancestors and descendants)
+                  </button>
+                )}
               </div>
               {tree.rootMemberId !== selected.id && !selected.fatherId && !selected.motherId && (
                 <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ rootMemberId: selected.id }))}>
@@ -307,10 +336,21 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               className="block h-full w-full"
             />
           </PosterViewport>
+          {layout.focus && (
+            <div className="absolute bottom-4 start-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full border border-parchment-300 bg-white/95 px-4 py-1.5 text-xs shadow">
+              <span>
+                Showing only the branch of <b dir="auto">{layout.focus.label}</b> ({layout.stats.total} of {tree.members.length} members)
+              </span>
+              <button type="button" className="btn-ghost whitespace-nowrap py-0.5 text-xs" onClick={() => updateSettings({ focusId: null })}>
+                Show the whole family
+              </button>
+            </div>
+          )}
           {!layout.clarity.ok && (
             <ClarityNotice
               issues={layout.clarity.issues.length}
               paper={posterSize}
+              fallbacks={fallbacks}
               findSize={() => {
                 // try each larger poster until the connections are unambiguous
                 for (const p of PAPER_ORDER.slice(PAPER_ORDER.indexOf(posterSize) + 1)) {
@@ -328,6 +368,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               minMm={layout.legibility.minTextMm}
               paper={posterSize}
               suggestion={paperForScale(posterSize, layout.legibility.scaleNeeded)}
+              fallbacks={fallbacks}
               onChoose={(p) => updateSettings({ posterSize: p })}
             />
           )}
@@ -383,12 +424,13 @@ function useFrameArtwork(): string | null | undefined {
  * offers the size that fits, or tiled printing when even A0 is too small.
  */
 function LegibilityNotice({
-  smallestMm, minMm, paper, suggestion, onChoose,
+  smallestMm, minMm, paper, suggestion, fallbacks, onChoose,
 }: {
   smallestMm: number;
   minMm: number;
   paper: PaperSize;
   suggestion: PaperSize | null;
+  fallbacks: Fallbacks;
   onChoose: (p: PaperSize) => void;
 }) {
   return (
@@ -398,13 +440,14 @@ function LegibilityNotice({
         The smallest names would print at {smallestMm.toFixed(1)} mm (minimum {minMm.toFixed(1)} mm).
         {suggestion
           ? ` On ${suggestion} every name stays readable.`
-          : " Even 2A0 is too small: hide daughters, or set where the trunk starts so older ancestors move into the foundation."}
+          : " Even 2A0 is too small for the whole family on one sheet."}
       </p>
       {suggestion && (
         <button type="button" className="btn-outline mt-2 py-1 text-xs" onClick={() => onChoose(suggestion)}>
           Use {suggestion}
         </button>
       )}
+      {!suggestion && <FallbackActions {...fallbacks} />}
     </div>
   );
 }
@@ -415,10 +458,11 @@ function LegibilityNotice({
  * spots are circled on the poster; a larger poster usually resolves them.
  */
 function ClarityNotice({
-  issues, paper, findSize, onChoose,
+  issues, paper, fallbacks, findSize, onChoose,
 }: {
   issues: number;
   paper: PaperSize;
+  fallbacks: Fallbacks;
   findSize: () => PaperSize | null;
   onChoose: (p: PaperSize) => void;
 }) {
@@ -446,14 +490,59 @@ function ClarityNotice({
       )}
       {state === "searching" && <p className="mt-2">Checking larger sizes…</p>}
       {state === "none" && (
-        <p className="mt-2">
-          No single poster up to 2A0 keeps every line clear for this family. The circled places stay
-          marked (they never print); hiding daughters reduces the density.
-        </p>
+        <>
+          <p className="mt-2">
+            No single poster up to 2A0 keeps every line clear for the whole family. The circled places
+            stay marked here (they never print). Instead:
+          </p>
+          <FallbackActions {...fallbacks} />
+        </>
       )}
       {state !== "idle" && state !== "searching" && state !== "none" && (
         <button type="button" className="btn-outline mt-2 py-1 text-xs" onClick={() => onChoose(state)}>
           Use {state}: every line clear
+        </button>
+      )}
+    </div>
+  );
+}
+
+type Fallbacks = {
+  branches: { id: string; name: string; size: number }[];
+  onFocus: (id: string) => void;
+  onHideDaughters: (() => void) | null;
+  onTiled: (() => void) | null;
+};
+
+/**
+ * The ways out when a family is too big for one clear poster: a poster of
+ * one branch, fewer names, or the largest size printed in tiles.
+ */
+function FallbackActions({ branches, onFocus, onHideDaughters, onTiled }: Fallbacks) {
+  const [branch, setBranch] = useState(branches[0]?.id ?? "");
+  useEffect(() => setBranch((b) => (branches.some((x) => x.id === b) ? b : branches[0]?.id ?? "")), [branches]);
+  return (
+    <div className="mt-2 space-y-1.5">
+      {branches.length > 1 && (
+        <div className="flex items-center gap-1.5">
+          <select className="input w-auto min-w-0 flex-1 py-0.5 text-xs" value={branch} onChange={(e) => setBranch(e.target.value)} dir="auto">
+            {branches.map((b) => (
+              <option key={b.id} value={b.id}>{b.name} ({b.size})</option>
+            ))}
+          </select>
+          <button type="button" className="btn-outline py-1 text-xs" onClick={() => branch && onFocus(branch)}>
+            Poster of this branch
+          </button>
+        </div>
+      )}
+      {onHideDaughters && (
+        <button type="button" className="btn-outline block py-1 text-xs" onClick={onHideDaughters}>
+          Hide daughters
+        </button>
+      )}
+      {onTiled && (
+        <button type="button" className="btn-outline block py-1 text-xs" onClick={onTiled}>
+          Use 2A0, printed as a Tiled PDF
         </button>
       )}
     </div>

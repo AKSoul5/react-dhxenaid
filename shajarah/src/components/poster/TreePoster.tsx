@@ -496,6 +496,8 @@ function Header({ layout, meta, theme, pal }: { layout: PosterLayout; meta: Post
   const titleFs = meta.title ? Math.min(W * 0.042, avail / ((textWidth(meta.title, 1) || 1) * 1.1)) : 0;
   const titleY = theme.bismillah || layout.frame.framed ? hd.title : H * 0.052;
   const subY = titleY + H * 0.024;
+  const focusY = (meta.subtitle ? subY : titleY) + H * 0.021;
+  const lastY = layout.focus ? focusY : meta.subtitle ? subY : titleY;
   return (
     <g>
       {theme.bismillah && (
@@ -515,7 +517,14 @@ function Header({ layout, meta, theme, pal }: { layout: PosterLayout; meta: Post
           {meta.subtitle}
         </text>
       )}
-      <Divider x={W / 2} y={(meta.subtitle ? subY : titleY) + H * 0.014} w={Math.min(W * 0.26, avail * 0.6)} pal={pal} />
+      {layout.focus && (
+        // a branch-only poster says whose branch it is
+        <text x={W / 2} y={focusY} textAnchor="middle" fontSize={Math.min(W * 0.015, (titleFs || W * 0.03) * 0.48)}
+          fill={pal.mono ? "#444" : "#6b4a22"} direction={rtl ? "rtl" : "ltr"}>
+          {rtl ? `فرع ${layout.focus.label}` : `Branch of ${layout.focus.label}`}
+        </text>
+      )}
+      <Divider x={W / 2} y={lastY + H * 0.014} w={Math.min(W * 0.26, avail * 0.6)} pal={pal} />
     </g>
   );
 }
