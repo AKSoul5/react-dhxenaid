@@ -33,9 +33,15 @@ async function seedTree(sample: TreeDTO) {
     });
     idMap.set(m.id, created.id);
   }
+  const mapped = (id: string | null) => (id ? idMap.get(id) ?? null : null);
   await prisma.familyTree.update({
     where: { id: tree.id },
-    data: { rootMemberId: idMap.get(sample.rootMemberId!) },
+    data: {
+      rootMemberId: mapped(sample.rootMemberId),
+      crownBaseId: mapped(sample.crownBaseId),
+      trunkStartId: mapped(sample.trunkStartId),
+      soilText: sample.soilText,
+    },
   });
   console.log(`Seeded "${sample.name}" with ${ordered.length} members → /trees/${tree.id}`);
 }

@@ -84,6 +84,8 @@ export function generateSampleTree(seed = 11, targetSize = 320): TreeDTO {
     lineage: "PATRILINEAL",
     rootMemberId: members[0].id,
     crownBaseId: null,
+    trunkStartId: null,
+    soilText: null,
     settings: { showFemales: false, seed: 7 },
     members,
     marriages: [],

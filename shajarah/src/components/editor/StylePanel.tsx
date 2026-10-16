@@ -7,11 +7,14 @@ import type { PosterTheme, ThemePreset } from "@/lib/types";
 interface Props {
   theme: PosterTheme;
   onChange: (theme: Partial<PosterTheme>) => void;
+  soilText: string | null;
+  onSoilTextChange: (text: string | null) => void;
 }
 
 /** Theme presets, colour pickers, node shape and label options. */
-export function StylePanel({ theme, onChange }: Props) {
+export function StylePanel({ theme, onChange, soilText, onSoilTextChange }: Props) {
   const [open, setOpen] = useState(false);
+  const [soilDraft, setSoilDraft] = useState(soilText ?? "");
   const color = (key: "male" | "female" | "ancestor" | "branch", label: string) => (
     <label className="flex items-center justify-between gap-2 text-sm">
       {label}
@@ -30,7 +33,7 @@ export function StylePanel({ theme, onChange }: Props) {
         🎨 Style ▾
       </button>
       {open && (
-        <div className="absolute end-0 z-30 mt-2 w-80 space-y-4 rounded-lg border border-parchment-300 bg-white p-4 shadow-xl">
+        <div className="absolute end-0 z-30 mt-2 max-h-[80vh] w-80 space-y-4 overflow-auto rounded-lg border border-parchment-300 bg-white p-4 shadow-xl">
           <section>
             <h4 className="section-title">Theme</h4>
             <div className="grid grid-cols-2 gap-1.5">
@@ -60,7 +63,7 @@ export function StylePanel({ theme, onChange }: Props) {
             <h4 className="section-title">Colours</h4>
             {color("male", "Male")}
             {color("female", "Female")}
-            {color("ancestor", "Ancestor frame")}
+            {color("ancestor", "Trunk medallions")}
             {color("branch", "Branches & trunk")}
             <label className="flex items-center justify-between text-sm">
               Colour nodes by
@@ -110,6 +113,24 @@ export function StylePanel({ theme, onChange }: Props) {
               <input type="checkbox" checked={theme.showYears} onChange={(e) => onChange({ showYears: e.target.checked })} />
               Show birth / death years
             </label>
+          </section>
+
+          <section className="space-y-1.5">
+            <h4 className="section-title">Soil inscription</h4>
+            <p className="text-xs text-gray-500">
+              Leave empty to inscribe the ancestors older than the trunk. Or paste the lineage exactly as
+              your source writes it.
+            </p>
+            <textarea
+              className="input min-h-[70px] font-naskh text-base"
+              dir="auto"
+              value={soilDraft}
+              onChange={(e) => setSoilDraft(e.target.value)}
+              onBlur={() => {
+                const next = soilDraft.trim() || null;
+                if (next !== (soilText ?? null)) onSoilTextChange(next);
+              }}
+            />
           </section>
         </div>
       )}

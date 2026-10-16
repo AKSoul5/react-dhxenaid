@@ -48,6 +48,16 @@ model FamilyTree {
   // "isTrunkNode" flag that could drift out of sync. Null = automatic.
   crownBaseId  String?    @unique
   crownBase    Member?    @relation("TreeCrownBase", fields: [crownBaseId], references: [id], onDelete: SetNull)
+  // The poster has three tiers along the ancestral chain:
+  //   soil   — ancestors older than trunkStart, inscribed in the soil/roots
+  //   trunk  — trunkStart … crownBase's father, stacked medallions
+  //   canopy — crownBase and all descendants
+  // Null = automatic (nearest ancestors on the trunk, the rest in the soil).
+  trunkStartId String?    @unique
+  trunkStart   Member?    @relation("TreeTrunkStart", fields: [trunkStartId], references: [id], onDelete: SetNull)
+  // Optional verbatim soil inscription; replaces the text generated from
+  // the soil-tier ancestors (e.g. a lineage quoted from a source).
+  soilText     String?
   // Poster settings: show females, seed, theme (colours, shapes, labels)
   settings     Json?
   members      Member[]   @relation("TreeMembers")
@@ -85,6 +95,7 @@ model Member {
   marriagesAsB Marriage[] @relation("SpouseB")
   rootOfTree   FamilyTree? @relation("TreeRoot")
   crownBaseOfTree FamilyTree? @relation("TreeCrownBase")
+  trunkStartOfTree FamilyTree? @relation("TreeTrunkStart")
 
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt

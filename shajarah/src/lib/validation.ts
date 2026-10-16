@@ -37,6 +37,8 @@ export const themeSchema = z
 export const updateTreeSchema = createTreeSchema.partial().extend({
   rootMemberId: z.string().nullable().optional(),
   crownBaseId: z.string().nullable().optional(),
+  trunkStartId: z.string().nullable().optional(),
+  soilText: optionalText(5000),
   settings: z
     .object({
       showFemales: z.boolean().optional(),

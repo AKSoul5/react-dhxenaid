@@ -15,8 +15,12 @@
  *     the first ancestor with more than one line of descent.
  *     - Trunk members are therefore derived, never stored: a member is on
  *       the trunk exactly when they are an ancestor of the crown base.
- *     - Very long chains (e.g. back to Adam) show the nearest ancestors on
- *       the trunk; older ones go into an engraved "lineage" text panel.
+ *     - Three tiers along the ancestral chain: SOIL (ancestors older than
+ *       FamilyTree.trunkStartId, inscribed as text in the soil among the
+ *       roots), TRUNK (stacked medallions — one column, or a zigzag of two
+ *       when the chain is long, with the canopy giving up height), CANOPY.
+ *       Without a trunk start, the nearest ancestors go on the trunk and
+ *       the rest into the soil.
  *     - Brothers of trunk ancestors become stubs (no descendants) or side
  *       branches with their own small canopy (with descendants).
  *  3. Partition layout: every crown node gets a slice of a 0..1 "u" axis
@@ -59,7 +63,9 @@ export interface LayoutOptions {
   nodeShape?: NodeShape;
   labelMode?: LabelMode;
   showYears?: boolean;
-  /** Ancestors written on the trunk before the rest move to the lineage panel. */
+  /** Where the trunk starts; older ancestors go into the soil. Defaults to tree.trunkStartId. */
+  trunkStartId?: string | null;
+  /** In automatic mode: ancestors on the trunk before the rest move into the soil. */
   maxTrunkLabels?: number;
   /** Branch thickness multiplier (line-art themes use thin branches). */
   branchScale?: number;
@@ -102,15 +108,19 @@ export interface TrunkLabel {
   fontSize: number;
 }
 
-export interface LineagePanel {
-  lines: string[];
-  x: number;
-  y: number;
-  width: number;
+/** Ancient ancestors inscribed in the soil at the foot of the tree. */
+export interface SoilInscription {
+  /** Outline of the soil mound. */
+  mound: string;
+  /** Top edge of the mound (a quadratic arc), for grass. */
+  top: { x0: number; x1: number; y: number; peak: number };
+  roots: string[];
+  /** One curved baseline per line of text (render with <textPath>). */
+  lines: { path: string; text: string }[];
   fontSize: number;
-  lineHeight: number;
-  /** Number of ancestors written in the panel. */
+  /** Ancestors inscribed (0 when a custom soil text is used). */
   count: number;
+  custom: boolean;
 }
 
 export interface PosterLayout {
@@ -124,7 +134,9 @@ export interface PosterLayout {
   trunkWidth: number;
   barkLines: string[];
   trunkLabels: TrunkLabel[];
-  lineage: LineagePanel | null;
+  soil: SoilInscription | null;
+  /** Trunk medallions are staggered in two columns (long trunks). */
+  trunkZigzag: boolean;
   base: PosterNode | null;
   stubs: PosterNode[];
   nodes: PosterNode[];
@@ -174,21 +186,28 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   };
 
   // ── Geometry of the poster ────────────────────────────────────────────
-  // A long ancestral chain needs a taller base band for the lineage panel.
-  const geometry = (tallBase: boolean) => {
-    const c = tallBase
-      ? { cx: W / 2, cy: H * 0.37, rx: W * 0.44, ry: H * 0.275, exponent: 2.4 }
-      : { cx: W / 2, cy: H * 0.39, rx: W * 0.44, ry: H * 0.295, exponent: 2.4 };
-    return { crown: c, origin: { x: c.cx, y: c.cy + c.ry * 0.8 } as Vec, groundY: H * (tallBase ? 0.79 : 0.835) };
+  // The soil tier needs a taller base band; a long trunk pushes the crown
+  // base (origin) up, and the crown shrinks to fit between it and the title.
+  const TW = W * 0.075;
+  const baseMedallionR = TW * 0.62;
+  const crownTop = H * 0.095;
+  const span = (originY: number, ground: number) => ground - TW * 0.55 - (originY + baseMedallionR + TW * 0.4);
+  const geometry = (soil: boolean, trunkSpan = 0) => {
+    const ground = H * (soil ? 0.79 : 0.835);
+    let oy = H * (soil ? 0.59 : 0.626);
+    if (trunkSpan > span(oy, ground)) oy = Math.max(H * 0.47, ground - TW * 0.55 - trunkSpan - baseMedallionR - TW * 0.4);
+    const ry = (oy - crownTop) / 1.8;
+    const c = { cx: W / 2, cy: crownTop + ry, rx: W * 0.44, ry, exponent: 2.4 };
+    return { crown: c, origin: { x: c.cx, y: oy } as Vec, groundY: ground };
   };
   let { crown, origin, groundY } = geometry(false);
-  const trunkWidth = W * 0.075;
+  let trunkWidth = TW;
   const margin = W * 0.045;
 
   const empty: PosterLayout = {
     width: W, height: H, rtl: true, crown, origin, groundY,
     trunkPath: trunkOutline(origin, groundY, trunkWidth), trunkWidth,
-    barkLines: [], trunkLabels: [], lineage: null, base: null, stubs: [], nodes: [],
+    barkLines: [], trunkLabels: [], soil: null, trunkZigzag: false, base: null, stubs: [], nodes: [],
     branches: [], generationOffset: 0, generationsPresent: [], stats,
   };
   if (visible.length === 0) return empty;
@@ -261,19 +280,50 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   }
   const chainSet = new Set(chain);
 
-  // Trunk capacity: the nearest ancestors are written on the trunk, older
-  // ones move to the lineage panel.
-  const baseMedallionR = trunkWidth * 0.62;
+  // ── Tiers: soil / trunk ──────────────────────────────────────────────
   const trunkChain = chain.filter((n) => n !== base && n.data.member);
-  const capacityFor = () =>
-    opts.maxTrunkLabels ??
-    Math.max(2, Math.floor((groundY - trunkWidth * 0.55 - (origin.y + baseMedallionR + trunkWidth * 0.4)) / 40) + 1);
-  if (trunkChain.length > capacityFor()) ({ crown, origin, groundY } = geometry(true));
-  const labelTop = origin.y + baseMedallionR + trunkWidth * 0.4;
-  const labelBottom = groundY - trunkWidth * 0.55;
-  const capacity = capacityFor();
-  const ancient = trunkChain.slice(0, Math.max(0, trunkChain.length - capacity));
-  const shownTrunk = trunkChain.slice(ancient.length);
+  const SINGLE_STEP = 40; // vertical spacing of a one-column trunk
+  const MIN_ZIG_STEP = 19; // tightest spacing of the two-column zigzag
+  const trunkStartId = opts.trunkStartId !== undefined ? opts.trunkStartId : tree.trunkStartId;
+  const startIdx = trunkStartId ? trunkChain.findIndex((n) => n.data.member!.id === trunkStartId) : -1;
+  let soilTier = startIdx > 0 ? trunkChain.slice(0, startIdx) : [];
+  let onTrunk = startIdx >= 0 ? trunkChain.slice(startIdx) : trunkChain;
+  if (startIdx < 0) {
+    // automatic: a one-column trunk at the default size, the rest in the soil
+    const g0 = geometry(false);
+    const cap = opts.maxTrunkLabels ?? Math.floor(span(g0.origin.y, g0.groundY) / SINGLE_STEP) + 1;
+    if (onTrunk.length > cap) {
+      soilTier = onTrunk.slice(0, onTrunk.length - cap);
+      onTrunk = onTrunk.slice(onTrunk.length - cap);
+    }
+  }
+  const customSoil = tree.soilText?.trim() || null;
+  let useSoil = soilTier.length > 0 || !!customSoil;
+  // An explicit trunk may be long: grow the trunk (single column), then
+  // stagger it (zigzag), and only then spill the oldest into the soil.
+  const maxSpan = span(H * 0.47, H * 0.79);
+  const zigCap = Math.floor(maxSpan / MIN_ZIG_STEP) + 1;
+  if (onTrunk.length > zigCap) {
+    soilTier = [...soilTier, ...onTrunk.slice(0, onTrunk.length - zigCap)];
+    onTrunk = onTrunk.slice(onTrunk.length - zigCap);
+    useSoil = true;
+  }
+  let trunkStep = SINGLE_STEP;
+  let trunkZigzag = false;
+  const gaps = Math.max(1, onTrunk.length - 1);
+  ({ crown, origin, groundY } = geometry(useSoil));
+  if (onTrunk.length > 1 && gaps * SINGLE_STEP > span(origin.y, groundY)) {
+    const room = span(H * 0.47, groundY);
+    if (gaps * SINGLE_STEP > room) {
+      trunkZigzag = true;
+      trunkStep = Math.max(MIN_ZIG_STEP, room / gaps);
+    }
+    ({ crown, origin, groundY } = geometry(useSoil, gaps * trunkStep));
+  }
+  const labelTop = origin.y + baseMedallionR + TW * 0.4;
+  const labelBottom = groundY - TW * 0.55;
+  const shownTrunk = onTrunk;
+  const ancient = soilTier;
   const shownSet = new Set(shownTrunk);
 
   // ── 3. Arc-length parameterisation of the crown outline ──────────────
@@ -421,15 +471,24 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // ── Trunk labels ─────────────────────────────────────────────────────
   const slots = shownTrunk.length;
   const spacing = slots > 1 ? (labelBottom - labelTop) / (slots - 1) : 0;
-  const trunkFont = clamp(Math.min(trunkWidth * 0.36, spacing * 0.7 || trunkWidth * 0.36), 14, 60);
+  // Zigzag medallions overlap vertically, so they may be taller than the step.
+  const trunkFont = trunkZigzag
+    ? clamp(Math.min(spacing * 1.55, 52) * 0.62, 14, 34)
+    : clamp(Math.min(TW * 0.36, spacing * 0.7 || TW * 0.36), 14, 60);
+  const widest = Math.max(0, ...shownTrunk.map((n) => textWidth(n.data.member!.name, trunkFont) + trunkFont * 1.2));
+  const zigOffset = widest / 2 + 6;
+  if (trunkZigzag) trunkWidth = clamp(widest * 2 * 0.85, TW, W * 0.17);
   const trunkLabels: TrunkLabel[] = shownTrunk.map((n, i) => {
     const m = n.data.member!;
-    const fs = i === 0 && !ancient.length ? trunkFont * 1.2 : trunkFont;
+    const fs = i === 0 && !ancient.length && !trunkZigzag ? trunkFont * 1.2 : trunkFont;
     const label = m.name;
+    // the eldest (bottom) starts on the right in RTL posters
+    const side = trunkZigzag ? ((i % 2 === 0) === rtl ? 1 : -1) : 0;
     return {
-      member: m, label, x: origin.x, fontSize: fs,
+      member: m, label, x: origin.x + side * zigOffset, fontSize: fs,
       y: slots > 1 ? labelBottom - i * spacing : (labelTop + labelBottom) / 2,
-      w: textWidth(label, fs) + fs * 1.2, h: fs * 1.5,
+      // zigzag badges share one width so the two columns line up
+      w: trunkZigzag ? widest : Math.max(textWidth(label, fs) + fs * 1.2, TW * 0.9), h: fs * 1.5,
     };
   });
   const labelY = new Map(trunkLabels.map((l) => [l.member.id, l.y]));
@@ -496,7 +555,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // Trunk labels and the base medallion are fixed obstacles too.
   for (const l of trunkLabels) {
     nodes.push({
-      ...fixedObstacle(l.member, l.x, l.y, Math.max(l.w, trunkWidth * 0.9), l.h),
+      ...fixedObstacle(l.member, l.x, l.y, l.w, l.h),
     });
   }
 
@@ -587,23 +646,59 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     };
   }
 
-  // ── Lineage panel for ancestors that do not fit on the trunk ─────────
-  let lineage: LineagePanel | null = null;
-  if (ancient.length) {
-    const names = [shownTrunk[0], ...[...ancient].reverse()]
-      .filter(Boolean)
-      .map((n) => withLaqab(n.data.member!));
+  // ── Soil: ancient ancestors inscribed among the roots ───────────────
+  let soil: SoilInscription | null = null;
+  if (useSoil) {
     const joiner = rtl ? " بن " : " son of ";
-    const width = W * 0.36;
-    const top = groundY + W * 0.075;
-    const avail = H - W * 0.065 - top;
-    let fs = 30;
+    const text =
+      customSoil ??
+      [shownTrunk[0], ...[...ancient].reverse()].filter(Boolean).map((n) => withLaqab(n.data.member!, rtl)).join(joiner);
+    const x0 = W * 0.26, x1 = W * 0.74, cx = W / 2;
+    const edgeY = groundY + W * 0.022;
+    const peak = groundY - W * 0.022;
+    const bottom = H - W * 0.078;
+    const f = (n: number) => n.toFixed(1);
+    const mound =
+      `M${f(x0)} ${f(edgeY)}Q${f(cx)} ${f(2 * peak - edgeY)} ${f(x1)} ${f(edgeY)}` +
+      `C${f(x1 + W * 0.025)} ${f(edgeY + (bottom - edgeY) * 0.45)} ${f(x1)} ${f(bottom)} ${f(x1 - W * 0.04)} ${f(bottom)}` +
+      `Q${f(cx)} ${f(bottom + W * 0.018)} ${f(x0 + W * 0.04)} ${f(bottom)}` +
+      `C${f(x0)} ${f(bottom)} ${f(x0 - W * 0.025)} ${f(edgeY + (bottom - edgeY) * 0.45)} ${f(x0)} ${f(edgeY)}Z`;
+    const pad = W * 0.03;
+    const chord = x1 - x0 - 2 * pad;
+    const firstY = (fs: number) => groundY + W * 0.03 + fs * 1.4; // below the grass
+    let fs = 32;
     let lines: string[] = [];
     for (; fs > 12; fs -= 1) {
-      lines = wrapWords(names.join(joiner).split(" "), width - fs, fs);
-      if (lines.length * fs * 1.55 + fs * 2.4 <= avail) break;
+      lines = wrapWords(text.split(" "), chord * 0.94 - fs, fs);
+      if (firstY(fs) + (lines.length - 1) * fs * 1.6 <= bottom - fs * 0.9) break;
     }
-    lineage = { lines, x: W / 2, y: top, width, fontSize: fs, lineHeight: fs * 1.55, count: ancient.length };
+    const lh = fs * 1.6;
+    const sag = edgeY - peak;
+    const linePaths = lines.map((line, k) => {
+      const y = firstY(fs) + k * lh;
+      const bend = sag * 0.9 * (1 - k / Math.max(1, lines.length));
+      return { path: `M${f(x0 + pad)} ${f(y)}Q${f(cx)} ${f(y - 2 * bend)} ${f(x1 - pad)} ${f(y)}`, text: line };
+    });
+    // roots spreading from the trunk base into the soil
+    const roots: string[] = [];
+    for (let i = 0; i < 9; i++) {
+      const side = i % 2 === 0 ? 1 : -1;
+      const spread = 0.15 + 0.85 * (i / 8);
+      const start: Vec = { x: cx + side * trunkWidth * rr(0.2, 0.7), y: groundY + trunkWidth * 0.1 };
+      const end: Vec = {
+        x: cx + side * (x1 - cx - W * 0.03) * spread,
+        y: Math.min(bottom - W * 0.01, groundY + (bottom - groundY) * rr(0.35, 0.95)),
+      };
+      const curve: Cubic = {
+        p0: start, c1: add(start, { x: side * W * 0.02, y: (end.y - start.y) * 0.5 }),
+        c2: add(end, { x: -side * (end.x - start.x) * side * 0.4, y: -W * 0.02 }), p1: end,
+      };
+      roots.push(ribbonPath(curve, trunkWidth * rr(0.1, 0.22), 1.5, 12));
+    }
+    soil = {
+      mound, top: { x0, x1, y: edgeY, peak }, roots, lines: linePaths, fontSize: fs,
+      count: customSoil ? 0 : ancient.length, custom: !!customSoil,
+    };
   }
 
   // ── Bark texture ─────────────────────────────────────────────────────
@@ -628,10 +723,12 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     ...empty,
     // geometry may have switched to the tall-base variant
     crown, origin, groundY,
-    trunkPath: trunkOutline(origin, groundY, trunkWidth),
+    trunkPath: trunkOutline(origin, groundY, trunkWidth, TW),
+    trunkWidth,
     rtl,
     trunkLabels,
-    lineage,
+    soil,
+    trunkZigzag,
     barkLines,
     base: baseNode,
     stubs: stubs.map((s) => strip(s as LiveNode)),
@@ -653,9 +750,11 @@ function fixedObstacle(m: MemberDTO, x: number, y: number, w: number, h: number)
   };
 }
 
-function withLaqab(m: MemberDTO): string {
+/** Name with laqab; Arabic uses ornate brackets ﴿…﴾, which never mirror. */
+function withLaqab(m: MemberDTO, rtl: boolean): string {
   if (!m.laqab) return m.name;
-  return HONORIFICS.test(m.laqab.trim()) ? `${m.name} ${m.laqab}` : `${m.name} (${m.laqab})`;
+  if (HONORIFICS.test(m.laqab.trim())) return `${m.name} ${m.laqab}`;
+  return rtl ? `${m.name} \uFD3F${m.laqab}\uFD3E` : `${m.name} (${m.laqab})`;
 }
 
 /** Greedy word wrap using the label width estimator. */
@@ -674,17 +773,19 @@ function wrapWords(words: string[], width: number, fs: number): string[] {
 }
 
 /** Trunk silhouette: narrow under the crown, flaring into roots at the ground. */
-function trunkOutline(o: Vec, groundY: number, w: number): string {
+function trunkOutline(o: Vec, groundY: number, w: number, flareW = w): string {
   const h = groundY - o.y;
+  // root flare: widens with the base trunk, only partly with a zigzag trunk
+  const fl = flareW + (w - flareW) * 0.35;
   const f = (n: number) => n.toFixed(1);
   const L = (dx: number) => f(o.x - dx);
   const R = (dx: number) => f(o.x + dx);
   return [
     `M${L(w * 0.62)} ${f(o.y - w * 0.15)}`,
     `C${L(w * 0.5)} ${f(o.y + h * 0.35)} ${L(w * 0.5)} ${f(o.y + h * 0.7)} ${L(w * 0.85)} ${f(groundY - w * 0.08)}`,
-    `C${L(w * 1.05)} ${f(groundY)} ${L(w * 1.6)} ${f(groundY + w * 0.12)} ${L(w * 2.0)} ${f(groundY + w * 0.18)}`,
-    `L${R(w * 2.0)} ${f(groundY + w * 0.18)}`,
-    `C${R(w * 1.6)} ${f(groundY + w * 0.12)} ${R(w * 1.05)} ${f(groundY)} ${R(w * 0.85)} ${f(groundY - w * 0.08)}`,
+    `C${L(w * 0.5 + fl * 0.55)} ${f(groundY)} ${L(w * 0.5 + fl * 1.1)} ${f(groundY + fl * 0.12)} ${L(w * 0.5 + fl * 1.5)} ${f(groundY + fl * 0.18)}`,
+    `L${R(w * 0.5 + fl * 1.5)} ${f(groundY + fl * 0.18)}`,
+    `C${R(w * 0.5 + fl * 1.1)} ${f(groundY + fl * 0.12)} ${R(w * 0.5 + fl * 0.55)} ${f(groundY)} ${R(w * 0.85)} ${f(groundY - w * 0.08)}`,
     `C${R(w * 0.5)} ${f(o.y + h * 0.7)} ${R(w * 0.5)} ${f(o.y + h * 0.35)} ${R(w * 0.62)} ${f(o.y - w * 0.15)}`,
     `Q${f(o.x)} ${f(o.y - w * 0.7)} ${L(w * 0.62)} ${f(o.y - w * 0.15)}Z`,
   ].join("");

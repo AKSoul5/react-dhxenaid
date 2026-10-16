@@ -40,6 +40,7 @@ export async function getTree(treeId: string): Promise<TreeDTO> {
   return {
     id: tree.id, name: tree.name, title: tree.title, subtitle: tree.subtitle,
     lineage: tree.lineage, rootMemberId: tree.rootMemberId, crownBaseId: tree.crownBaseId,
+    trunkStartId: tree.trunkStartId, soilText: tree.soilText,
     settings: (tree.settings as PosterSettings | null) ?? null,
     members: tree.members.map(toMemberDTO),
     marriages: tree.marriages.map((m) => ({
@@ -54,15 +55,17 @@ export async function createTree(input: CreateTreeInput): Promise<TreeDTO> {
 }
 
 export async function updateTree(treeId: string, input: UpdateTreeInput): Promise<TreeDTO> {
-  const { settings, rootMemberId, crownBaseId, ...rest } = input;
+  const { settings, rootMemberId, crownBaseId, trunkStartId, ...rest } = input;
   if (rootMemberId) await assertMemberInTree(treeId, rootMemberId);
   if (crownBaseId) await assertMemberInTree(treeId, crownBaseId);
+  if (trunkStartId) await assertMemberInTree(treeId, trunkStartId);
   await prisma.familyTree.update({
     where: { id: treeId },
     data: {
       ...rest,
       ...(rootMemberId !== undefined ? { rootMemberId } : {}),
       ...(crownBaseId !== undefined ? { crownBaseId } : {}),
+      ...(trunkStartId !== undefined ? { trunkStartId } : {}),
       ...(settings !== undefined ? { settings: (settings ?? undefined) as Prisma.InputJsonValue } : {}),
     },
   });

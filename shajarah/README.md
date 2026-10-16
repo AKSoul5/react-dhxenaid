@@ -8,9 +8,9 @@ green for sons, rose for daughters. Members with descendants sit at their
 branch forks as generation-coloured tags. You can export it as
 vector SVG or a high-DPI PDF/PNG for printing.
 
-| Generated poster (demo data) | Al-Kalali lineage, black & white | Editor |
+| Generated poster (demo data) | Al-Kalali lineage: soil, trunk, canopy | Editor |
 | --- | --- | --- |
-| ![poster](docs/demo-poster.jpg) | ![kalali](docs/kalali-mono.jpg) | ![editor](docs/editor.jpg) |
+| ![poster](docs/demo-poster.jpg) | ![kalali](docs/kalali-tiers.jpg) | ![editor](docs/editor.jpg) |
 
 ## Stack
 
@@ -55,18 +55,30 @@ first:
 - A preview shows how many names are reused and how many are new. It warns
   when a line fits in two places equally well.
 
-## Choosing the trunk and canopy
+## The three tiers: soil, trunk, canopy
 
-Select anyone and press **🌳 Start the canopy here** (stored as
-`FamilyTree.crownBaseId`). Everyone above them forms the trunk.
+The ancestral chain is split into three tiers. You set the two boundaries
+on any member's panel:
 
-- **Trunk:** about the nearest 11 ancestors are written on the trunk. Older
-  generations continue in an engraved **النسب** panel at the foot of the
-  poster, so a chain back to آدم still fits.
+| Tier | Who | Drawn as | Set with |
+| --- | --- | --- | --- |
+| **Soil** | ancestors older than the trunk start (e.g. آدم … عبد كلال الأصغر) | the lineage inscribed on curved lines in the soil, among the roots | 🪵 **Start the trunk here** → `FamilyTree.trunkStartId` |
+| **Trunk** | trunk start … the canopy's father (e.g. الحارث … سالم) | stacked medallions up the trunk | — |
+| **Canopy** | the canopy base and all descendants | Bézier branches, leaves / badges | 🌳 **Start the canopy here** → `FamilyTree.crownBaseId` |
+
+- **Long trunks:** short trunks use one column of medallions. Longer ones
+  grow taller, as the canopy gives up height, and then stagger into a
+  two-column zigzag. The Al-Kalali trunk of 33 ancestors fits this way.
+  Only beyond that do the oldest move into the soil.
+- **Automatic mode:** without a trunk start, the nearest ~11 ancestors go
+  on the trunk and the rest into the soil. Without a canopy base, the
+  canopy starts at the first real fork.
+- **Custom soil text:** to inscribe a lineage exactly as a source writes
+  it, paste it under **Style → Soil inscription** (`FamilyTree.soilText`).
+- **Laqabs** in the soil use the classical ornate brackets «يريم ﴿ذو رعين
+  الأكبر﴾».
 - **Side branches:** brothers of trunk ancestors grow as side branches with
   their own small canopy. Brothers without descendants become short stubs.
-- **Automatic mode:** without a choice, the canopy starts at the first real
-  fork in the lineage.
 
 ## Styles
 
@@ -75,8 +87,8 @@ are saved per tree in `settings.theme`.
 
 | Preset | Look |
 | --- | --- |
+| Silver & Gold (default) | metallic silver (male) and gold (female) ovals, framed ancestor badges |
 | Classic botanical | green leaves, generation-coloured forks, names carved in the bark |
-| Silver & Gold | metallic silver (male) and gold (female) ovals, framed ancestor badges |
 | Parchment & Emerald | emerald and gold leaves on parchment |
 | Minimal black & white | white circles, fine line branches, like hand-drawn family charts |
 
@@ -135,8 +147,9 @@ shajarah/
 
 - **FamilyTree** owns members and marriages (cascade delete). It also stores
   the poster title and subtitle, the `lineage` (patrilineal or matrilineal),
-  an optional explicit `rootMember`, the `crownBase` (where the canopy
-  starts), and poster `settings` (JSON, including the theme).
+  an optional explicit `rootMember`, the tier boundaries `trunkStart` and
+  `crownBase`, an optional `soilText`, and poster `settings` (JSON,
+  including the theme).
 - **Member** has `name`, `laqab`, `gender`, `birthYear`, `deathYear`,
   `isDeceased`, and `birthOrder` (sibling order on the poster). Parentage is
   two self-relations, `fatherId` and `motherId`, with `ON DELETE SET NULL`.
@@ -145,11 +158,15 @@ shajarah/
 - **Marriage** is a separate table, so a member can have several spouses,
   each with optional dates.
 
-**Why there's no `isTrunkNode` column.** A member is on the trunk exactly
-when they are an ancestor of the crown base. Storing that as a per-member
-flag would need dozens of rows rewritten every time the crown base moves,
-and any missed row would leave the flag silently wrong. Deriving it keeps
-the data correct by construction.
+**Why tiers are two pointers, not per-member flags.** A member's tier
+(soil, trunk or canopy) follows from their position relative to
+`trunkStartId` and `crownBaseId`. Storing an `isTrunkNode` or soil flag on
+each member would mean rewriting dozens of rows whenever a boundary moves,
+and any missed row would leave the poster silently wrong. Two pointers keep
+the data correct by construction, and moving a boundary is a single
+update. The soil text is generated from the real member records, so the
+ancients stay searchable, editable people. `soilText` exists only as an
+optional verbatim override.
 
 The service layer (`src/lib/data/treeService.ts`) enforces the genealogy
 rules:
@@ -183,12 +200,14 @@ same input and seed always produce the same poster.
 1. **Hierarchy.** It builds the lineage tree (father-first or mother-first,
    depending on `lineage`) with d3-hierarchy and counts each subtree's
    leaves.
-2. **Trunk and crown.** The trunk runs from the root to the crown base:
-   the chosen `crownBaseId`, or else the first real fork. The crown base is
-   the gold medallion at the top of the trunk.
-   - The nearest ancestors are written on the trunk. Older ones flow into
-     the النسب panel, and the poster switches to a taller base band to make
-     room for it.
+2. **Tiers.** The chain from the root to the crown base (the chosen
+   `crownBaseId`, or else the first real fork) is split at `trunkStartId`
+   into soil and trunk.
+   - The poster switches to a taller base band for the soil.
+   - A long trunk pushes the crown base up and the canopy shrinks to fit.
+     Beyond one column the medallions zigzag.
+   - Soil text is wrapped onto curved baselines, drawn with `<textPath>`,
+     inside a soil mound drawn over the trunk base.
    - Brothers of trunk ancestors become stubs if childless, like غانم and
      قتيبع in the sample. Otherwise they become side branches: a small
      canopy fanning out from the trunk at their father's height.

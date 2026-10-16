@@ -136,7 +136,12 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
           <button type="button" className="btn-ghost" title="Re-grow the branches with a new random seed" onClick={() => updateSettings({ seed: seed + 1 })}>
             ↻ Re-grow
           </button>
-          <StylePanel theme={theme} onChange={(patch) => updateSettings({ theme: { ...theme, ...patch } })} />
+          <StylePanel
+            theme={theme}
+            onChange={(patch) => updateSettings({ theme: { ...theme, ...patch } })}
+            soilText={tree.soilText}
+            onSoilTextChange={(soilText) => void mutate(() => repo.updateTree({ soilText }))}
+          />
           <ExportMenu svgRef={svgRef} filename={exportName(tree.name)} />
         </div>
       </header>
@@ -240,19 +245,27 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                   />
                 </div>
               </details>
-              <div className="rounded-md border border-parchment-200 p-3 text-sm">
-                <p className="mb-2 text-gray-600">
-                  {tree.crownBaseId === selected.id
-                    ? "The canopy starts here. Everyone above this person is on the trunk."
-                    : "Choose where the trunk ends and the branches begin."}
+              <div className="space-y-2 rounded-md border border-parchment-200 p-3 text-sm">
+                <h4 className="section-title">Poster tiers</h4>
+                <p className="text-gray-600">
+                  Soil (ancient lineage) → trunk (medallions) → canopy (branches).
                 </p>
                 {tree.crownBaseId === selected.id ? (
                   <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ crownBaseId: null }))}>
-                    Reset to automatic
+                    ✓ Canopy starts here — reset to automatic
                   </button>
                 ) : (
                   <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ crownBaseId: selected.id }))}>
                     🌳 Start the canopy here
+                  </button>
+                )}
+                {tree.trunkStartId === selected.id ? (
+                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ trunkStartId: null }))}>
+                    ✓ Trunk starts here — reset to automatic
+                  </button>
+                ) : (
+                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ trunkStartId: selected.id }))}>
+                    🪵 Start the trunk here (older ancestors go in the soil)
                   </button>
                 )}
               </div>

@@ -87,6 +87,7 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
         ...tree,
         rootMemberId: tree.rootMemberId === id ? null : tree.rootMemberId,
         crownBaseId: tree.crownBaseId === id ? null : tree.crownBaseId,
+        trunkStartId: tree.trunkStartId === id ? null : tree.trunkStartId,
         members: tree.members
           .filter((m) => m.id !== id)
           .map((m) => ({

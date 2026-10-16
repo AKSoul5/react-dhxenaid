@@ -34,7 +34,8 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
 /** Merges a tree's saved overrides onto its preset. */
 export function resolveTheme(settings: PosterSettings | null | undefined): PosterTheme {
   const saved = settings?.theme ?? {};
-  const preset = THEME_PRESETS[saved.preset ?? "classic"] ?? THEME_PRESETS.classic;
+  // Silver (male) & gold (female) is the default look.
+  const preset = THEME_PRESETS[saved.preset ?? "silver-gold"] ?? THEME_PRESETS["silver-gold"];
   const { label: _label, ...base } = preset;
   return { ...base, ...saved, preset: base.preset };
 }

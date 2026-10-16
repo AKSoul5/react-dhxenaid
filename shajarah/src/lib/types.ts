@@ -68,6 +68,10 @@ export interface TreeDTO {
    * from the root to this member forms the trunk. Null = automatic.
    */
   crownBaseId: string | null;
+  /** First ancestor on the trunk; older ancestors are inscribed in the soil. Null = automatic. */
+  trunkStartId: string | null;
+  /** Verbatim soil inscription overriding the generated lineage text. */
+  soilText: string | null;
   settings: PosterSettings | null;
   members: MemberDTO[];
   marriages: MarriageDTO[];

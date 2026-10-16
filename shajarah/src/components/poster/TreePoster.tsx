@@ -123,6 +123,11 @@ export const TreePoster = memo(
           </radialGradient>
           {metal("sh-m-male", theme.male)}
           {metal("sh-m-female", theme.female)}
+          <linearGradient id="sh-soil" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="#6b4a2b" />
+            <stop offset="0.5" stopColor="#4e331c" />
+            <stop offset="1" stopColor="#36220f" />
+          </linearGradient>
           <radialGradient id="sh-ground" cx="0.5" cy="0.3" r="0.7">
             <stop offset="0" stopColor="#7fb04a" />
             <stop offset="1" stopColor="#3f7a26" />
@@ -174,8 +179,8 @@ export const TreePoster = memo(
           </text>
         )}
 
-        {/* Ground */}
-        {pal.mono ? (
+        {/* Ground: soil with the ancient lineage, or a plain lawn */}
+        {layout.soil ? null : pal.mono ? (
           <line x1={W * 0.2} x2={W * 0.8} y1={layout.groundY + W * 0.02} y2={layout.groundY + W * 0.02} stroke="#111" strokeWidth={W * 0.002} />
         ) : (
           <>
@@ -195,6 +200,9 @@ export const TreePoster = memo(
           <path key={i} d={d} stroke={shade(theme.branch, -0.5)} strokeWidth={W * 0.0018} opacity={0.3} fill="none" strokeLinecap="round" />
         ))}
 
+        {/* Soil over the trunk base: roots and the ancient lineage */}
+        {layout.soil && <Soil layout={layout} pal={pal} grass={grass} />}
+
         {/* Branches */}
         <g fill={theme.branch}>
           {layout.branches.map((b, i) => <path key={i} d={b.d} />)}
@@ -209,8 +217,8 @@ export const TreePoster = memo(
           >
             {theme.trunkStyle === "badges" && (
               <rect
-                x={l.x - Math.max(l.w, layout.trunkWidth * 0.9) / 2} y={l.y - l.h / 2}
-                width={Math.max(l.w, layout.trunkWidth * 0.9)} height={l.h} rx={l.h / 2}
+                x={l.x - l.w / 2} y={l.y - l.h / 2}
+                width={l.w} height={l.h} rx={l.h / 2}
                 fill={pal.mono ? "#ffffff" : "#f6ecd2"}
                 stroke={selectedId === l.member.id ? "#b3261e" : theme.ancestor}
                 strokeWidth={l.fontSize * 0.12}
@@ -274,7 +282,6 @@ export const TreePoster = memo(
           </g>
         )}
 
-        {layout.lineage && <LineageScroll layout={layout} pal={pal} />}
         <Legend layout={layout} theme={theme} pal={pal} />
         <Stats layout={layout} pal={pal} />
         <text x={W / 2} y={H - W * 0.045} textAnchor="middle" fontSize={W * 0.011} fill={pal.mono ? "#555" : "#7a5a2c"}>
@@ -350,30 +357,27 @@ function PersonNode({
   );
 }
 
-/** Engraved panel listing ancestors that do not fit on the trunk. */
-function LineageScroll({ layout, pal }: { layout: PosterLayout; pal: Palette }) {
-  const l = layout.lineage!;
+/** The soil mound at the foot of the tree, with roots and the ancient lineage inscribed in it. */
+function Soil({ layout, pal, grass }: { layout: PosterLayout; pal: Palette; grass: string }) {
+  const soil = layout.soil!;
   const { width: W, rtl } = layout;
-  const h = l.fontSize * 2.4 + l.lines.length * l.lineHeight;
   return (
     <g>
-      <rect x={l.x - l.width / 2} y={l.y} width={l.width} height={h} rx={W * 0.006} fill={pal.mono ? "#fff" : "#fbf5e6"} stroke={pal.frame} strokeWidth={W * 0.0012} />
-      <text x={l.x} y={l.y + l.fontSize * 1.3} textAnchor="middle" fontSize={l.fontSize * 1.15} fontWeight={700} fill={pal.ink}>
-        {rtl ? "النسب" : "Lineage"}
+      <defs>
+        {soil.lines.map((l, i) => <path key={i} id={`sh-soil-${i}`} d={l.path} />)}
+      </defs>
+      <path d={soil.mound} fill={pal.mono ? "#ffffff" : "url(#sh-soil)"} stroke={pal.mono ? "#111" : "#2e1c0c"} strokeWidth={W * 0.0015} />
+      <g fill={pal.mono ? "none" : "#2a190a"} stroke={pal.mono ? "#111" : "none"} strokeWidth={W * 0.0008} opacity={pal.mono ? 0.6 : 0.55}>
+        {soil.roots.map((d, i) => <path key={i} d={d} />)}
+      </g>
+      {!pal.mono && <path d={grass} stroke="#4c8a2c" strokeWidth={W * 0.0013} strokeLinecap="round" fill="none" />}
+      <text fontSize={soil.fontSize} fill={pal.mono ? "#111" : "#f1dfb0"} direction={rtl ? "rtl" : "ltr"}>
+        {soil.lines.map((l, i) => (
+          <textPath key={i} href={`#sh-soil-${i}`} startOffset="50%" textAnchor="middle">
+            {l.text}
+          </textPath>
+        ))}
       </text>
-      {l.lines.map((line, i) => (
-        <text
-          key={i}
-          x={l.x}
-          y={l.y + l.fontSize * 2.4 + (i + 0.6) * l.lineHeight}
-          textAnchor="middle"
-          direction={rtl ? "rtl" : "ltr"}
-          fontSize={l.fontSize}
-          fill={pal.ink}
-        >
-          {line}
-        </text>
-      ))}
     </g>
   );
 }
@@ -464,12 +468,22 @@ function Stats({ layout, pal }: { layout: PosterLayout; pal: Palette }) {
 
 function grassBlades(layout: PosterLayout): string {
   const rand = mulberry32(99);
-  const { width: W, groundY } = layout;
+  const { width: W, groundY, soil } = layout;
   const parts: string[] = [];
   for (let i = 0; i < 260; i++) {
-    const t = rand() * 2 - 1;
-    const x = W / 2 + t * W * 0.34;
-    const y = groundY + W * 0.035 - Math.sqrt(Math.max(0, 1 - t * t)) * W * 0.035 + rand() * W * 0.02;
+    let x: number, y: number;
+    if (soil) {
+      // along the quadratic top edge of the soil mound
+      const t = rand();
+      const { x0, x1, y: ey, peak } = soil.top;
+      const cy = 2 * peak - ey;
+      x = (1 - t) * (1 - t) * x0 + 2 * (1 - t) * t * ((x0 + x1) / 2) + t * t * x1;
+      y = (1 - t) * (1 - t) * ey + 2 * (1 - t) * t * cy + t * t * ey + rand() * W * 0.004;
+    } else {
+      const t = rand() * 2 - 1;
+      x = W / 2 + t * W * 0.34;
+      y = groundY + W * 0.035 - Math.sqrt(Math.max(0, 1 - t * t)) * W * 0.035 + rand() * W * 0.02;
+    }
     const h = W * (0.008 + rand() * 0.014);
     const lean = (rand() - 0.5) * h * 0.8;
     parts.push(`M${x.toFixed(1)} ${y.toFixed(1)}q${(lean / 2).toFixed(1)} ${(-h / 2).toFixed(1)} ${lean.toFixed(1)} ${(-h).toFixed(1)}`);
