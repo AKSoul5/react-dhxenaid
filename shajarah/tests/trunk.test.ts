@@ -101,18 +101,18 @@ describe("trunk, lineage panel and side branches", () => {
 describe("three tiers with an explicit trunk start (Al-Kalali)", () => {
   const tree = kalaliSample();
 
-  it("puts الحارث … سالم on a zigzag trunk and آدم … عبد كلال in the soil", () => {
+  it("puts عبد كلال الأصغر … سالم on a zigzag trunk and آدم … نصر in the soil", () => {
     const layout = computePosterLayout(tree);
     expect(layout.base?.member.name).toBe("محمد");
-    expect(layout.trunkLabels[0].member.name).toBe("الحارث");
+    expect(layout.trunkLabels[0].member.name).toBe("عبد كلال الأصغر");
     expect(layout.trunkLabels.at(-1)!.member.name).toBe("سالم");
-    expect(layout.trunkLabels.length).toBe(33);
+    expect(layout.trunkLabels.length).toBe(34);
     expect(layout.trunkZigzag).toBe(true);
     expect(layout.trunkLabels[0].fontSize).toBeGreaterThanOrEqual(18);
     const text = layout.soil!.lines.map((l) => l.text).join(" ");
-    expect(text.startsWith("الحارث بن عبد كلال الأصغر")).toBe(true);
+    expect(text.startsWith("عبد كلال الأصغر بن نصر")).toBe(true);
     expect(text.endsWith("آدم عليه السلام")).toBe(true);
-    expect(layout.soil!.count).toBe(48);
+    expect(layout.soil!.count).toBe(47);
   });
 
   it("never overlaps trunk medallions", () => {

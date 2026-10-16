@@ -4,21 +4,21 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
   classic: {
     label: "Classic botanical",
     preset: "classic", colorBy: "generation",
-    male: "#3f8434", female: "#d9708a", ancestor: "#c9a24c", branch: "#5a391c",
+    male: "#3f8434", female: "#d9708a", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false,
     nodeShape: "leaf", labelMode: "name", showYears: false, trunkStyle: "carved",
   },
   "silver-gold": {
     label: "Silver & Gold",
     preset: "silver-gold", colorBy: "gender",
-    male: "#c0c0c0", female: "#d4af37", ancestor: "#9c7a2a", branch: "#4a3220",
+    male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: true,
     nodeShape: "oval", labelMode: "name", showYears: false, trunkStyle: "badges",
   },
   emerald: {
     label: "Parchment & Emerald",
     preset: "emerald", colorBy: "gender",
-    male: "#1f7a4d", female: "#b8892f", ancestor: "#6b4423", branch: "#4e3418",
+    male: "#1f7a4d", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false,
     nodeShape: "leaf", labelMode: "name", showYears: false, trunkStyle: "badges",
   },
@@ -63,4 +63,21 @@ export function textOn(hex: string): string {
   });
   const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return lum > 0.4 ? "#1f1408" : "#ffffff";
+}
+
+/** The default bark colour; it maps to a hand-tuned walnut gradient. */
+export const BARK_DEFAULT = "#4a2e1a";
+
+/** Three bark gradient stops (shadow, lit, deep shadow). */
+export function barkStops(c: string): [string, string, string] {
+  if (c.toLowerCase() === BARK_DEFAULT) return ["#3B2314", "#6E472A", "#24140B"];
+  return [shade(c, -0.2), shade(c, 0.3), shade(c, -0.5)];
+}
+
+/** Metallic gradient stops (highlight, body, shadow) for a node colour. */
+export function metalStops(c: string): [string, string, string] {
+  const k = c.toLowerCase();
+  if (k === "#c0c0c0") return ["#E8E8E8", "#C0C0C0", "#999999"]; // silver
+  if (k === "#d4af37") return ["#FFE57F", "#D4AF37", "#AA7C11"]; // gold
+  return [shade(c, 0.55), c, shade(c, -0.25)];
 }

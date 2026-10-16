@@ -62,8 +62,8 @@ on any member's panel:
 
 | Tier | Who | Drawn as | Set with |
 | --- | --- | --- | --- |
-| **Soil** | ancestors older than the trunk start (e.g. آدم … عبد كلال الأصغر) | the lineage inscribed on curved lines in the soil, among the roots | 🪵 **Start the trunk here** → `FamilyTree.trunkStartId` |
-| **Trunk** | trunk start … the canopy's father (e.g. الحارث … سالم) | stacked medallions up the trunk | — |
+| **Soil** | ancestors older than the trunk start (e.g. آدم … نصر) | the lineage inscribed in a gilt cartouche set in the soil, among the roots | 🪵 **Start the trunk here** → `FamilyTree.trunkStartId` |
+| **Trunk** | trunk start … the canopy's father (e.g. عبد كلال الأصغر … سالم) | golden oval medallions up the trunk | — |
 | **Canopy** | the canopy base and all descendants | Bézier branches, leaves / badges | 🌳 **Start the canopy here** → `FamilyTree.crownBaseId` |
 
 - **Long trunks:** short trunks use one column of medallions. Longer ones
@@ -79,6 +79,29 @@ on any member's panel:
   الأكبر﴾».
 - **Side branches:** brothers of trunk ancestors grow as side branches with
   their own small canopy. Brothers without descendants become short stubs.
+
+## Rendering details
+
+Everything is vector SVG with no bitmaps, so it stays sharp at any size.
+
+- **Wood:** walnut bark gradient (`#3B2314 → #6E472A → #24140B`) with a
+  sheen. Each branch gets a highlight strip on its lit (upper-left) side,
+  bark-grain strands on thick limbs, and rounded joints. Soft drop shadows
+  give depth.
+- **Metal:**
+  - Male nodes use a silver bevel (`#E8E8E8 / #C0C0C0 / #999999`).
+  - Female nodes use a gold bevel (`#FFE57F / #D4AF37 / #AA7C11`).
+  - Both have dark borders, a specular gloss and a drop shadow.
+  - Trunk and canopy-base medallions are gold with a parchment field and
+    a beaded inner ring.
+- **Paper:** a procedural grain and mottling (`feTurbulence`), a faint
+  girih pattern and a vignette.
+- **Panels:** legend, statistics and the soil inscription sit on
+  semi-transparent parchment with gilt double borders and corner lozenges.
+- **Canopy:** a soft oval or teardrop silhouette behind the canopy keeps
+  the tree shape balanced, even for a small family.
+- **Type:** set in Amiri, falling back to Traditional Arabic, with
+  geometric-precision text rendering.
 
 ## Styles
 

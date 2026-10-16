@@ -79,3 +79,31 @@ export function ribbonPath(curve: Cubic, w0: number, w1: number, samples = 14): 
 export function fmt(n: number): string {
   return f(n);
 }
+
+/** Approximate parallel curve, shifted `d` along the normal. */
+export function offsetCubic(c: Cubic, d: number): Cubic {
+  const n0 = perp(cubicTangent(c, 0));
+  const nm = perp(cubicTangent(c, 0.5));
+  const n1 = perp(cubicTangent(c, 1));
+  return {
+    p0: add(c.p0, scale(n0, d)),
+    c1: add(c.c1, scale(nm, d)),
+    c2: add(c.c2, scale(nm, d)),
+    p1: add(c.p1, scale(n1, d)),
+  };
+}
+
+/** Polyline through a curve shifted `d` along its normal (bark grain). */
+export function strandPath(c: Cubic, d: number, from = 0.08, to = 0.92, samples = 10): string {
+  const pts: Vec[] = [];
+  for (let i = 0; i <= samples; i++) {
+    const t = from + ((to - from) * i) / samples;
+    pts.push(add(cubicPoint(c, t), scale(perp(cubicTangent(c, t)), d)));
+  }
+  return `M${pts.map((p) => `${f(p.x)} ${f(p.y)}`).join("L")}`;
+}
+
+/** Circle as a path (for smooth branch joints). */
+export function circlePath(c: Vec, r: number): string {
+  return `M${f(c.x - r)} ${f(c.y)}a${f(r)} ${f(r)} 0 1 0 ${f(2 * r)} 0a${f(r)} ${f(r)} 0 1 0 ${f(-2 * r)} 0Z`;
+}

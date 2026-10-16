@@ -22,7 +22,8 @@ export function kalaliTree(): TreeDTO {
   }
   const gens = computeGenerations(members, "PATRILINEAL");
   for (const m of members) m.generation = gens.get(m.id) ?? 0;
-  // Three tiers: soil = آدم … عبد كلال الأصغر, trunk = الحارث … سالم,
+  // Three tiers: soil = آدم … نصر, trunk = عبد كلال الأصغر (the family's
+  // namesake, hence الكلالي) … سالم,
   // canopy = Sheikh محمد بن سالم بن مبارك and his descendants.
   const byNasab = (...names: string[]) =>
     members.find((m) => {
@@ -37,7 +38,7 @@ export function kalaliTree(): TreeDTO {
     id: "kalali", name: "الكلالي", title: "شجرة عائلة الكلالي", subtitle: "من آل عبد كلال",
     lineage: "PATRILINEAL", rootMemberId: members[0].id,
     crownBaseId: byNasab("محمد", "سالم", "مبارك"),
-    trunkStartId: byNasab("الحارث", "عبد كلال الأصغر"),
+    trunkStartId: byNasab("عبد كلال الأصغر", "نصر"),
     soilText: null,
     settings: { showFemales: true, seed: 7, theme: { preset: "silver-gold" } }, members, marriages: [],
   };

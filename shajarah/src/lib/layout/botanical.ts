@@ -45,7 +45,10 @@
 import { hierarchy, type HierarchyNode } from "d3-hierarchy";
 import { childrenIndex } from "../genealogy";
 import type { MemberDTO, TreeDTO } from "../types";
-import { add, len, norm, ribbonPath, scale, sub, type Cubic, type Vec } from "./geometry";
+import {
+  add, circlePath, cubicTangent, len, norm, offsetCubic, perp, ribbonPath, scale, strandPath, sub,
+  type Cubic, type Vec,
+} from "./geometry";
 import { mulberry32 } from "./random";
 
 export type NodeShape = "leaf" | "circle" | "oval";
@@ -98,6 +101,13 @@ export interface PosterNode {
   parentId: string | null;
 }
 
+export interface Branch {
+  d: string;
+  w: number;
+  /** Highlight strip on the lit side, for a rounded, 3-D look. */
+  hl?: string;
+}
+
 export interface TrunkLabel {
   member: MemberDTO;
   label: string;
@@ -118,6 +128,8 @@ export interface SoilInscription {
   /** One curved baseline per line of text (render with <textPath>). */
   lines: { path: string; text: string }[];
   fontSize: number;
+  /** Bounds of the framed parchment cartouche that carries the text. */
+  box: { x: number; y: number; w: number; h: number };
   /** Ancestors inscribed (0 when a custom soil text is used). */
   count: number;
   custom: boolean;
@@ -140,7 +152,12 @@ export interface PosterLayout {
   base: PosterNode | null;
   stubs: PosterNode[];
   nodes: PosterNode[];
-  branches: { d: string; w: number }[];
+  /** Branch outlines (filled with bark), with an optional light-side highlight. */
+  branches: Branch[];
+  /** Thin bark-grain strands along the thicker branches. */
+  barkStrands: string[];
+  /** Soft silhouette around the canopy (balanced oval). */
+  canopy: string | null;
   /** Generation of the crown base; legend numbering and colours start here. */
   generationOffset: number;
   /** Generations present on crown / side-branch tags (for the legend). */
@@ -162,6 +179,8 @@ type LiveNode = PosterNode & {
 
 const ARABIC = /[؀-ۿ]/;
 const UP: Vec = { x: 0, y: -1 };
+/** Light comes from the upper left; branches are highlighted on that side. */
+const LIGHT: Vec = norm({ x: -1, y: -1.3 });
 const HONORIFICS = /^(عليه السلام|رضي الله عنه|رحمه الله|صلى الله عليه وسلم)$/;
 
 export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): PosterLayout {
@@ -208,7 +227,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     width: W, height: H, rtl: true, crown, origin, groundY,
     trunkPath: trunkOutline(origin, groundY, trunkWidth), trunkWidth,
     barkLines: [], trunkLabels: [], soil: null, trunkZigzag: false, base: null, stubs: [], nodes: [],
-    branches: [], generationOffset: 0, generationsPresent: [], stats,
+    branches: [], barkStrands: [], canopy: null, generationOffset: 0, generationsPresent: [], stats,
   };
   if (visible.length === 0) return empty;
 
@@ -370,7 +389,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     node.u = (u0 + u1) / 2;
     const kids = (node.children ?? []) as HNode[];
     if (!kids.length) return;
-    const weights = kids.map((k) => Math.pow(k.value ?? 1, 0.8) + 0.35);
+    const weights = kids.map((k) => Math.pow(k.value ?? 1, 0.65) + 0.35);
     const sum = weights.reduce((a, b) => a + b, 0);
     let a = u0;
     kids.forEach((k, i) => {
@@ -454,14 +473,15 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // ── 4. Crown target positions ────────────────────────────────────────
   const maxDepth = Math.max(1, base.height);
   // Small families get a smaller crown instead of a few long bare limbs.
-  const crownScale = clamp(0.3 + 0.7 * Math.sqrt(crownNodes.length / 120), 0.4, 1);
+  const crownScale = clamp(0.35 + 0.65 * Math.sqrt(crownNodes.length / 100), 0.5, 1);
   const r0 = W * 0.1;
   for (const n of crownNodes) {
     const d = n.depth - base.depth;
     const halfSpan = ((n.u1 ?? 0) - (n.u0 ?? 0)) / 2;
     const u = (n.u ?? 0.5) + (d >= 2 ? (rand() - 0.5) * 0.5 * halfSpan : 0);
     const theta = uToTheta(u);
-    const t = 0.55 * (d / maxDepth) + 0.45 * (d / (d + n.height));
+    // childless members reach further out so the rim fills (no gaps at the top)
+    const t = 0.4 * (d / maxDepth) + 0.6 * (d / (d + n.height));
     const R = reach(theta) * 0.95 * crownScale;
     const p = add(origin, scale(dirOf(theta), r0 + t * Math.max(0, R - r0)));
     const parent = byId.get(n.parent?.data.member?.id ?? "");
@@ -475,7 +495,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   const trunkFont = trunkZigzag
     ? clamp(Math.min(spacing * 1.55, 52) * 0.62, 14, 34)
     : clamp(Math.min(TW * 0.36, spacing * 0.7 || TW * 0.36), 14, 60);
-  const widest = Math.max(0, ...shownTrunk.map((n) => textWidth(n.data.member!.name, trunkFont) + trunkFont * 1.2));
+  const widest = Math.max(0, ...shownTrunk.map((n) => textWidth(n.data.member!.name, trunkFont) + trunkFont * 1.7));
   const zigOffset = widest / 2 + 6;
   if (trunkZigzag) trunkWidth = clamp(widest * 2 * 0.85, TW, W * 0.17);
   const trunkLabels: TrunkLabel[] = shownTrunk.map((n, i) => {
@@ -488,14 +508,31 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       member: m, label, x: origin.x + side * zigOffset, fontSize: fs,
       y: slots > 1 ? labelBottom - i * spacing : (labelTop + labelBottom) / 2,
       // zigzag badges share one width so the two columns line up
-      w: trunkZigzag ? widest : Math.max(textWidth(label, fs) + fs * 1.2, TW * 0.9), h: fs * 1.5,
+      w: trunkZigzag ? widest : Math.max(textWidth(label, fs) + fs * 1.7, TW * 0.9), h: fs * 1.6,
     };
   });
   const labelY = new Map(trunkLabels.map((l) => [l.member.id, l.y]));
 
   // ── Offshoots: stubs (childless) and side branches (with descendants) ─
   const stubs: PosterNode[] = [];
-  const branchesOut: { d: string; w: number }[] = [];
+  const branchesOut: Branch[] = [];
+  const barkStrands: string[] = [];
+  /**
+   * A tapered branch with a highlight strip on its lit (upper-left) side,
+   * bark-grain strands when thick, and a rounded joint where it starts.
+   */
+  const shaded = (curve: Cubic, w0: number, w1: number, samples = 14): Branch => {
+    const n = perp(cubicTangent(curve, 0.5));
+    const lit = n.x * LIGHT.x + n.y * LIGHT.y > 0 ? 1 : -1;
+    const b: Branch = { d: ribbonPath(curve, w0, w1, samples) + circlePath(curve.p0, w0 / 2), w: w0 };
+    if (w0 > W * 0.004) {
+      b.hl = ribbonPath(offsetCubic(curve, lit * w0 * 0.2), w0 * 0.28, w1 * 0.18, samples);
+    }
+    if (w0 > W * 0.009) {
+      for (const k of [-0.28, 0.05, 0.3]) barkStrands.push(strandPath(curve, k * (w0 + w1) * 0.5));
+    }
+    return b;
+  };
   const stemStart = new Map<string, Vec>();
   const stemDir = new Map<string, Vec>();
   const visibleOffshoots = offshoots.filter((o) => shownSet.has(o.anchor));
@@ -516,7 +553,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
         p0: start, c1: add(start, { x: side * trunkWidth * 0.5, y: 0 }),
         c2: add(end, { x: -side * trunkWidth * 0.2, y: trunkWidth * 0.25 }), p1: end,
       };
-      branchesOut.push({ d: ribbonPath(curve, trunkWidth * 0.2, trunkWidth * 0.1), w: trunkWidth });
+      branchesOut.push({ ...shaded(curve, TW * 0.2, TW * 0.1), w: trunkWidth });
       const fs = trunkFont * 0.62;
       const { label, subLabel } = labelOf(m);
       const size = Math.max(fs * 3.2, textWidth(label, fs) + fs);
@@ -599,7 +636,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   const wK = Math.min((trunkWidth * 0.8 - wMin) / Math.sqrt(totalLeaves), W * 0.016) * bs;
   const widthOf = (leaves: number) => wMin + wK * Math.sqrt(leaves);
   const growth = new Map<string, Vec>();
-  const branches: { d: string; w: number }[] = [...branchesOut];
+  const branches: Branch[] = [...branchesOut];
 
   for (const node of growing) {
     const parent = node.parentId ? byId.get(node.parentId) : undefined;
@@ -626,10 +663,33 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     const curve: Cubic = { p0: P, c1: add(P, scale(s, L * 0.42)), c2: sub(C, scale(e, L * 0.33)), p1: C };
     growth.set(node.id, e);
     const w = widthOf(node.leafCount);
-    branches.push({ d: ribbonPath(curve, limb ? w * 1.15 : w, w * 0.7), w });
+    branches.push(shaded(curve, limb ? w * 1.15 : w, w * 0.7));
   }
   // Thick limbs first so thin branches (and their junctions) sit on top.
   branches.sort((a, b) => b.w - a.w);
+
+  // ── Canopy silhouette: a balanced oval around the crown, centred on the
+  // trunk, so even a sparse canopy reads as a full tree shape.
+  let canopy: string | null = null;
+  const crownLive = growing.filter((n) => n.region === "crown");
+  if (crownLive.length) {
+    const pad = W * 0.05;
+    const halfW = Math.max(W * 0.16, ...crownLive.map((n) => Math.abs(n.x - origin.x) + n.w / 2 + pad));
+    const top = Math.min(...crownLive.map((n) => n.y - n.h / 2)) - pad;
+    const bottom = origin.y + baseMedallionR * 0.6;
+    const cy = (top + bottom) / 2;
+    const ry = Math.max(H * 0.06, (bottom - top) / 2);
+    const rx = Math.min(halfW, W * 0.47);
+    const pts: string[] = [];
+    for (let i = 0; i < 96; i++) {
+      const a = (i / 96) * Math.PI * 2;
+      const c = Math.cos(a), sn = Math.sin(a);
+      // superellipse, slightly narrower towards the bottom (teardrop)
+      const k = sn > 0 ? 1 - 0.18 * sn : 1;
+      pts.push(`${(origin.x + rx * k * Math.sign(c) * Math.abs(c) ** (2 / 2.6)).toFixed(1)} ${(cy + ry * Math.sign(sn) * Math.abs(sn) ** (2 / 2.6)).toFixed(1)}`);
+    }
+    canopy = `M${pts.join("L")}Z`;
+  }
 
   // ── Base medallion ───────────────────────────────────────────────────
   let baseNode: PosterNode | null = null;
@@ -695,8 +755,11 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       };
       roots.push(ribbonPath(curve, trunkWidth * rr(0.1, 0.22), 1.5, 12));
     }
+    const boxTop = firstY(fs) - sag * 0.9 * 2 * 0.5 - fs * 1.25;
+    const boxBottom = firstY(fs) + (lines.length - 1) * lh + fs * 0.8;
     soil = {
       mound, top: { x0, x1, y: edgeY, peak }, roots, lines: linePaths, fontSize: fs,
+      box: { x: x0 + pad * 0.45, y: boxTop, w: x1 - x0 - pad * 0.9, h: boxBottom - boxTop },
       count: customSoil ? 0 : ancient.length, custom: !!customSoil,
     };
   }
@@ -723,7 +786,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     ...empty,
     // geometry may have switched to the tall-base variant
     crown, origin, groundY,
-    trunkPath: trunkOutline(origin, groundY, trunkWidth, TW),
+    trunkPath: trunkOutline(origin, groundY, trunkWidth, TW, TW),
     trunkWidth,
     rtl,
     trunkLabels,
@@ -734,6 +797,8 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     stubs: stubs.map((s) => strip(s as LiveNode)),
     nodes: growing.map(strip),
     branches,
+    barkStrands,
+    canopy,
     generationOffset: base.data.member?.generation ?? 0,
     generationsPresent: [...gens].sort((a, b) => a - b),
   };
@@ -772,22 +837,28 @@ function wrapWords(words: string[], width: number, fs: number): string[] {
   return lines;
 }
 
-/** Trunk silhouette: narrow under the crown, flaring into roots at the ground. */
-function trunkOutline(o: Vec, groundY: number, w: number, flareW = w): string {
+/**
+ * Trunk silhouette: narrow under the crown (topW), swelling to its full
+ * width w where the medallions sit, then flaring into roots at the ground.
+ */
+function trunkOutline(o: Vec, groundY: number, w: number, flareW = w, topW = w): string {
   const h = groundY - o.y;
+  const f = (n: number) => n.toFixed(1);
   // root flare: widens with the base trunk, only partly with a zigzag trunk
   const fl = flareW + (w - flareW) * 0.35;
-  const f = (n: number) => n.toFixed(1);
-  const L = (dx: number) => f(o.x - dx);
-  const R = (dx: number) => f(o.x + dx);
+  const side = (s: 1 | -1) => (dx: number) => f(o.x + s * dx);
+  const L = side(-1);
+  const R = side(1);
   return [
-    `M${L(w * 0.62)} ${f(o.y - w * 0.15)}`,
-    `C${L(w * 0.5)} ${f(o.y + h * 0.35)} ${L(w * 0.5)} ${f(o.y + h * 0.7)} ${L(w * 0.85)} ${f(groundY - w * 0.08)}`,
+    `M${L(topW * 0.62)} ${f(o.y - topW * 0.15)}`,
+    `C${L(topW * 0.52)} ${f(o.y + h * 0.08)} ${L(w * 0.5)} ${f(o.y + h * 0.1)} ${L(w * 0.5)} ${f(o.y + h * 0.28)}`,
+    `C${L(w * 0.5)} ${f(o.y + h * 0.62)} ${L(w * 0.52)} ${f(o.y + h * 0.82)} ${L(w * 0.5 + fl * 0.35)} ${f(groundY - fl * 0.08)}`,
     `C${L(w * 0.5 + fl * 0.55)} ${f(groundY)} ${L(w * 0.5 + fl * 1.1)} ${f(groundY + fl * 0.12)} ${L(w * 0.5 + fl * 1.5)} ${f(groundY + fl * 0.18)}`,
     `L${R(w * 0.5 + fl * 1.5)} ${f(groundY + fl * 0.18)}`,
-    `C${R(w * 0.5 + fl * 1.1)} ${f(groundY + fl * 0.12)} ${R(w * 0.5 + fl * 0.55)} ${f(groundY)} ${R(w * 0.85)} ${f(groundY - w * 0.08)}`,
-    `C${R(w * 0.5)} ${f(o.y + h * 0.7)} ${R(w * 0.5)} ${f(o.y + h * 0.35)} ${R(w * 0.62)} ${f(o.y - w * 0.15)}`,
-    `Q${f(o.x)} ${f(o.y - w * 0.7)} ${L(w * 0.62)} ${f(o.y - w * 0.15)}Z`,
+    `C${R(w * 0.5 + fl * 1.1)} ${f(groundY + fl * 0.12)} ${R(w * 0.5 + fl * 0.55)} ${f(groundY)} ${R(w * 0.5 + fl * 0.35)} ${f(groundY - fl * 0.08)}`,
+    `C${R(w * 0.52)} ${f(o.y + h * 0.82)} ${R(w * 0.5)} ${f(o.y + h * 0.62)} ${R(w * 0.5)} ${f(o.y + h * 0.28)}`,
+    `C${R(w * 0.5)} ${f(o.y + h * 0.1)} ${R(topW * 0.52)} ${f(o.y + h * 0.08)} ${R(topW * 0.62)} ${f(o.y - topW * 0.15)}`,
+    `Q${f(o.x)} ${f(o.y - topW * 0.7)} ${L(topW * 0.62)} ${f(o.y - topW * 0.15)}Z`,
   ].join("");
 }
 
