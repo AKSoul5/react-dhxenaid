@@ -15,12 +15,41 @@ export const createTreeSchema = z.object({
   lineage: z.enum(["PATRILINEAL", "MATRILINEAL"]).default("PATRILINEAL"),
 });
 
+const hexColor = z.string().regex(/^#[0-9a-fA-F]{6}$/, "Colours must be #rrggbb");
+
+export const themeSchema = z
+  .object({
+    preset: z.enum(["classic", "silver-gold", "emerald", "mono"]),
+    colorBy: z.enum(["generation", "gender"]),
+    male: hexColor,
+    female: hexColor,
+    ancestor: hexColor,
+    branch: hexColor,
+    background: z.enum(["parchment", "white"]),
+    metallic: z.boolean(),
+    nodeShape: z.enum(["leaf", "circle", "oval"]),
+    labelMode: z.enum(["name", "withFather"]),
+    showYears: z.boolean(),
+    trunkStyle: z.enum(["carved", "badges"]),
+  })
+  .partial();
+
 export const updateTreeSchema = createTreeSchema.partial().extend({
   rootMemberId: z.string().nullable().optional(),
+  crownBaseId: z.string().nullable().optional(),
   settings: z
-    .object({ showFemales: z.boolean().optional(), seed: z.number().int().optional() })
+    .object({
+      showFemales: z.boolean().optional(),
+      seed: z.number().int().optional(),
+      theme: themeSchema.optional(),
+    })
     .nullable()
     .optional(),
+});
+
+export const importNasabSchema = z.object({
+  /** One nasab per line, newest name first: "أحمد بن نوفل بن …". */
+  text: z.string().trim().min(1, "Paste at least one nasab").max(50_000),
 });
 
 export const memberFieldsSchema = z.object({
@@ -55,3 +84,4 @@ export type UpdateTreeInput = z.infer<typeof updateTreeSchema>;
 export type CreateMemberInput = z.infer<typeof createMemberSchema>;
 export type UpdateMemberInput = z.infer<typeof updateMemberSchema>;
 export type CreateMarriageInput = z.infer<typeof createMarriageSchema>;
+export type ImportNasabInput = z.infer<typeof importNasabSchema>;

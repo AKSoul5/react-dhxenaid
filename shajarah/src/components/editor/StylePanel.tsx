@@ -1,0 +1,118 @@
+"use client";
+
+import { useState } from "react";
+import { THEME_PRESETS } from "@/lib/theme";
+import type { PosterTheme, ThemePreset } from "@/lib/types";
+
+interface Props {
+  theme: PosterTheme;
+  onChange: (theme: Partial<PosterTheme>) => void;
+}
+
+/** Theme presets, colour pickers, node shape and label options. */
+export function StylePanel({ theme, onChange }: Props) {
+  const [open, setOpen] = useState(false);
+  const color = (key: "male" | "female" | "ancestor" | "branch", label: string) => (
+    <label className="flex items-center justify-between gap-2 text-sm">
+      {label}
+      <input
+        type="color"
+        className="h-7 w-12 cursor-pointer rounded border border-parchment-300"
+        value={theme[key]}
+        onChange={(e) => onChange({ [key]: e.target.value })}
+      />
+    </label>
+  );
+
+  return (
+    <div className="relative">
+      <button type="button" className="btn-outline" onClick={() => setOpen((o) => !o)}>
+        🎨 Style ▾
+      </button>
+      {open && (
+        <div className="absolute end-0 z-30 mt-2 w-80 space-y-4 rounded-lg border border-parchment-300 bg-white p-4 shadow-xl">
+          <section>
+            <h4 className="section-title">Theme</h4>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(Object.keys(THEME_PRESETS) as ThemePreset[]).map((p) => {
+                const t = THEME_PRESETS[p];
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => onChange({ ...t, preset: p })}
+                    className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-start text-xs ${
+                      theme.preset === p ? "border-bark-700 bg-parchment-100" : "border-parchment-300"
+                    }`}
+                  >
+                    <span className="flex">
+                      <span className="h-4 w-4 rounded-full border border-black/20" style={{ background: t.male }} />
+                      <span className="-ms-1.5 h-4 w-4 rounded-full border border-black/20" style={{ background: t.female }} />
+                    </span>
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="space-y-1.5">
+            <h4 className="section-title">Colours</h4>
+            {color("male", "Male")}
+            {color("female", "Female")}
+            {color("ancestor", "Ancestor frame")}
+            {color("branch", "Branches & trunk")}
+            <label className="flex items-center justify-between text-sm">
+              Colour nodes by
+              <select className="input w-36" value={theme.colorBy} onChange={(e) => onChange({ colorBy: e.target.value as PosterTheme["colorBy"] })}>
+                <option value="gender">Gender</option>
+                <option value="generation">Generation</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={theme.metallic} onChange={(e) => onChange({ metallic: e.target.checked })} />
+              Metallic finish
+            </label>
+          </section>
+
+          <section className="space-y-1.5">
+            <h4 className="section-title">Nodes & labels</h4>
+            <label className="flex items-center justify-between text-sm">
+              Shape
+              <select className="input w-36" value={theme.nodeShape} onChange={(e) => onChange({ nodeShape: e.target.value as PosterTheme["nodeShape"] })}>
+                <option value="leaf">Leaves</option>
+                <option value="circle">Circular badges</option>
+                <option value="oval">Oval medallions</option>
+              </select>
+            </label>
+            <label className="flex items-center justify-between text-sm">
+              Label
+              <select className="input w-36" value={theme.labelMode} onChange={(e) => onChange({ labelMode: e.target.value as PosterTheme["labelMode"] })}>
+                <option value="name">First name</option>
+                <option value="withFather">Name بن father</option>
+              </select>
+            </label>
+            <label className="flex items-center justify-between text-sm">
+              Trunk ancestors
+              <select className="input w-36" value={theme.trunkStyle} onChange={(e) => onChange({ trunkStyle: e.target.value as PosterTheme["trunkStyle"] })}>
+                <option value="carved">Carved in bark</option>
+                <option value="badges">Framed badges</option>
+              </select>
+            </label>
+            <label className="flex items-center justify-between text-sm">
+              Background
+              <select className="input w-36" value={theme.background} onChange={(e) => onChange({ background: e.target.value as PosterTheme["background"] })}>
+                <option value="parchment">Parchment</option>
+                <option value="white">Plain white</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={theme.showYears} onChange={(e) => onChange({ showYears: e.target.checked })} />
+              Show birth / death years
+            </label>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}

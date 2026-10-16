@@ -28,9 +28,32 @@ export interface MarriageDTO {
   endYear: number | null;
 }
 
+export type ThemePreset = "classic" | "silver-gold" | "emerald" | "mono";
+
+/** User-customisable poster styling, stored in FamilyTree.settings.theme. */
+export interface PosterTheme {
+  preset: ThemePreset;
+  /** Colour person nodes by generation band, or by gender. */
+  colorBy: "generation" | "gender";
+  male: string;
+  female: string;
+  /** Frame colour of the ancestral (trunk) badges. */
+  ancestor: string;
+  branch: string;
+  background: "parchment" | "white";
+  /** Metallic gradients on nodes (silver / gold look). */
+  metallic: boolean;
+  nodeShape: "leaf" | "circle" | "oval";
+  labelMode: "name" | "withFather";
+  showYears: boolean;
+  /** Ancestors carved into the bark, or stacked as framed badges. */
+  trunkStyle: "carved" | "badges";
+}
+
 export interface PosterSettings {
   showFemales?: boolean;
   seed?: number;
+  theme?: Partial<PosterTheme>;
 }
 
 export interface TreeDTO {
@@ -40,6 +63,11 @@ export interface TreeDTO {
   subtitle: string | null;
   lineage: Lineage;
   rootMemberId: string | null;
+  /**
+   * Where the canopy starts (the branching ancestor). Everyone on the path
+   * from the root to this member forms the trunk. Null = automatic.
+   */
+  crownBaseId: string | null;
   settings: PosterSettings | null;
   members: MemberDTO[];
   marriages: MarriageDTO[];

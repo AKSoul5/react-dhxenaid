@@ -1,16 +1,21 @@
 // Seeds the database with the sample nasab tree used by /demo.
 import { PrismaClient } from "@prisma/client";
 import { generateSampleTree } from "../src/lib/sampleData";
+import { kalaliTree } from "../src/lib/samples/kalali";
+import type { TreeDTO } from "../src/lib/types";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const sample = generateSampleTree();
+  for (const sample of [generateSampleTree(), kalaliTree()]) await seedTree(sample);
+}
+
+async function seedTree(sample: TreeDTO) {
   await prisma.familyTree.deleteMany({ where: { name: sample.name } });
   const tree = await prisma.familyTree.create({
     data: {
-      name: sample.name, title: sample.title, subtitle: "شجرة نموذجية", lineage: sample.lineage,
-      settings: { ...sample.settings },
+      name: sample.name, title: sample.title, subtitle: sample.subtitle, lineage: sample.lineage,
+      settings: JSON.parse(JSON.stringify(sample.settings ?? {})),
     },
   });
   // Members are inserted in generation order so parents always exist first.

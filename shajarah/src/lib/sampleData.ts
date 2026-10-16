@@ -83,6 +83,7 @@ export function generateSampleTree(seed = 11, targetSize = 320): TreeDTO {
     subtitle: "نموذج تجريبي — بيانات افتراضية",
     lineage: "PATRILINEAL",
     rootMemberId: members[0].id,
+    crownBaseId: null,
     settings: { showFemales: false, seed: 7 },
     members,
     marriages: [],

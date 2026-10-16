@@ -11,7 +11,10 @@ import { ExportMenu } from "../poster/ExportMenu";
 import { PosterViewport } from "../poster/PosterViewport";
 import { TreePoster } from "../poster/TreePoster";
 import { MemberForm, emptyDraft, type MemberDraft } from "./MemberForm";
+import { NasabImport } from "./NasabImport";
 import { RelationsPanel } from "./RelationsPanel";
+import { StylePanel } from "./StylePanel";
+import { resolveTheme } from "@/lib/theme";
 import { apiRepository, localRepository, type FamilyRepository } from "./repository";
 
 interface Props {
@@ -19,7 +22,11 @@ interface Props {
   mode: "api" | "local";
 }
 
-type Panel = { kind: "list" } | { kind: "edit"; id: string } | { kind: "new"; draft: MemberDraft };
+type Panel =
+  | { kind: "list" }
+  | { kind: "edit"; id: string }
+  | { kind: "new"; draft: MemberDraft }
+  | { kind: "import" };
 
 export function TreeWorkspace({ initialTree, mode }: Props) {
   const [tree, setTree] = useState(initialTree);
@@ -35,11 +42,17 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
 
   const showFemales = tree.settings?.showFemales ?? false;
   const seed = tree.settings?.seed ?? 7;
+  const theme = useMemo(() => resolveTheme(tree.settings), [tree.settings]);
   // Layout is recomputed on every edit; deferring keeps typing responsive.
   const deferredTree = useDeferredValue(tree);
   const layout = useMemo(
-    () => computePosterLayout(deferredTree, { showFemales, seed }),
-    [deferredTree, showFemales, seed],
+    () =>
+      computePosterLayout(deferredTree, {
+        showFemales, seed,
+        nodeShape: theme.nodeShape, labelMode: theme.labelMode, showYears: theme.showYears,
+        branchScale: theme.background === "white" ? 0.35 : 1,
+      }),
+    [deferredTree, showFemales, seed, theme.nodeShape, theme.labelMode, theme.showYears, theme.background],
   );
 
   const mutate = useCallback(async (fn: () => Promise<TreeDTO>) => {
@@ -93,7 +106,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   };
 
   const updateSettings = (patch: Partial<NonNullable<TreeDTO["settings"]>>) => {
-    const settings = { showFemales, seed, ...patch };
+    const settings = { ...tree.settings, showFemales, seed, ...patch };
     setTree((t) => ({ ...t, settings })); // optimistic
     void mutate(() => repo.updateTree({ settings }));
   };
@@ -123,6 +136,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
           <button type="button" className="btn-ghost" title="Re-grow the branches with a new random seed" onClick={() => updateSettings({ seed: seed + 1 })}>
             ↻ Re-grow
           </button>
+          <StylePanel theme={theme} onChange={(patch) => updateSettings({ theme: { ...theme, ...patch } })} />
           <ExportMenu svgRef={svgRef} filename={exportName(tree.name)} />
         </div>
       </header>
@@ -141,6 +155,9 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 <input className="input flex-1" dir="auto" placeholder="Search members…" value={query} onChange={(e) => setQuery(e.target.value)} />
                 <button type="button" className="btn-primary" onClick={() => setPanel({ kind: "new", draft: emptyDraft() })}>
                   + Person
+                </button>
+                <button type="button" className="btn-outline" title="Paste a nasab: أحمد بن نوفل بن …" onClick={() => setPanel({ kind: "import" })}>
+                  بن…
                 </button>
               </div>
               <ul className="flex-1 overflow-auto">
@@ -164,6 +181,18 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 ))}
               </ul>
             </>
+          )}
+
+          {panel.kind === "import" && (
+            <NasabImport
+              tree={tree}
+              busy={busy}
+              onCancel={() => setPanel({ kind: "list" })}
+              onImport={async (text) => {
+                const next = await mutate(() => repo.importNasab(text));
+                if (next) setPanel({ kind: "list" });
+              }}
+            />
           )}
 
           {panel.kind === "new" && (
@@ -211,6 +240,22 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                   />
                 </div>
               </details>
+              <div className="rounded-md border border-parchment-200 p-3 text-sm">
+                <p className="mb-2 text-gray-600">
+                  {tree.crownBaseId === selected.id
+                    ? "The canopy starts here. Everyone above this person is on the trunk."
+                    : "Choose where the trunk ends and the branches begin."}
+                </p>
+                {tree.crownBaseId === selected.id ? (
+                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ crownBaseId: null }))}>
+                    Reset to automatic
+                  </button>
+                ) : (
+                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ crownBaseId: selected.id }))}>
+                    🌳 Start the canopy here
+                  </button>
+                )}
+              </div>
               {tree.rootMemberId !== selected.id && !selected.fatherId && !selected.motherId && (
                 <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ rootMemberId: selected.id }))}>
                   Make this the root of the trunk
@@ -226,6 +271,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               ref={svgRef}
               layout={layout}
               meta={{ title: tree.title, subtitle: tree.subtitle, name: tree.name }}
+              theme={theme}
               selectedId={selectedId}
               highlightIds={highlightIds}
               onSelect={select}

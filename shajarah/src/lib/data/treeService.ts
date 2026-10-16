@@ -2,8 +2,9 @@ import "server-only";
 import type { Member, Prisma } from "@prisma/client";
 import { computeGenerations, parentAssignmentError } from "../genealogy";
 import type { MemberDTO, PosterSettings, TreeDTO, TreeSummary } from "../types";
+import { parseNasab, planNasabImport, splitNasabLines } from "../nasab";
 import type {
-  CreateMarriageInput, CreateMemberInput, CreateTreeInput, UpdateMemberInput, UpdateTreeInput,
+  CreateMarriageInput, CreateMemberInput, CreateTreeInput, ImportNasabInput, UpdateMemberInput, UpdateTreeInput,
 } from "../validation";
 import { prisma } from "./prisma";
 
@@ -38,7 +39,7 @@ export async function getTree(treeId: string): Promise<TreeDTO> {
   if (!tree) throw new DomainError("Tree not found", 404);
   return {
     id: tree.id, name: tree.name, title: tree.title, subtitle: tree.subtitle,
-    lineage: tree.lineage, rootMemberId: tree.rootMemberId,
+    lineage: tree.lineage, rootMemberId: tree.rootMemberId, crownBaseId: tree.crownBaseId,
     settings: (tree.settings as PosterSettings | null) ?? null,
     members: tree.members.map(toMemberDTO),
     marriages: tree.marriages.map((m) => ({
@@ -53,13 +54,15 @@ export async function createTree(input: CreateTreeInput): Promise<TreeDTO> {
 }
 
 export async function updateTree(treeId: string, input: UpdateTreeInput): Promise<TreeDTO> {
-  const { settings, rootMemberId, ...rest } = input;
+  const { settings, rootMemberId, crownBaseId, ...rest } = input;
   if (rootMemberId) await assertMemberInTree(treeId, rootMemberId);
+  if (crownBaseId) await assertMemberInTree(treeId, crownBaseId);
   await prisma.familyTree.update({
     where: { id: treeId },
     data: {
       ...rest,
       ...(rootMemberId !== undefined ? { rootMemberId } : {}),
+      ...(crownBaseId !== undefined ? { crownBaseId } : {}),
       ...(settings !== undefined ? { settings: (settings ?? undefined) as Prisma.InputJsonValue } : {}),
     },
   });
@@ -136,6 +139,60 @@ export async function deleteMarriage(marriageId: string): Promise<TreeDTO> {
   if (!m) throw new DomainError("Marriage not found", 404);
   await prisma.marriage.delete({ where: { id: marriageId } });
   return getTree(m.treeId);
+}
+
+/**
+ * Imports one nasab per line. Shared ancestors are reused, older ancestors
+ * are added above an existing root, and only genuinely new people are
+ * created, all in one transaction.
+ */
+export async function importNasab(treeId: string, input: ImportNasabInput): Promise<TreeDTO> {
+  const lines = splitNasabLines(input.text);
+  if (!lines.length) throw new DomainError("Paste at least one nasab.");
+  await prisma.$transaction(async (tx) => {
+    for (const line of lines) {
+      // Re-read inside the loop so later lines see earlier imports.
+      const tree = await getTreeWith(tx, treeId);
+      const { entries, gender } = parseNasab(line);
+      if (entries.length === 0) continue;
+      const plan = planNasabImport(tree.members, tree.lineage, entries);
+      const create = async (e: { name: string; laqab: string | null }, fatherId: string | null, female: boolean) =>
+        tx.member.create({
+          data: { treeId, name: e.name, laqab: e.laqab, gender: female ? "FEMALE" : "MALE", fatherId },
+        });
+      // 1. older ancestors above an existing root
+      let parentId: string | null = null;
+      let top: string | null = null;
+      for (const e of plan.ancestorsToCreate) {
+        parentId = (await create(e, parentId, false)).id;
+        top ??= parentId;
+      }
+      if (plan.adoptedRootId) {
+        await tx.member.update({ where: { id: plan.adoptedRootId }, data: { fatherId: parentId } });
+        if (top && (tree.rootMemberId === plan.adoptedRootId || !tree.rootMemberId)) {
+          await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: top } });
+        }
+      }
+      // 2. new descendants below the matched chain
+      parentId = plan.matched.at(-1)?.id ?? null;
+      let firstCreated: string | null = null;
+      for (const [i, e] of plan.descendantsToCreate.entries()) {
+        const female = gender === "FEMALE" && i === plan.descendantsToCreate.length - 1;
+        parentId = (await create(e, parentId, female)).id;
+        firstCreated ??= parentId;
+      }
+      if (!tree.rootMemberId && tree.members.length === 0 && firstCreated) {
+        await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: firstCreated } });
+      }
+    }
+  }, { timeout: 60_000 }); // long nasabs create ~100 rows sequentially
+  return refreshGenerations(treeId);
+}
+
+async function getTreeWith(tx: Prisma.TransactionClient, treeId: string) {
+  const tree = await tx.familyTree.findUnique({ where: { id: treeId }, include: { members: true } });
+  if (!tree) throw new DomainError("Tree not found", 404);
+  return { ...tree, members: tree.members.map(toMemberDTO) };
 }
 
 /** Recomputes the denormalised `generation` column and returns the fresh tree. */

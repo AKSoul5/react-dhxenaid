@@ -2,8 +2,10 @@
 
 import { forwardRef, memo, useMemo } from "react";
 import type { PosterLayout, PosterNode } from "@/lib/layout/botanical";
-import { BARK_DARK, LEAF_TONES, generationColor, generationLabel } from "@/lib/layout/palette";
+import { LEAF_TONES, generationColor, generationLabel } from "@/lib/layout/palette";
 import { hashString, mulberry32 } from "@/lib/layout/random";
+import { shade, textOn } from "@/lib/theme";
+import type { PosterTheme } from "@/lib/types";
 
 export interface PosterMeta {
   title: string | null;
@@ -14,6 +16,7 @@ export interface PosterMeta {
 interface Props {
   layout: PosterLayout;
   meta: PosterMeta;
+  theme: PosterTheme;
   selectedId?: string | null;
   /** Ancestors of the selected member, outlined in gold. */
   highlightIds?: Set<string>;
@@ -22,21 +25,65 @@ interface Props {
 }
 
 const FONT = "Amiri, 'Noto Naskh Arabic', 'Times New Roman', serif";
-const GOLD = "#b8892f";
-const INK = "#3b2410";
+
+interface Palette {
+  ink: string;
+  frame: string;
+  mono: boolean;
+  /** Fill (colour or gradient url) and the flat colour used for text contrast. */
+  fill: (n: PosterNode) => { fill: string; base: string };
+  stroke: string;
+}
+
+function makePalette(theme: PosterTheme, layout: PosterLayout): Palette {
+  const mono = theme.background === "white";
+  const metallic = (gender: string) => (gender === "FEMALE" ? "url(#sh-m-female)" : "url(#sh-m-male)");
+  const genderColor = (n: PosterNode) => (n.member.gender === "FEMALE" ? theme.female : theme.male);
+  return {
+    mono,
+    ink: mono ? "#111111" : "#3b2410",
+    frame: mono ? "#111111" : "#b8892f",
+    stroke: mono ? "#111111" : "rgba(43,26,12,0.55)",
+    fill: (n) => {
+      if (n.shape === "medallion" && n.depth === 1) {
+        return mono ? { fill: "#ffffff", base: "#ffffff" } : { fill: "url(#sh-gold)", base: "#e7bd57" };
+      }
+      if (theme.colorBy === "gender" || n.terminal) {
+        const base = genderColor(n);
+        // Classic leaves vary in tone so the canopy looks natural.
+        if (theme.preset === "classic" && n.terminal && n.member.gender !== "FEMALE" && n.shape === "leaf") {
+          const tone = LEAF_TONES[hashString(n.id) % LEAF_TONES.length];
+          return { fill: tone, base: tone };
+        }
+        return { fill: theme.metallic ? metallic(n.member.gender) : base, base };
+      }
+      const c = generationColor(n.generation - layout.generationOffset);
+      return { fill: c.fill, base: c.fill };
+    },
+  };
+}
 
 /**
- * Pure SVG renderer for a computed PosterLayout. Everything is vector and
- * self-contained (no external images), so the same element is what gets
- * serialised for SVG / PNG / PDF export.
+ * Pure SVG renderer for a computed PosterLayout and theme. Everything is
+ * vector and self-contained, so the same element is serialised for
+ * SVG / PNG / PDF export.
  */
 export const TreePoster = memo(
   forwardRef<SVGSVGElement, Props>(function TreePoster(
-    { layout, meta, selectedId, highlightIds, onSelect, className },
+    { layout, meta, theme, selectedId, highlightIds, onSelect, className },
     ref,
   ) {
     const { width: W, height: H, rtl } = layout;
     const grass = useMemo(() => grassBlades(layout), [layout]);
+    const pal = makePalette(theme, layout);
+    const metal = (id: string, c: string) => (
+      <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stopColor={shade(c, 0.6)} />
+        <stop offset="0.45" stopColor={c} />
+        <stop offset="0.7" stopColor={shade(c, -0.22)} />
+        <stop offset="1" stopColor={shade(c, 0.3)} />
+      </linearGradient>
+    );
 
     return (
       <svg
@@ -64,16 +111,18 @@ export const TreePoster = memo(
             />
           </pattern>
           <linearGradient id="sh-bark" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0" stopColor="#3b240f" />
-            <stop offset="0.45" stopColor="#6d4524" />
-            <stop offset="0.6" stopColor="#5b391b" />
-            <stop offset="1" stopColor="#331f0c" />
+            <stop offset="0" stopColor={shade(theme.branch, -0.35)} />
+            <stop offset="0.45" stopColor={shade(theme.branch, 0.18)} />
+            <stop offset="0.6" stopColor={theme.branch} />
+            <stop offset="1" stopColor={shade(theme.branch, -0.42)} />
           </linearGradient>
           <radialGradient id="sh-gold" cx="0.4" cy="0.35" r="0.7">
             <stop offset="0" stopColor="#fff2bf" />
             <stop offset="0.55" stopColor="#e7bd57" />
             <stop offset="1" stopColor="#a8761f" />
           </radialGradient>
+          {metal("sh-m-male", theme.male)}
+          {metal("sh-m-female", theme.female)}
           <radialGradient id="sh-ground" cx="0.5" cy="0.3" r="0.7">
             <stop offset="0" stopColor="#7fb04a" />
             <stop offset="1" stopColor="#3f7a26" />
@@ -90,95 +139,122 @@ export const TreePoster = memo(
           </g>
         </defs>
 
-        {/* Parchment, pattern, vignette */}
-        <rect width={W} height={H} fill="url(#sh-parchment)" />
-        <rect width={W} height={H} fill="url(#sh-girih)" />
-        <rect width={W} height={H} fill="url(#sh-vignette)" />
+        {/* Background */}
+        {pal.mono ? (
+          <rect width={W} height={H} fill="#ffffff" />
+        ) : (
+          <>
+            <rect width={W} height={H} fill="url(#sh-parchment)" />
+            <rect width={W} height={H} fill="url(#sh-girih)" />
+            <rect width={W} height={H} fill="url(#sh-vignette)" />
+          </>
+        )}
 
         {/* Ornamental frame */}
-        <rect x={W * 0.018} y={W * 0.018} width={W * 0.964} height={H - W * 0.036} fill="none" stroke={GOLD} strokeWidth={W * 0.004} />
-        <rect x={W * 0.028} y={W * 0.028} width={W * 0.944} height={H - W * 0.056} fill="none" stroke={GOLD} strokeWidth={W * 0.0012} />
+        <rect x={W * 0.018} y={W * 0.018} width={W * 0.964} height={H - W * 0.036} fill="none" stroke={pal.frame} strokeWidth={W * 0.004} />
+        <rect x={W * 0.028} y={W * 0.028} width={W * 0.944} height={H - W * 0.056} fill="none" stroke={pal.frame} strokeWidth={W * 0.0012} />
         {[
           [W * 0.03, W * 0.03, 1, 1],
           [W * 0.97, W * 0.03, -1, 1],
           [W * 0.03, H - W * 0.03, 1, -1],
           [W * 0.97, H - W * 0.03, -1, -1],
         ].map(([x, y, sx, sy], i) => (
-          <use key={i} href="#sh-corner" transform={`translate(${x} ${y}) scale(${sx * W * 0.0009} ${sy * W * 0.0009})`} stroke={GOLD} color={GOLD} />
+          <use key={i} href="#sh-corner" transform={`translate(${x} ${y}) scale(${sx * W * 0.0009} ${sy * W * 0.0009})`} stroke={pal.frame} color={pal.frame} />
         ))}
 
         {/* Title */}
         {meta.title && (
-          <text x={W / 2} y={H * 0.052} textAnchor="middle" fontSize={W * 0.034} fontWeight={700} fill={INK} direction={rtl ? "rtl" : "ltr"}>
+          <text x={W / 2} y={H * 0.052} textAnchor="middle" fontSize={W * 0.034} fontWeight={700} fill={pal.ink} direction={rtl ? "rtl" : "ltr"}>
             {meta.title}
           </text>
         )}
         {meta.subtitle && (
-          <text x={W / 2} y={H * 0.075} textAnchor="middle" fontSize={W * 0.019} fill="#6b4a22" direction={rtl ? "rtl" : "ltr"}>
+          <text x={W / 2} y={H * 0.075} textAnchor="middle" fontSize={W * 0.019} fill={pal.mono ? "#444" : "#6b4a22"} direction={rtl ? "rtl" : "ltr"}>
             {meta.subtitle}
           </text>
         )}
 
         {/* Ground */}
-        <ellipse cx={W / 2} cy={layout.groundY + W * 0.035} rx={W * 0.36} ry={W * 0.04} fill="url(#sh-ground)" />
-        <path d={grass} stroke="#4c8a2c" strokeWidth={W * 0.0013} strokeLinecap="round" fill="none" />
+        {pal.mono ? (
+          <line x1={W * 0.2} x2={W * 0.8} y1={layout.groundY + W * 0.02} y2={layout.groundY + W * 0.02} stroke="#111" strokeWidth={W * 0.002} />
+        ) : (
+          <>
+            <ellipse cx={W / 2} cy={layout.groundY + W * 0.035} rx={W * 0.36} ry={W * 0.04} fill="url(#sh-ground)" />
+            <path d={grass} stroke="#4c8a2c" strokeWidth={W * 0.0013} strokeLinecap="round" fill="none" />
+          </>
+        )}
 
         {/* Trunk */}
-        <path d={layout.trunkPath} fill="url(#sh-bark)" />
-        {layout.barkLines.map((d, i) => (
-          <path key={i} d={d} stroke={BARK_DARK} strokeWidth={W * 0.0018} opacity={0.3} fill="none" strokeLinecap="round" />
+        <path
+          d={layout.trunkPath}
+          fill={pal.mono ? "#ffffff" : "url(#sh-bark)"}
+          stroke={pal.mono ? "#111" : "none"}
+          strokeWidth={W * 0.002}
+        />
+        {!pal.mono && layout.barkLines.map((d, i) => (
+          <path key={i} d={d} stroke={shade(theme.branch, -0.5)} strokeWidth={W * 0.0018} opacity={0.3} fill="none" strokeLinecap="round" />
         ))}
 
-        {/* Crown */}
-        <g fill="#5a391c">
-          {layout.branches.map((d, i) => <path key={i} d={d} />)}
+        {/* Branches */}
+        <g fill={theme.branch}>
+          {layout.branches.map((b, i) => <path key={i} d={b.d} />)}
         </g>
 
         {/* Ancestral chain on the trunk */}
         {layout.trunkLabels.map((l) => (
-          <text
+          <g
             key={l.member.id}
-            x={l.x}
-            y={l.y}
-            textAnchor="middle"
-            dominantBaseline="central"
-            fontSize={l.fontSize}
-            fontWeight={700}
-            fill="#f3dc9a"
-            stroke="#2a1708"
-            strokeWidth={l.fontSize * 0.08}
-            paintOrder="stroke"
-            letterSpacing={rtl ? undefined : "0.05em"}
             style={{ cursor: onSelect ? "pointer" : undefined }}
             onClick={onSelect ? () => onSelect(l.member.id) : undefined}
           >
-            {l.member.name}
-          </text>
+            {theme.trunkStyle === "badges" && (
+              <rect
+                x={l.x - Math.max(l.w, layout.trunkWidth * 0.9) / 2} y={l.y - l.h / 2}
+                width={Math.max(l.w, layout.trunkWidth * 0.9)} height={l.h} rx={l.h / 2}
+                fill={pal.mono ? "#ffffff" : "#f6ecd2"}
+                stroke={selectedId === l.member.id ? "#b3261e" : theme.ancestor}
+                strokeWidth={l.fontSize * 0.12}
+              />
+            )}
+            <text
+              x={l.x}
+              y={l.y}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fontSize={l.fontSize}
+              fontWeight={700}
+              {...(theme.trunkStyle === "badges"
+                ? { fill: pal.ink }
+                : { fill: "#f3dc9a", stroke: "#2a1708", strokeWidth: l.fontSize * 0.08, paintOrder: "stroke" })}
+            >
+              {l.label}
+            </text>
+          </g>
         ))}
 
-        {/* Name tags */}
+        {/* Stubs and person nodes */}
         {layout.stubs.map((n) => (
-          <NameTag key={n.id} node={n} fill="#e9843c" textFill="#fff" selected={selectedId === n.id} onSelect={onSelect} />
+          <PersonNode
+            key={n.id}
+            node={n}
+            fill={theme.colorBy === "gender" ? pal.fill(n).fill : pal.mono ? "#fff" : "#e9843c"}
+            textFill={theme.colorBy === "gender" ? textOn(pal.fill(n).base) : pal.mono ? "#111" : "#fff"}
+            ring={pal.frame}
+            stroke={pal.stroke}
+            selected={selectedId === n.id}
+            onSelect={onSelect}
+          />
         ))}
         {layout.nodes.map((n) => {
-          if (n.shape === "leaf") {
-            return (
-              <NamedLeaf
-                key={n.id}
-                node={n}
-                selected={selectedId === n.id}
-                highlighted={highlightIds?.has(n.id)}
-                onSelect={onSelect}
-              />
-            );
-          }
-          const c = generationColor(n.generation);
+          const { fill, base } = pal.fill(n);
           return (
-            <NameTag
+            <PersonNode
               key={n.id}
               node={n}
-              fill={n.depth === 1 ? "url(#sh-gold)" : c.fill}
-              textFill={n.depth === 1 ? INK : c.text}
+              fill={fill}
+              textFill={textOn(base)}
+              ring={pal.frame}
+              stroke={pal.stroke}
               selected={selectedId === n.id}
               highlighted={highlightIds?.has(n.id)}
               onSelect={onSelect}
@@ -187,20 +263,21 @@ export const TreePoster = memo(
         })}
         {layout.base && (
           <g style={{ cursor: onSelect ? "pointer" : undefined }} onClick={onSelect ? () => onSelect(layout.base!.id) : undefined}>
-            <circle cx={layout.base.x} cy={layout.base.y} r={layout.base.w / 2 + W * 0.006} fill={GOLD} />
+            <circle cx={layout.base.x} cy={layout.base.y} r={layout.base.w / 2 + W * 0.006} fill={pal.mono ? "#111" : "#b8892f"} />
             <circle
               cx={layout.base.x} cy={layout.base.y} r={layout.base.w / 2}
-              fill="url(#sh-gold)" stroke={selectedId === layout.base.id ? "#b3261e" : INK} strokeWidth={W * 0.002}
+              fill={pal.mono ? "#fff" : "url(#sh-gold)"} stroke={selectedId === layout.base.id ? "#b3261e" : pal.ink} strokeWidth={W * 0.002}
             />
-            <text x={layout.base.x} y={layout.base.y} textAnchor="middle" dominantBaseline="central" fontSize={layout.base.fontSize} fontWeight={700} fill={INK}>
-              {layout.base.member.name}
+            <text x={layout.base.x} y={layout.base.y} textAnchor="middle" dominantBaseline="central" fontSize={layout.base.fontSize} fontWeight={700} fill={pal.ink}>
+              {layout.base.label}
             </text>
           </g>
         )}
 
-        <Legend layout={layout} />
-        <Stats layout={layout} />
-        <text x={W / 2} y={H - W * 0.045} textAnchor="middle" fontSize={W * 0.011} fill="#7a5a2c">
+        {layout.lineage && <LineageScroll layout={layout} pal={pal} />}
+        <Legend layout={layout} theme={theme} pal={pal} />
+        <Stats layout={layout} pal={pal} />
+        <text x={W / 2} y={H - W * 0.045} textAnchor="middle" fontSize={W * 0.011} fill={pal.mono ? "#555" : "#7a5a2c"}>
           {rtl ? `${meta.name} — صُمّمت بواسطة شجرة` : `${meta.name} — made with Shajarah`}
         </text>
       </svg>
@@ -208,128 +285,145 @@ export const TreePoster = memo(
   }),
 );
 
-function NameTag({
-  node, fill, textFill, selected, highlighted, onSelect,
-}: {
-  node: PosterNode;
-  fill: string;
-  textFill: string;
-  selected?: boolean;
-  highlighted?: boolean;
-  onSelect?: (id: string) => void;
-}) {
-  const stroke = selected ? "#b3261e" : highlighted ? "#8a5a00" : "rgba(43,26,12,0.55)";
-  const sw = selected || highlighted ? node.fontSize * 0.16 : node.fontSize * 0.06;
-  return (
-    <g
-      transform={`translate(${node.x.toFixed(1)} ${node.y.toFixed(1)})`}
-      style={{ cursor: onSelect ? "pointer" : undefined }}
-      onClick={onSelect ? () => onSelect(node.id) : undefined}
-    >
-      <title>{node.member.name}</title>
-      {node.shape === "medallion" ? (
-        <circle r={node.w / 2} fill={fill} stroke={selected ? stroke : GOLD} strokeWidth={Math.max(sw, node.w * 0.05)} />
-      ) : (
-        <rect x={-node.w / 2} y={-node.h / 2} width={node.w} height={node.h} rx={node.h / 2} fill={fill} stroke={stroke} strokeWidth={sw} />
-      )}
-      <text textAnchor="middle" dominantBaseline="central" fontSize={node.fontSize} fontWeight={node.shape === "medallion" ? 700 : 400} fill={textFill}>
-        {node.member.name}
-      </text>
-    </g>
-  );
-}
-
-const FEMALE_LEAF = "#d9708a";
-
 /** Leaf blade centred on the origin, pointing along +x: round base, pointed tip. */
 function leafPath(L: number, w: number): string {
-  const f = (n: number) => n.toFixed(1);
+  const f = (n: number) => n.toFixed(2);
   return `M${f(-L / 2)} 0C${f(-L * 0.22)} ${f(-w * 0.78)} ${f(L * 0.28)} ${f(-w * 0.62)} ${f(L / 2)} 0`
     + `C${f(L * 0.28)} ${f(w * 0.62)} ${f(-L * 0.22)} ${f(w * 0.78)} ${f(-L / 2)} 0Z`;
 }
 
-/** A person without descendants: a leaf with their name written along it. */
-function NamedLeaf({
-  node, selected, highlighted, onSelect,
+function PersonNode({
+  node, fill, textFill, ring, stroke, selected, highlighted, onSelect,
 }: {
   node: PosterNode;
+  fill: string;
+  textFill: string;
+  ring: string;
+  stroke: string;
   selected?: boolean;
   highlighted?: boolean;
   onSelect?: (id: string) => void;
 }) {
-  const female = node.member.gender === "FEMALE";
-  const fill = female ? FEMALE_LEAF : LEAF_TONES[hashString(node.id) % LEAF_TONES.length];
-  // Keep the text upright: flip it when the leaf points leftwards.
-  const flip = node.angle > 90 || node.angle < -90;
-  const stroke = selected ? "#b3261e" : highlighted ? "#8a5a00" : "rgba(20,40,10,0.45)";
+  const fs = node.fontSize;
+  const edge = selected ? "#b3261e" : highlighted ? "#8a5a00" : stroke;
+  const sw = selected || highlighted ? fs * 0.16 : fs * 0.06;
+  const leaf = node.shape === "leaf";
+  // Leaves keep their text upright by flipping when they point leftwards.
+  const flip = leaf && (node.angle > 90 || node.angle < -90);
+  let body: JSX.Element;
+  switch (node.shape) {
+    case "medallion":
+      body = <circle r={node.w / 2} fill={fill} stroke={selected ? edge : ring} strokeWidth={Math.max(sw, node.w * 0.05)} />;
+      break;
+    case "leaf":
+      body = <path d={leafPath(node.leafLength, node.leafWidth)} fill={fill} stroke={edge} strokeWidth={sw} />;
+      break;
+    case "circle":
+      body = <circle r={node.w / 2} fill={fill} stroke={edge} strokeWidth={Math.max(sw, fs * 0.08)} />;
+      break;
+    case "oval":
+      body = <ellipse rx={node.w / 2} ry={node.h / 2} fill={fill} stroke={edge} strokeWidth={Math.max(sw, fs * 0.08)} />;
+      break;
+    default:
+      body = <rect x={-node.w / 2} y={-node.h / 2} width={node.w} height={node.h} rx={Math.min(node.h, node.w) / 2} fill={fill} stroke={edge} strokeWidth={sw} />;
+  }
+  const bold = node.shape === "medallion";
   return (
     <g
-      transform={`translate(${node.x.toFixed(1)} ${node.y.toFixed(1)}) rotate(${node.angle.toFixed(1)})`}
+      transform={`translate(${node.x.toFixed(1)} ${node.y.toFixed(1)})${leaf ? ` rotate(${node.angle.toFixed(1)})` : ""}`}
       style={{ cursor: onSelect ? "pointer" : undefined }}
       onClick={onSelect ? () => onSelect(node.id) : undefined}
     >
-      <title>{node.member.name}</title>
-      <path
-        d={leafPath(node.leafLength, node.leafWidth)}
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={selected || highlighted ? node.fontSize * 0.16 : node.fontSize * 0.05}
-      />
-      <text
-        transform={flip ? "rotate(180)" : undefined}
-        textAnchor="middle"
-        dominantBaseline="central"
-        fontSize={node.fontSize}
-        fill="#ffffff"
-      >
-        {node.member.name}
-      </text>
+      <title>{node.label}</title>
+      {body}
+      <g transform={flip ? "rotate(180)" : undefined}>
+        <text y={node.subLabel ? -fs * 0.32 : 0} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight={bold ? 700 : 400} fill={textFill}>
+          {node.label}
+        </text>
+        {node.subLabel && (
+          <text y={fs * 0.55} textAnchor="middle" dominantBaseline="central" fontSize={fs * 0.7} fill={textFill} opacity={0.85}>
+            {node.subLabel}
+          </text>
+        )}
+      </g>
     </g>
   );
 }
 
-function Legend({ layout }: { layout: PosterLayout }) {
-  const { width: W, groundY, rtl, generationsPresent } = layout;
-  if (!generationsPresent.length) return null;
-  const gens = generationsPresent.slice(0, 20);
-  const cols = Math.ceil(gens.length / 5);
-  const rows = Math.ceil(gens.length / cols);
+/** Engraved panel listing ancestors that do not fit on the trunk. */
+function LineageScroll({ layout, pal }: { layout: PosterLayout; pal: Palette }) {
+  const l = layout.lineage!;
+  const { width: W, rtl } = layout;
+  const h = l.fontSize * 2.4 + l.lines.length * l.lineHeight;
+  return (
+    <g>
+      <rect x={l.x - l.width / 2} y={l.y} width={l.width} height={h} rx={W * 0.006} fill={pal.mono ? "#fff" : "#fbf5e6"} stroke={pal.frame} strokeWidth={W * 0.0012} />
+      <text x={l.x} y={l.y + l.fontSize * 1.3} textAnchor="middle" fontSize={l.fontSize * 1.15} fontWeight={700} fill={pal.ink}>
+        {rtl ? "النسب" : "Lineage"}
+      </text>
+      {l.lines.map((line, i) => (
+        <text
+          key={i}
+          x={l.x}
+          y={l.y + l.fontSize * 2.4 + (i + 0.6) * l.lineHeight}
+          textAnchor="middle"
+          direction={rtl ? "rtl" : "ltr"}
+          fontSize={l.fontSize}
+          fill={pal.ink}
+        >
+          {line}
+        </text>
+      ))}
+    </g>
+  );
+}
+
+function Legend({ layout, theme, pal }: { layout: PosterLayout; theme: PosterTheme; pal: Palette }) {
+  const { width: W, groundY, rtl, generationsPresent, generationOffset } = layout;
   const row = W * 0.017;
-  const boxW = W * 0.13 * cols + W * 0.02;
-  const boxH = row * (rows + 1.4) + W * 0.05;
+  type Item = { key: string; label: string; swatch: JSX.Element };
+  const swatch = (fill: string, kind: "pill" | "leaf" | "badge") =>
+    kind === "leaf" ? (
+      <use href="#sh-leaf" transform={`translate(0 0) scale(${W * 0.022})`} fill={fill} />
+    ) : (
+      <rect x={0} y={-row * 0.32} width={W * 0.018} height={row * 0.64} rx={row * 0.3} fill={fill} stroke={kind === "badge" ? theme.ancestor : "rgba(0,0,0,.35)"} strokeWidth={kind === "badge" ? 3 : 1} />
+    );
+  const items: Item[] = [];
+  if (theme.colorBy === "generation") {
+    for (const g of generationsPresent.slice(0, 20)) {
+      items.push({ key: `g${g}`, label: generationLabel(g - generationOffset, rtl), swatch: swatch(generationColor(g - generationOffset).fill, "pill") });
+    }
+  }
+  const leafKind = theme.nodeShape === "leaf" ? "leaf" : "pill";
+  const metal = theme.metallic;
+  items.push({ key: "m", label: rtl ? "ذكر" : "Male", swatch: swatch(metal ? "url(#sh-m-male)" : theme.male, leafKind) });
+  items.push({ key: "f", label: rtl ? "أنثى" : "Female", swatch: swatch(metal ? "url(#sh-m-female)" : theme.female, leafKind) });
+  if (theme.trunkStyle === "badges") items.push({ key: "a", label: rtl ? "الأجداد" : "Ancestors", swatch: swatch(pal.mono ? "#fff" : "#f6ecd2", "badge") });
+
+  const perCol = 6;
+  const cols = Math.ceil(items.length / perCol);
+  const rows = Math.min(items.length, perCol);
+  const colW = W * 0.13;
+  const boxW = colW * cols + W * 0.02;
+  const boxH = row * rows + W * 0.05;
   const x0 = rtl ? W * 0.05 : W * 0.95 - boxW;
   const y0 = groundY + W * 0.075;
   return (
     <g>
-      <rect x={x0} y={y0} width={boxW} height={boxH} rx={W * 0.006} fill="#fbf5e6" stroke={GOLD} strokeWidth={W * 0.0012} />
-      <text x={x0 + boxW / 2} y={y0 + W * 0.022} textAnchor="middle" fontSize={W * 0.013} fontWeight={700} fill={INK}>
-        {rtl ? "ألوان الأجيال" : "Generations"}
+      <rect x={x0} y={y0} width={boxW} height={boxH} rx={W * 0.006} fill={pal.mono ? "#fff" : "#fbf5e6"} stroke={pal.frame} strokeWidth={W * 0.0012} />
+      <text x={x0 + boxW / 2} y={y0 + W * 0.022} textAnchor="middle" fontSize={W * 0.013} fontWeight={700} fill={pal.ink}>
+        {theme.colorBy === "generation" ? (rtl ? "ألوان الأجيال" : "Generations") : rtl ? "دليل الألوان" : "Key"}
       </text>
-      {gens.map((g, i) => {
-        const col = Math.floor(i / rows);
-        const r = i % rows;
-        const cx = x0 + W * 0.01 + col * W * 0.13;
+      {items.map((it, i) => {
+        const col = Math.floor(i / perCol);
+        const r = i % perCol;
+        const cx = rtl ? x0 + boxW - W * 0.01 - col * colW : x0 + W * 0.01 + col * colW;
         const cy = y0 + W * 0.04 + r * row;
         return (
-          <g key={g}>
-            <rect x={rtl ? cx + W * 0.105 : cx} y={cy - row * 0.32} width={W * 0.018} height={row * 0.64} rx={row * 0.3} fill={generationColor(g).fill} stroke="rgba(0,0,0,.35)" strokeWidth={1} />
-            <text x={rtl ? cx + W * 0.098 : cx + W * 0.026} y={cy} dominantBaseline="central" textAnchor={rtl ? "end" : "start"} fontSize={W * 0.0105} fill={INK}>
-              {generationLabel(g, rtl)}
-            </text>
-          </g>
-        );
-      })}
-      {[
-        { fill: LEAF_TONES[1], label: rtl ? "ورقة: ابن" : "Leaf: son" },
-        { fill: FEMALE_LEAF, label: rtl ? "ورقة: ابنة" : "Leaf: daughter" },
-      ].map((k, i) => {
-        const cx = x0 + W * 0.01 + i * (boxW / 2);
-        const cy = y0 + W * 0.04 + (rows + 0.6) * row;
-        return (
-          <g key={k.label}>
-            <use href="#sh-leaf" transform={`translate(${rtl ? cx + boxW / 2 - W * 0.04 : cx} ${cy}) scale(${W * 0.022})`} fill={k.fill} />
-            <text x={rtl ? cx + boxW / 2 - W * 0.045 : cx + W * 0.028} y={cy} dominantBaseline="central" textAnchor={rtl ? "end" : "start"} fontSize={W * 0.0105} fill={INK}>
-              {k.label}
+          <g key={it.key}>
+            <g transform={`translate(${rtl ? cx - W * 0.018 : cx} ${cy})`}>{it.swatch}</g>
+            <text x={rtl ? cx - W * 0.026 : cx + W * 0.026} y={cy} dominantBaseline="central" textAnchor={rtl ? "end" : "start"} fontSize={W * 0.0105} fill={pal.ink}>
+              {it.label}
             </text>
           </g>
         );
@@ -338,7 +432,7 @@ function Legend({ layout }: { layout: PosterLayout }) {
   );
 }
 
-function Stats({ layout }: { layout: PosterLayout }) {
+function Stats({ layout, pal }: { layout: PosterLayout; pal: Palette }) {
   const { width: W, groundY, rtl, stats } = layout;
   const boxW = W * 0.2;
   const x0 = rtl ? W * 0.95 - boxW : W * 0.05;
@@ -350,16 +444,16 @@ function Stats({ layout }: { layout: PosterLayout }) {
   ];
   return (
     <g>
-      <rect x={x0} y={y0} width={boxW} height={W * 0.105} rx={W * 0.006} fill="#fbf5e6" stroke={GOLD} strokeWidth={W * 0.0012} />
-      <text x={x0 + boxW / 2} y={y0 + W * 0.022} textAnchor="middle" fontSize={W * 0.013} fontWeight={700} fill={INK}>
+      <rect x={x0} y={y0} width={boxW} height={W * 0.105} rx={W * 0.006} fill={pal.mono ? "#fff" : "#fbf5e6"} stroke={pal.frame} strokeWidth={W * 0.0012} />
+      <text x={x0 + boxW / 2} y={y0 + W * 0.022} textAnchor="middle" fontSize={W * 0.013} fontWeight={700} fill={pal.ink}>
         {rtl ? "إحصائية أفراد الأسرة" : "Family statistics"}
       </text>
       {rows.map(([ar, en, v], i) => (
         <g key={en}>
-          <text x={rtl ? x0 + boxW - W * 0.015 : x0 + W * 0.015} y={y0 + W * (0.047 + i * 0.02)} textAnchor="start" direction={rtl ? "rtl" : "ltr"} fontSize={W * 0.0115} fill={INK}>
+          <text x={rtl ? x0 + boxW - W * 0.015 : x0 + W * 0.015} y={y0 + W * (0.047 + i * 0.02)} textAnchor="start" direction={rtl ? "rtl" : "ltr"} fontSize={W * 0.0115} fill={pal.ink}>
             {rtl ? ar : en}
           </text>
-          <text x={rtl ? x0 + W * 0.015 : x0 + boxW - W * 0.015} y={y0 + W * (0.047 + i * 0.02)} textAnchor={rtl ? "start" : "end"} fontSize={W * 0.0115} fontWeight={700} fill={INK}>
+          <text x={rtl ? x0 + W * 0.015 : x0 + boxW - W * 0.015} y={y0 + W * (0.047 + i * 0.02)} textAnchor={rtl ? "start" : "end"} fontSize={W * 0.0115} fontWeight={700} fill={pal.ink}>
             {v.toLocaleString(rtl ? "ar-SA" : "en-US")}
           </text>
         </g>

@@ -1,5 +1,6 @@
 import { computeGenerations, parentAssignmentError } from "@/lib/genealogy";
 import type { MemberDTO, TreeDTO } from "@/lib/types";
+import { applyNasabLines } from "@/lib/nasab";
 import type {
   CreateMarriageInput, CreateMemberInput, UpdateMemberInput, UpdateTreeInput,
 } from "@/lib/validation";
@@ -12,6 +13,8 @@ export interface FamilyRepository {
   createMarriage(input: CreateMarriageInput): Promise<TreeDTO>;
   deleteMarriage(id: string): Promise<TreeDTO>;
   updateTree(input: UpdateTreeInput): Promise<TreeDTO>;
+  /** One nasab per line ("أحمد بن نوفل بن …"); reuses existing ancestors. */
+  importNasab(text: string): Promise<TreeDTO>;
 }
 
 async function call(url: string, method: string, body?: unknown): Promise<TreeDTO> {
@@ -33,6 +36,7 @@ export function apiRepository(treeId: string): FamilyRepository {
     createMarriage: (input) => call(`/api/trees/${treeId}/marriages`, "POST", input),
     deleteMarriage: (id) => call(`/api/marriages/${id}`, "DELETE"),
     updateTree: (input) => call(`/api/trees/${treeId}`, "PATCH", input),
+    importNasab: (text) => call(`/api/trees/${treeId}/import-nasab`, "POST", { text }),
   };
 }
 
@@ -82,6 +86,7 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
       return commit({
         ...tree,
         rootMemberId: tree.rootMemberId === id ? null : tree.rootMemberId,
+        crownBaseId: tree.crownBaseId === id ? null : tree.crownBaseId,
         members: tree.members
           .filter((m) => m.id !== id)
           .map((m) => ({
@@ -105,6 +110,14 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
     },
     async deleteMarriage(id) {
       return commit({ ...tree, marriages: tree.marriages.filter((x) => x.id !== id) });
+    },
+    async importNasab(text) {
+      const { members, newRootId } = applyNasabLines(tree.members, tree.lineage, text, () => `local-${Date.now()}-${seq++}`);
+      const rootMemberId =
+        newRootId && (!tree.rootMemberId || members.find((m) => m.id === tree.rootMemberId)?.fatherId)
+          ? newRootId
+          : tree.rootMemberId;
+      return commit({ ...tree, members, rootMemberId });
     },
     async updateTree(input) {
       return commit({

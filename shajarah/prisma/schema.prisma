@@ -43,7 +43,12 @@ model FamilyTree {
   // parent is used.
   rootMemberId String?    @unique
   rootMember   Member?    @relation("TreeRoot", fields: [rootMemberId], references: [id], onDelete: SetNull)
-  // Free-form poster settings (palette, paper size, show females, ...)
+  // The branching ancestor where the canopy starts. Trunk membership is
+  // derived from it (ancestors of this member), so there is no per-member
+  // "isTrunkNode" flag that could drift out of sync. Null = automatic.
+  crownBaseId  String?    @unique
+  crownBase    Member?    @relation("TreeCrownBase", fields: [crownBaseId], references: [id], onDelete: SetNull)
+  // Poster settings: show females, seed, theme (colours, shapes, labels)
   settings     Json?
   members      Member[]   @relation("TreeMembers")
   marriages    Marriage[]
@@ -79,6 +84,7 @@ model Member {
   marriagesAsA Marriage[] @relation("SpouseA")
   marriagesAsB Marriage[] @relation("SpouseB")
   rootOfTree   FamilyTree? @relation("TreeRoot")
+  crownBaseOfTree FamilyTree? @relation("TreeCrownBase")
 
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
