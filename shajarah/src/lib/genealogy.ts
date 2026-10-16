@@ -114,3 +114,33 @@ export function nasab(members: MemberDTO[], id: string, depth = 4): string {
   }
   return parts.join(" بن ");
 }
+
+/**
+ * A member's direct line: every ancestor (through the lineage parent, up to
+ * the root) and every descendant (through the lineage). Siblings, cousins
+ * and half-siblings are not on it. Used to highlight a person's line.
+ */
+export function lineagePath(members: MemberDTO[], lineage: Lineage, memberId: string) {
+  const byId = new Map(members.map((m) => [m.id, m]));
+  const ancestors: string[] = [];
+  const seen = new Set<string>([memberId]);
+  let cur = byId.get(memberId);
+  while (cur) {
+    const p = lineageParentId(cur, lineage);
+    if (!p || seen.has(p)) break;
+    ancestors.push(p);
+    seen.add(p);
+    cur = byId.get(p);
+  }
+  const index = childrenIndex(members, lineage);
+  const descendants: string[] = [];
+  const stack = [...(index.get(memberId) ?? [])];
+  while (stack.length) {
+    const c = stack.pop()!;
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    descendants.push(c.id);
+    stack.push(...(index.get(c.id) ?? []));
+  }
+  return { ancestors, descendants };
+}

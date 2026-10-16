@@ -49,6 +49,7 @@ import {
   add, circlePath, cubicPoint as cubicPointAt, cubicTangent, len, norm, ribbonPath, scale, sub,
   type Cubic, type Vec,
 } from "./geometry";
+import { validateRelationships, type ClarityReport } from "./clarity";
 import { growFoliage, type Box, type Foliage } from "./foliage";
 import { mulberry32 } from "./random";
 
@@ -117,11 +118,34 @@ export interface PosterNode {
   leafWidth: number;
   leafCount: number;
   parentId: string | null;
+  /**
+   * Which major lineage this person belongs to (index, in order around the
+   * canopy), for branch colouring; null for the trunk, the crown base and
+   * childless sons of the crown base.
+   */
+  lineage?: number | null;
+}
+
+/**
+ * One drawn parent → child connection, as its centreline (sampled), so the
+ * relationship-clarity check can verify where every line starts, ends and
+ * what it passes.
+ */
+export interface Edge {
+  parentId: string;
+  childId: string;
+  points: Vec[];
+  /** Stroke width at the start and the end. */
+  w0: number;
+  w1: number;
+  /** The child's lineage (see PosterNode.lineage). */
+  lineage?: number | null;
 }
 
 export interface Branch {
   d: string;
   w: number;
+  lineage?: number | null;
 }
 
 export interface TrunkLabel {
@@ -168,6 +192,8 @@ export interface PosterLayout {
   nodes: PosterNode[];
   /** Branch outlines (filled with bark), with an optional light-side highlight. */
   branches: Branch[];
+  /** Centrelines of every drawn parent → child connection. */
+  edges: Edge[];
   /** Soft silhouette around the canopy (balanced oval). */
   canopy: string | null;
   /** Decorative twigs and leaves (null when names are leaves themselves). */
@@ -190,6 +216,8 @@ export interface PosterLayout {
   legibility: { minTextMm: number; smallestTextMm: number; ok: boolean; scaleNeeded: number };
   /** Name tags still overlapping after relaxation (0 for a valid layout). */
   overlaps: number;
+  /** Relationship-clarity check of the drawn connections (see clarity.ts). */
+  clarity: ClarityReport;
   /** Generation of the crown base; legend numbering and colours start here. */
   generationOffset: number;
   /** Generations present on crown / side-branch tags (for the legend). */
@@ -207,6 +235,10 @@ type HNode = HierarchyNode<TNode> & { u?: number; u0?: number; u1?: number };
 type Region = "crown" | "side" | "fixed";
 type LiveNode = PosterNode & {
   tx: number; ty: number; mass: number; region: Region; side: number;
+  /** Crown nodes: the angular sector (around the crown base) of their sub-branch. */
+  sector?: [number, number];
+  /** Crown nodes: the ray (angle from the crown base) the name sits on. */
+  ray?: number;
 };
 
 const ARABIC = /[؀-ۿ]/;
@@ -221,17 +253,52 @@ const HONORIFICS = /^(عليه السلام|رضي الله عنه|رحمه ال
  * below the minimum is flagged rather than silently shrunk.
  */
 export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): PosterLayout {
-  let scale = 1;
-  let layout = layoutAttempt(tree, opts, scale);
-  for (let i = 0; i < 10 && layout.overlaps > 0; i++) {
-    scale *= 0.92;
-    layout = layoutAttempt(tree, opts, scale);
+  // Each attempt is verified for overlapping names AND for relationship
+  // clarity (every line from the right parent to the right child, none
+  // hidden under another name, no ambiguous crossings). Ambiguity means the
+  // names are too crowded, so the next attempt gives each one more room.
+  const badness = (l: PosterLayout) => l.overlaps * 10 + l.clarity.issues.length;
+  const attempt = (scale: number, final = false) => {
+    const layout = layoutAttempt(tree, opts, scale, final);
+    layout.clarity = validateRelationships(layout, tree);
+    return layout;
+  };
+  const isClean = (l: PosterLayout) => l.overlaps === 0 && l.clarity.ok;
+  const tried = new Map<number, PosterLayout>();
+  const at = (scale: number) => {
+    const key = Math.round(scale * 1000) / 1000;
+    if (!tried.has(key)) tried.set(key, attempt(key));
+    return tried.get(key)!;
+  };
+  // the largest clean scale in (lo, hi], given that lo is clean
+  const bisect = (lo: number, hi: number) => {
+    for (let i = 0; i < 2; i++) {
+      const mid = (lo + hi) / 2;
+      if (isClean(at(mid))) lo = mid; else hi = mid;
+    }
+    return lo;
+  };
+  let chosen = 1;
+  const full = at(1);
+  if (!isClean(full)) {
+    // the smallest scale at which the names are still legible
+    const legibleScale = clamp((full.legibility.minTextMm / Math.max(1e-6, full.legibility.smallestTextMm)) * 1.02, 0.35, 1);
+    if (legibleScale < 0.999 && isClean(at(legibleScale))) chosen = bisect(legibleScale, 1);
+    else if (isClean(at(0.35))) chosen = bisect(0.35, legibleScale); // clean only below legible size
+    else {
+      // nothing is clean: prefer no overlapping names, then legible text,
+      // then the fewest ambiguities (and the editor recommends a larger size)
+      const rank = (l: PosterLayout) => (l.overlaps > 0 ? 2e6 : 0) + (l.legibility.ok ? 0 : 1e6) + badness(l);
+      chosen = [...tried.entries()].sort((a, b) => rank(a[1]) - rank(b[1]) || b[0] - a[0])[0][0];
+    }
   }
-  if (layout.overlaps > 0) layout.legibility = { ...layout.legibility, ok: false };
-  return layout;
+  // decorative foliage is only grown for the chosen layout
+  if (opts.foliage) return attempt(chosen, true);
+  return at(chosen);
 }
 
-function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): PosterLayout {
+
+function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true): PosterLayout {
   const W = opts.width ?? 2400;
   const H = opts.height ?? Math.round(W * Math.SQRT2);
   const seed = opts.seed ?? tree.settings?.seed ?? 7;
@@ -275,10 +342,11 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
     width: W, height: H, rtl: true, crown, origin, groundY,
     trunkPath: trunkOutline(origin, groundY, trunkWidth), trunkWidth,
     trunkLabels: [], soil: null, trunkZigzag: false, base: null, stubs: [], nodes: [],
-    branches: [], canopy: null, foliage: null, surfaceRoots: [], medallions: [],
+    branches: [], edges: [], canopy: null, foliage: null, surfaceRoots: [], medallions: [],
     frame: place,
     legibility: { minTextMm, smallestTextMm: minTextMm, ok: true, scaleNeeded: 1 },
     overlaps: 0,
+    clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },
     generationOffset: 0, generationsPresent: [], stats,
   };
   if (visible.length === 0) return empty;
@@ -480,7 +548,9 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
     plan = plans[plans.length - 1];
     f = largestFitting(plan, minFont * 0.2, minFont);
   }
-  f *= fontScale; // < 1 only when a previous attempt left overlapping names
+  // A retry (fontScale < 1) keeps the canopy the same size and sets the
+  // canopy's names smaller, so each gets more room around it.
+  const fl = f * fontScale;
   const trunkZigzag = plan.zig;
   const shownTrunk = plan.onTrunk;
   const ancient = plan.soil;
@@ -526,7 +596,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
     return Math.abs((p.x - crown.cx) / ((crown.rx + inflate) * k)) ** crown.exponent + Math.abs(ny) ** crown.exponent <= 1;
   };
   const dirOf = (theta: number): Vec => ({ x: Math.cos(theta), y: -Math.sin(theta) });
-  const reach = (theta: number) => {
+  const reachExact = (theta: number) => {
     let lo = 0, hi = Math.max(crown.rx, crown.ry) * 2.5;
     const d = dirOf(theta);
     for (let i = 0; i < 30; i++) {
@@ -535,18 +605,36 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
     }
     return lo;
   };
-  const thetaStart = Math.PI + 0.32;
-  const thetaEnd = -0.32;
+  // a little below horizontal on each side, not into the corner by the trunk
+  const thetaStart = Math.PI + 0.12;
+  const thetaEnd = -0.12;
+  // reach() is called very often (ring packing): a lookup table over the
+  // crown's angular range, interpolated, instead of a bisection per call
+  const REACH_N = 720;
+  const reachTable = Array.from({ length: REACH_N + 1 }, (_, i) => reachExact(thetaEnd + ((thetaStart - thetaEnd) * i) / REACH_N));
+  const reach = (theta: number) => {
+    const t = ((theta - thetaEnd) / (thetaStart - thetaEnd)) * REACH_N;
+    if (t <= 0 || t >= REACH_N) return reachExact(theta);
+    const i = Math.floor(t);
+    return reachTable[i] + (reachTable[i + 1] - reachTable[i]) * (t - i);
+  };
   const SAMPLES = 360;
   const thetas: number[] = [];
   const cum: number[] = [0];
   let prevPt: Vec | null = null;
+  // u is spread by CAPACITY: how many horizontal names fit side by side
+  // along the rim at each angle. At the top a name takes its full width
+  // across the ring, on the sides only its height, so the sides take more
+  // names and the narrow top is not overfilled.
+  let prevCap = 0;
   for (let i = 0; i <= SAMPLES; i++) {
     const th = thetaStart + (thetaEnd - thetaStart) * (i / SAMPLES);
-    const pt = add(origin, scale(dirOf(th), reach(th)));
+    const R = reach(th);
+    const cap = R / (4.2 * Math.abs(Math.sin(th)) + 1.7 * Math.abs(Math.cos(th)));
     thetas.push(th);
-    if (prevPt) cum.push(cum[cum.length - 1] + len(sub(pt, prevPt)));
-    prevPt = pt;
+    if (prevPt) cum.push(cum[cum.length - 1] + (cap + prevCap) / 2);
+    prevPt = add(origin, scale(dirOf(th), R));
+    prevCap = cap;
   }
   const total = cum[cum.length - 1];
   const uToTheta = (u: number) => {
@@ -587,7 +675,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
     const { label, subLabel } = labelOf(m);
     const medallion = isMedallion(n, depth, region);
     const terminal = !n.children;
-    let fs = fontFor(depth, medallion, f);
+    let fs = fontFor(depth, medallion, fl);
     const subH = subLabel ? fs * 0.8 : 0;
     let shape: PosterShape;
     let w: number, h: number, angle = 0, leafLength = 0, leafWidth = 0;
@@ -599,7 +687,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
       // The leaf points away from its parent but stays close to horizontal
       // (at most 30° up, 12° down), so the name on it always reads easily.
       shape = "leaf";
-      fs = Math.max(floorFor(f), fs * 0.9);
+      fs = Math.max(floorFor(fl), fs * 0.9);
       const out = norm(add(scale(norm(sub(p, from)), 0.8), scale(UP, 0.2)));
       const dir = Math.abs(out.x) < 0.05 ? (p.x >= origin.x ? 1 : -1) : Math.sign(out.x);
       const tilt = clamp((Math.atan2(-out.y, Math.abs(out.x)) * 180) / Math.PI, -12, 30);
@@ -646,15 +734,82 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
   for (const n of crownNodes) {
     const d = n.depth - base.depth;
     const halfSpan = ((n.u1 ?? 0) - (n.u0 ?? 0)) / 2;
-    const u = (n.u ?? 0.5) + (d >= 2 ? (rand() - 0.5) * 0.3 * halfSpan : 0);
+    // ("re-grow" no longer moves names: their place is fixed by the genealogy)
+    void halfSpan;
+    const u = n.u ?? 0.5;
     const theta = uToTheta(u);
-    // Mostly by generation (rings), partly by how far the line still
-    // grows, so childless members reach towards the rim and it fills.
-    const t = 0.6 * (d / maxDepth) + 0.4 * (d / (d + n.height));
+    // Strictly by generation (rings): siblings share a ring and all their
+    // descendants lie further out in their own sector, so no line ever has
+    // to pass a sibling's place on its way out.
+    const t = d / maxDepth;
     const R = reach(theta) * 0.95;
     const p = add(origin, scale(dirOf(theta), r0 + t * Math.max(0, R - r0)));
     const parent = byId.get(n.parent?.data.member?.id ?? "");
-    makeNode(n, p, d, parent ? { x: parent.tx, y: parent.ty } : origin, "crown", 0);
+    const node = makeNode(n, p, d, parent ? { x: parent.tx, y: parent.ty } : origin, "crown", 0);
+    const a0 = uToTheta(n.u0 ?? 0), a1 = uToTheta(n.u1 ?? 1);
+    node.sector = [Math.min(a0, a1), Math.max(a0, a1)];
+    node.ray = theta;
+  }
+
+  /** Furthest a label can sit along a ray and still be fully on the page. */
+  const rMaxOnPage = (n: { w: number; h: number }, th: number) => {
+    const d = dirOf(th);
+    let r = Infinity;
+    if (d.x > 1e-6) r = Math.min(r, (W - margin - n.w / 2 - origin.x) / d.x);
+    if (d.x < -1e-6) r = Math.min(r, (margin + n.w / 2 - origin.x) / d.x);
+    if (d.y < -1e-6) r = Math.min(r, (contentTop + n.h / 2 - origin.y) / d.y);
+    return r;
+  };
+
+  // ── 4b. Ring packing ────────────────────────────────────────────────
+  // Names on the same generation ring are spaced along the ring, keeping
+  // the family order (the partition's DFS order). With the order the same
+  // on every ring, lines between consecutive rings cannot cross, and
+  // siblings never sit behind one another on a line.
+  {
+    const crownLive = nodes.filter((n) => n.region === "crown" && n.ray !== undefined);
+    const rings = new Map<number, LiveNode[]>();
+    for (const n of crownLive) {
+      const list = rings.get(n.depth);
+      if (list) list.push(n); else rings.set(n.depth, [n]);
+    }
+    const lo = thetaEnd, hi = thetaStart;
+    for (const [d, ring] of rings) {
+      ring.sort((a, b) => b.ray! - a.ray!); // anticlockwise from the left
+      const radiusAt = (th: number) => r0 + (d / maxDepth) * Math.max(0, reach(th) * 0.95 - r0);
+      // angular half-width of a label at angle th (its extent across the ray)
+      const half = (n: LiveNode, th: number) =>
+        // (+ a corridor so neighbouring lines stay clearly apart)
+        (Math.abs((n.w / 2) * Math.sin(th)) + Math.abs((n.h / 2) * Math.cos(th)) + f * 0.6) / Math.max(1, radiusAt(th));
+      const target = ring.map((n) => n.ray!);
+      // 1-D packing along the ring: neighbours pushed apart, kept in order,
+      // with a gentle pull back to their targets. (Any overlap left is then
+      // resolved by stepping out along the ray, which keeps each line close
+      // to its parent's direction; pushing names further along the ring
+      // slants lines across their neighbours.)
+      const th = [...target];
+      for (let it = 0; it < 200; it++) {
+        let moved = false;
+        for (let i = 1; i < th.length; i++) {
+          const need = half(ring[i - 1], th[i - 1]) + half(ring[i], th[i]);
+          const gap = th[i - 1] - th[i];
+          if (gap < need) {
+            const push = (need - gap) / 2;
+            th[i - 1] += push;
+            th[i] -= push;
+            moved = true;
+          }
+        }
+        for (let i = 0; i < th.length; i++) th[i] = clamp(th[i] + (target[i] - th[i]) * 0.02, lo, hi);
+        if (!moved) break;
+      }
+      ring.forEach((n, i) => {
+        n.ray = th[i];
+        const p = add(origin, scale(dirOf(th[i]), Math.min(radiusAt(th[i]), rMaxOnPage(n, th[i]))));
+        n.x = n.tx = p.x;
+        n.y = n.ty = p.y;
+      });
+    }
   }
 
   // ── Trunk labels ─────────────────────────────────────────────────────
@@ -678,6 +833,8 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
   // ── Offshoots: stubs (childless) and side branches (with descendants) ─
   const stubs: PosterNode[] = [];
   const branchesOut: Branch[] = [];
+  const edges: Edge[] = [];
+  const sample = (c: Cubic, n = 16): Vec[] => Array.from({ length: n + 1 }, (_, i) => cubicPointAt(c, i / n));
   /** A clean tapered branch with a rounded joint where it starts. */
   const shaded = (curve: Cubic, w0: number, w1: number, samples = 14): Branch => ({
     d: ribbonPath(curve, w0, w1, samples) + circlePath(curve.p0, w0 / 2),
@@ -704,6 +861,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
         c2: add(end, { x: -side * trunkWidth * 0.2, y: trunkWidth * 0.25 }), p1: end,
       };
       branchesOut.push({ ...shaded(curve, TW * 0.2, TW * 0.1), w: trunkWidth });
+      edges.push({ parentId: o.anchor.data.member!.id, childId: m.id, points: sample(curve), w0: TW * 0.2, w1: TW * 0.1 });
       const fs = Math.max(floorFor(f), trunkFont * 0.8);
       const { label, subLabel } = labelOf(m);
       const size = Math.max(fs * 3.2, textWidth(label, fs) + fs, subLabel ? textWidth(subLabel, fs * 0.68) + fs * 1.4 : 0);
@@ -738,6 +896,33 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
       makeNode(n, p, d + 1, parent ? { x: parent.tx, y: parent.ty } : A, "side", side);
     }
   });
+
+  // ── Lineages ─────────────────────────────────────────────────────────
+  // A major lineage is a son of the crown base who has descendants (in
+  // order around the canopy, left to right), or a side branch growing from
+  // the trunk; everyone descended from it carries its index.
+  {
+    const limbs = nodes
+      .filter((n) => n.region === "crown" && n.depth === 1 && !n.terminal)
+      .sort((a, b) => (b.ray ?? 0) - (a.ray ?? 0));
+    const index = new Map<string, number>();
+    limbs.forEach((n, i) => index.set(n.id, i));
+    let next = limbs.length;
+    for (const n of nodes) {
+      if (n.region === "side" && !(n.parentId && byId.get(n.parentId)?.region === "side")) index.set(n.id, next++);
+    }
+    const lineageOf = (n: LiveNode): number | null => {
+      let cur: LiveNode | undefined = n;
+      for (let guard = 0; cur && guard < 200; guard++) {
+        const hit = index.get(cur.id);
+        if (hit !== undefined) return hit;
+        cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+        if (cur && cur.region === "fixed") return null;
+      }
+      return null;
+    };
+    for (const n of nodes) if (n.region !== "fixed") n.lineage = lineageOf(n);
+  }
 
   // Trunk labels and the base medallion are fixed obstacles too.
   for (const l of trunkLabels) {
@@ -786,7 +971,25 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
       n.y = origin.y + (dist ? d.y * k : -minD);
     }
     const trunkClear = trunkWidth * 0.6 + n.w / 2;
-    if (n.region === "crown") {
+    if (n.region === "crown" && n.ray !== undefined) {
+      // Clarity: a name only ever moves along its own ray (outward from the
+      // crown base), never sideways into a neighbouring family's sector, and
+      // always stays further out than its parent.
+      const dir = dirOf(n.ray);
+      let r = (n.x - origin.x) * dir.x + (n.y - origin.y) * dir.y;
+      const parent = n.parentId ? byId.get(n.parentId) : undefined;
+      if (parent && parent.region === "crown") {
+        const rp = (parent.x - origin.x) * dir.x + (parent.y - origin.y) * dir.y;
+        r = Math.max(r, rp + (parent.h + n.h) * 0.3);
+      }
+      r = Math.max(r, baseMedallionR + Math.max(n.w, n.h) / 2);
+      // on the page, by moving along the ray (never off it)
+      r = Math.min(r, rMaxOnPage(n, n.ray));
+      n.x = origin.x + dir.x * r;
+      n.y = origin.y + dir.y * r;
+      return;
+    }
+    if (n.region === "crown" && n.ray === undefined) {
       if (n.y > origin.y && Math.abs(n.x - origin.x) < trunkClear) n.y = origin.y;
       if (!insideCrown(n, -half * 0.6)) {
         n.x += (origin.x - n.x) * 0.04;
@@ -803,6 +1006,151 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
     n.y = Math.max(n.y, contentTop + n.h / 2);
   };
   relax(nodes, constrain);
+
+  // ── 5b. Connections, and clearing them of unrelated names ─────────────
+  // Each connection is a gentle cubic from parent to child that stays
+  // close to the straight line, so it remains inside its sub-branch's
+  // sector. A name sitting on someone else's line would look attached to
+  // it, so such names are pushed off the line (and relaxed again).
+  const growingNodes = nodes.filter((n) => n.region !== "fixed");
+  const sideAnchor = new Map(visibleOffshoots.map((o) => [o.node.data.member!.id, o.anchor.data.member!.id]));
+  const parentIdOf = (node: LiveNode) => node.parentId ?? sideAnchor.get(node.id) ?? base.data.member?.id ?? "";
+  const curveOf = new Map<string, Cubic>();
+  const buildCurves = () => {
+    const growthDir = new Map<string, Vec>();
+    for (const node of growingNodes) {
+      const parent = node.parentId ? byId.get(node.parentId) : undefined;
+      const P: Vec = parent && parent.region !== "fixed" ? { x: parent.x, y: parent.y } : (stemStart.get(node.id) ?? origin);
+      const gP = (node.parentId && growthDir.get(node.parentId)) || stemDir.get(node.id) || norm(sub(node, origin));
+      if (node.shape === "leaf") {
+        const a = (node.angle * Math.PI) / 180;
+        const dir: Vec = { x: Math.cos(a), y: Math.sin(a) };
+        // The stalk aims at the leaf's centre (the leaf is drawn over it, so
+        // it visibly meets the blade at its base). Aiming at the base itself
+        // would offset the line sideways past a sibling's and swap their order.
+        const B: Vec = { x: node.x, y: node.y };
+        const L = len(sub(B, P)) || 1;
+        const dv = norm(sub(B, P));
+        const s0 = norm(add(scale(gP, 0.3), scale(dv, 0.7)));
+        // arrive along the leaf's own ray, like every other line; arriving
+        // along the (horizontal) blade would swing the end sideways across
+        // a sibling's line
+        void dir;
+        const rayDirL = node.ray !== undefined ? dirOf(node.ray) : dv;
+        const e0 = norm(add(scale(dv, 0.8), scale(rayDirL, 0.2)));
+        curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * 0.35)), c2: sub(B, scale(e0, L * 0.3)), p1: B });
+        continue;
+      }
+      const C: Vec = { x: node.x, y: node.y };
+      const L = len(sub(C, P)) || 1;
+      const dv = scale(sub(C, P), 1 / L);
+      const s0 = norm(add(scale(gP, 0.3), scale(dv, 0.7)));
+      // arrive along the child's own ray (outward), never hooking back
+      const rayDir = node.ray !== undefined ? dirOf(node.ray) : UP;
+      const e0 = norm(add(scale(dv, 0.8), scale(rayDir, 0.2)));
+      curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * 0.38)), c2: sub(C, scale(e0, L * 0.3)), p1: C });
+      growthDir.set(node.id, e0);
+    }
+  };
+  // Leaves point away from where their parent actually ended up (a mirror
+  // keeps the same footprint, so no new overlaps).
+  for (const node of growingNodes) {
+    if (node.shape !== "leaf") continue;
+    const parent = node.parentId ? byId.get(node.parentId) : undefined;
+    const from = parent && parent.region !== "fixed" ? parent : (stemStart.get(node.id) ?? origin);
+    const pointsRight = Math.cos((node.angle * Math.PI) / 180) > 0;
+    if (Math.abs(node.x - from.x) > node.fontSize && (node.x > from.x) !== pointsRight) {
+      node.angle = 180 - node.angle;
+      if (node.angle > 180) node.angle -= 360;
+    }
+  }
+  buildCurves();
+
+  // ── 5c. Untangling ───────────────────────────────────────────────────
+  // The relationship check runs on the provisional drawing; each remaining
+  // ambiguity gets a small local fix that keeps every name on its own ray
+  // (so family order is untouched): mirror the leaf in the way, or move a
+  // name further out along its ray. A fix is kept only if the number of
+  // ambiguities drops and no names come to overlap.
+  {
+    const lineW = Math.max(W * 0.0018, f * 0.1) * 1.5;
+    const baseBox = base.data.member
+      ? { id: base.data.member.id, member: base.data.member, x: origin.x, y: origin.y, w: baseMedallionR * 2, h: baseMedallionR * 2, shape: "medallion" }
+      : null;
+    const check = () => {
+      buildCurves();
+      const drawnEdges: Edge[] = [
+        ...edges,
+        ...growingNodes.map((n) => ({ parentId: parentIdOf(n), childId: n.id, points: sample(curveOf.get(n.id)!), w0: lineW, w1: lineW / 2 })),
+      ];
+      const provisional = {
+        nodes: growingNodes, stubs, base: baseBox, trunkLabels, edges: drawnEdges, origin, trunkWidth,
+      } as unknown as PosterLayout;
+      return validateRelationships(provisional, tree).issues;
+    };
+    const overlapsAny = (n: LiveNode) =>
+      nodes.some((o) => o !== n && Math.abs(o.x - n.x) < (o.w + n.w) / 2 && Math.abs(o.y - n.y) < (o.h + n.h) / 2);
+    const nodeById = (id: string) => growingNodes.find((n) => n.id === id);
+    const outward = (n: LiveNode, by: number) => {
+      if (n.ray === undefined) return;
+      const d = dirOf(n.ray);
+      const parent = n.parentId ? byId.get(n.parentId) : undefined;
+      const rp = parent && parent.region === "crown" ? (parent.x - origin.x) * d.x + (parent.y - origin.y) * d.y + (parent.h + n.h) * 0.3 : 0;
+      const r = Math.max(rp, Math.min((n.x - origin.x) * d.x + (n.y - origin.y) * d.y + by, rMaxOnPage(n, n.ray)));
+      n.x = origin.x + d.x * r;
+      n.y = origin.y + d.y * r;
+    };
+    const turn = (n: LiveNode, k: number) => {
+      if (n.ray === undefined) return;
+      const d0 = dirOf(n.ray);
+      const r = (n.x - origin.x) * d0.x + (n.y - origin.y) * d0.y;
+      const th = clamp(n.ray + (k * (n.h + f * 0.3)) / Math.max(r, 1), thetaEnd, thetaStart);
+      const d = dirOf(th);
+      const rr = Math.min(r, rMaxOnPage(n, th));
+      n.ray = th;
+      n.x = origin.x + d.x * rr;
+      n.y = origin.y + d.y * rr;
+    };
+    let issues = check();
+    // only near-clean layouts are untangled; many issues mean crowding,
+    // which more room (the caller's retry) solves
+    if (issues.length > 15) issues = [];
+    for (let round = 0; round < Math.min(24, issues.length * 3) && issues.length; round++) {
+      const issue = issues[round % issues.length];
+      const candidates: LiveNode[] = [];
+      if (issue.kind === "occlusion" && typeof issue.other === "string") {
+        const o = nodeById(issue.other);
+        if (o) candidates.push(o);
+      }
+      for (const id of [issue.edge?.[1], Array.isArray(issue.other) ? issue.other[1] : undefined]) {
+        const c = id ? nodeById(id) : undefined;
+        if (c) candidates.push(c);
+      }
+      let fixed = false;
+      for (const n of candidates) {
+        const moves: (() => void)[] = [];
+        if (n.shape === "leaf") moves.push(() => { n.angle = n.angle > 0 ? 180 - n.angle : -180 - n.angle; });
+        for (const k of [0.6, 1.5]) moves.push(() => outward(n, (n.h + n.w * 0.3) * k));
+        // a small turn along the ring, either way (validation rejects any
+        // turn that would cross a neighbour's line)
+        for (const k of [0.5, -0.5, 1, -1]) moves.push(() => turn(n, k));
+        for (const move of moves) {
+          const saved = { x: n.x, y: n.y, angle: n.angle, ray: n.ray };
+          move();
+          const next = overlapsAny(n) ? null : check();
+          if (next && next.length < issues.length) {
+            issues = next;
+            fixed = true;
+            break;
+          }
+          Object.assign(n, saved);
+        }
+        if (fixed) break;
+      }
+      if (!fixed && round >= issues.length) break;
+    }
+    buildCurves();
+  }
   // Verification: overlapping names left after relaxation (fixed obstacles
   // never move, so only pairs with a movable name count).
   let overlaps = 0;
@@ -821,8 +1169,9 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
   const bs = opts.branchScale ?? 1;
   const wMin = Math.max(W * 0.0018, f * 0.1);
   const wK = Math.min((trunkWidth * 0.8 - wMin) / Math.sqrt(totalLeaves), W * 0.016) * bs;
-  const widthOf = (leaves: number) => wMin + wK * Math.sqrt(leaves);
-  const growth = new Map<string, Vec>();
+  // pipe model, with fine twigs: a single leaf's stalk is only 1.5 × the
+  // minimum line, so neighbouring twigs stay clearly apart
+  const widthOf = (leaves: number) => wMin * 1.5 + wK * (Math.sqrt(leaves) - 1);
   const branches: Branch[] = [...branchesOut];
   const seeds: { p: Vec; dir: Vec }[] = [];
   const seedFrom = (curve: Cubic) => {
@@ -830,33 +1179,19 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
   };
 
   for (const node of growing) {
-    const parent = node.parentId ? byId.get(node.parentId) : undefined;
-    const P: Vec = parent && parent.region !== "fixed" ? parent : (stemStart.get(node.id) ?? origin);
-    const gP = (node.parentId && growth.get(node.parentId)) || stemDir.get(node.id) || UP;
+    const c = curveOf.get(node.id)!;
     if (node.shape === "leaf") {
-      // A thin stalk from the parent to the base of the leaf blade.
-      const a = (node.angle * Math.PI) / 180;
-      const dir: Vec = { x: Math.cos(a), y: Math.sin(a) };
-      const B = sub(node, scale(dir, node.leafLength / 2 - node.fontSize * 0.1));
-      const L = len(sub(B, P)) || 1;
-      const s = norm(add(scale(gP, 0.5), scale(norm(sub(B, P)), 0.5)));
-      const curve: Cubic = { p0: P, c1: add(P, scale(s, L * 0.4)), c2: sub(B, scale(dir, L * 0.3)), p1: B };
-      branches.push({ d: ribbonPath(curve, widthOf(1), Math.max(wMin * 0.8, node.fontSize * 0.14), 10), w: widthOf(1) });
-      seedFrom(curve);
-      continue;
+      // a thin stalk from the parent to the base of the leaf blade
+      const tip = Math.max(wMin * 0.8, node.fontSize * 0.14);
+      branches.push({ d: ribbonPath(c, widthOf(1), tip, 10), w: widthOf(1), lineage: node.lineage ?? null });
+      edges.push({ parentId: parentIdOf(node), childId: node.id, points: sample(c), w0: widthOf(1), w1: tip, lineage: node.lineage ?? null });
+    } else {
+      const w = widthOf(node.leafCount);
+      const w0 = node.depth === 1 ? w * 1.15 : w;
+      branches.push({ ...shaded(c, w0, w * 0.7), lineage: node.lineage ?? null });
+      edges.push({ parentId: parentIdOf(node), childId: node.id, points: sample(c), w0, w1: w * 0.7, lineage: node.lineage ?? null });
     }
-    const C: Vec = node;
-    const v = sub(C, P);
-    const L = len(v) || 1;
-    const dv = scale(v, 1 / L);
-    const limb = node.depth === 1;
-    const s = norm(add(scale(gP, limb ? 0.55 : 0.6), scale(dv, limb ? 0.45 : 0.4)));
-    const e = norm(add(scale(dv, 0.72), scale(UP, 0.28)));
-    const curve: Cubic = { p0: P, c1: add(P, scale(s, L * 0.42)), c2: sub(C, scale(e, L * 0.33)), p1: C };
-    growth.set(node.id, e);
-    const w = widthOf(node.leafCount);
-    branches.push(shaded(curve, limb ? w * 1.15 : w, w * 0.7));
-    seedFrom(curve);
+    seedFrom(c);
   }
   // Thick limbs first so thin branches (and their junctions) sit on top.
   branches.sort((a, b) => b.w - a.w);
@@ -886,7 +1221,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
 
   // ── Decorative foliage ───────────────────────────────────────────────
   let foliage: Foliage | null = null;
-  if (opts.foliage && nodeShape !== "leaf") {
+  if (opts.foliage && nodeShape !== "leaf" && final) {
     const obstacles: Box[] = [
       ...nodes.map((n) => ({ x: n.x, y: n.y, w: n.w + W * 0.006, h: n.h + W * 0.006 })),
       { x: origin.x, y: origin.y, w: baseMedallionR * 2.3, h: baseMedallionR * 2.3 },
@@ -1006,6 +1341,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
     stubs: stubs.map((s) => strip(s as LiveNode)),
     nodes: growing.map(strip),
     branches,
+    edges,
     canopy,
     foliage,
     surfaceRoots,
@@ -1015,6 +1351,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number): P
     generationsPresent: [...gens].sort((a, b) => a - b),
     legibility,
     overlaps,
+    clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },
   };
 }
 

@@ -62,6 +62,11 @@ export interface PosterTheme {
   frame: boolean;
   /** Daughters as capsules even when sons are leaves. */
   femaleCapsule: boolean;
+  /**
+   * Colour each major lineage's branches (and its members' rims) with one
+   * muted colour, carried through all its descendants.
+   */
+  branchColors: boolean;
 }
 
 export interface PosterSettings {

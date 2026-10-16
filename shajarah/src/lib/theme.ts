@@ -9,7 +9,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "refined", colorBy: "gender",
     male: "#c9cbc7", female: "#dcbc6a", ancestor: "#b08a2e", branch: "#6e5538",
     background: "parchment", metallic: true, nodeRim: "#8d8f8a",
-    nodeShape: "leaf", femaleCapsule: true, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "leaf", femaleCapsule: true, branchColors: true, labelMode: "name", showYears: false, trunkStyle: "badges",
     foliage: false, bismillah: true, verse: false, hadith: false, frame: false,
   },
   luxe: {
@@ -17,7 +17,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "luxe", colorBy: "gender",
     male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#5b4128",
     background: "parchment", metallic: true, nodeRim: "#6f6f6f",
-    nodeShape: "leaf", femaleCapsule: true, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "leaf", femaleCapsule: true, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
     foliage: false, ...ORNAMENTS,
   },
   heritage: {
@@ -25,7 +25,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "heritage", colorBy: "gender",
     male: "#fbf3dc", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: true, nodeRim: "#b8892f",
-    nodeShape: "circle", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "circle", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
     foliage: true, ...ORNAMENTS,
   },
   "silver-gold": {
@@ -33,7 +33,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "silver-gold", colorBy: "gender",
     male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: true, nodeRim: "#6f6f6f",
-    nodeShape: "oval", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "oval", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
     foliage: true, ...ORNAMENTS,
   },
   classic: {
@@ -41,7 +41,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "classic", colorBy: "generation",
     male: "#3f8434", female: "#d9708a", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false, nodeRim: "#2f4a1a",
-    nodeShape: "leaf", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "carved",
+    nodeShape: "leaf", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "carved",
     foliage: true, ...ORNAMENTS,
   },
   emerald: {
@@ -49,7 +49,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "emerald", colorBy: "gender",
     male: "#1f7a4d", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false, nodeRim: "#0f3d26",
-    nodeShape: "leaf", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "leaf", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
     foliage: true, ...ORNAMENTS,
   },
   mono: {
@@ -57,7 +57,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "mono", colorBy: "gender",
     male: "#ffffff", female: "#e6e6e6", ancestor: "#111111", branch: "#1a1a1a",
     background: "white", metallic: false, nodeRim: "#111111",
-    nodeShape: "circle", femaleCapsule: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "circle", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
     foliage: false, bismillah: true, verse: false, hadith: false, frame: false,
   },
 };
@@ -111,6 +111,30 @@ export function metalStops(c: string): [string, string, string] {
   if (k === "#c0c0c0") return ["#E8E8E8", "#C0C0C0", "#999999"]; // silver
   if (k === "#d4af37") return ["#FFE57F", "#D4AF37", "#AA7C11"]; // gold
   return [shade(c, 0.55), c, shade(c, -0.25)];
+}
+
+/**
+ * Muted, print-friendly lineage colours, ordered so neighbours differ
+ * strongly: forest green, burgundy, dusty blue, ochre, deep teal, plum.
+ * All are dark enough to read as lines on ivory (≥ 3:1).
+ */
+export const LINEAGE_COLORS = ["#3d6b45", "#7b3542", "#46688f", "#8f6a1e", "#23696b", "#6a4a72"] as const;
+
+export function lineageColor(i: number | null | undefined, fallback: string): string {
+  return i == null ? fallback : LINEAGE_COLORS[i % LINEAGE_COLORS.length];
+}
+
+/** WCAG contrast ratio between two colours. */
+export function contrast(a: string, b: string): number {
+  const lum = (hex: string) => {
+    const [r, g, bl] = rgb(hex).map((c) => {
+      const s = c / 255;
+      return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
 }
 
 /** A soft satin finish (highlight, body, shade): metal without the glare. */

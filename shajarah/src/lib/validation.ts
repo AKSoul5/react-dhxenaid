@@ -38,6 +38,7 @@ export const themeSchema = z
     hadith: z.boolean(),
     frame: z.boolean(),
     femaleCapsule: z.boolean(),
+    branchColors: z.boolean(),
   })
   .partial();
 

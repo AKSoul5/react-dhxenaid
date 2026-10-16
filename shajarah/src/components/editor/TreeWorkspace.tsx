@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { computePosterLayout } from "@/lib/layout/botanical";
 import { generationColor } from "@/lib/layout/palette";
-import { nasab } from "@/lib/genealogy";
+import { lineagePath, nasab } from "@/lib/genealogy";
 import type { Gender, TreeDTO } from "@/lib/types";
 import type { CreateMemberInput } from "@/lib/validation";
 import { ExportMenu } from "../poster/ExportMenu";
@@ -74,16 +74,13 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
 
   const selectedId = panel.kind === "edit" ? panel.id : null;
   const selected = tree.members.find((m) => m.id === selectedId) ?? null;
-  const highlightIds = useMemo(() => {
-    const ids = new Set<string>();
-    const byId = new Map(tree.members.map((m) => [m.id, m]));
-    let cur = selected ? byId.get(selected.fatherId ?? selected.motherId ?? "") : undefined;
-    while (cur && !ids.has(cur.id)) {
-      ids.add(cur.id);
-      cur = byId.get(cur.fatherId ?? cur.motherId ?? "");
-    }
-    return ids;
-  }, [selected, tree.members]);
+  // The selected person's direct line, from the data (not from the drawing)
+  const [trace, setTrace] = useState(true);
+  const lineageIds = useMemo(() => {
+    if (!selected || !trace) return undefined;
+    const { ancestors, descendants } = lineagePath(tree.members, tree.lineage, selected.id);
+    return new Set([...ancestors, ...descendants]);
+  }, [selected, trace, tree.members, tree.lineage]);
 
   const select = useCallback((id: string) => setPanel({ kind: "edit", id }), []);
 
@@ -135,9 +132,15 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             <input type="checkbox" checked={showFemales} onChange={(e) => updateSettings({ showFemales: e.target.checked })} />
             Show daughters
           </label>
-          <button type="button" className="btn-ghost" title="Re-grow the branches with a new random seed" onClick={() => updateSettings({ seed: seed + 1 })}>
-            ↻ Re-grow
-          </button>
+          <label className="flex items-center gap-2 text-sm" title="Select a person to highlight their ancestors and descendants">
+            <input type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />
+            Trace lineage
+          </label>
+          {theme.foliage && (
+            <button type="button" className="btn-ghost" title="Grow the decorative foliage anew" onClick={() => updateSettings({ seed: seed + 1 })}>
+              ↻ Re-grow foliage
+            </button>
+          )}
           <StylePanel
             theme={theme}
             onChange={(patch) => updateSettings({ theme: { ...theme, ...patch } })}
@@ -297,13 +300,29 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               meta={{ title: tree.title, subtitle: tree.subtitle, name: tree.name }}
               theme={theme}
               selectedId={selectedId}
-              highlightIds={highlightIds}
+              lineageIds={lineageIds}
+              showIssues
               onSelect={select}
               frameSrc={frameSrc}
               className="block h-full w-full"
             />
           </PosterViewport>
-          {!layout.legibility.ok && (
+          {!layout.clarity.ok && (
+            <ClarityNotice
+              issues={layout.clarity.issues.length}
+              paper={posterSize}
+              findSize={() => {
+                // try each larger poster until the connections are unambiguous
+                for (const p of PAPER_ORDER.slice(PAPER_ORDER.indexOf(posterSize) + 1)) {
+                  const l = computePosterLayout(deferredTree, { showFemales, seed, ...layoutOptionsFor(theme, p) });
+                  if (l.clarity.ok && l.overlaps === 0 && l.legibility.ok) return p;
+                }
+                return null;
+              }}
+              onChoose={(p) => updateSettings({ posterSize: p })}
+            />
+          )}
+          {layout.clarity.ok && !layout.legibility.ok && (
             <LegibilityNotice
               smallestMm={layout.legibility.smallestTextMm}
               minMm={layout.legibility.minTextMm}
@@ -384,6 +403,57 @@ function LegibilityNotice({
       {suggestion && (
         <button type="button" className="btn-outline mt-2 py-1 text-xs" onClick={() => onChoose(suggestion)}>
           Use {suggestion}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Shown when some connections could still be misread (a line under an
+ * unrelated name, a shallow crossing, two lines running together). The
+ * spots are circled on the poster; a larger poster usually resolves them.
+ */
+function ClarityNotice({
+  issues, paper, findSize, onChoose,
+}: {
+  issues: number;
+  paper: PaperSize;
+  findSize: () => PaperSize | null;
+  onChoose: (p: PaperSize) => void;
+}) {
+  const [state, setState] = useState<"idle" | "searching" | PaperSize | "none">("idle");
+  useEffect(() => setState("idle"), [issues, paper]);
+  return (
+    <div className="absolute end-4 top-4 z-10 max-w-sm rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900 shadow">
+      <p className="font-semibold">Some connections are ambiguous on {paper}</p>
+      <p className="mt-1">
+        {issues} place{issues === 1 ? "" : "s"} (circled) where a line passes under another name, crosses
+        too shallowly or runs into another line, so a reader could misread who descends from whom.
+      </p>
+      {state === "idle" && (
+        <button
+          type="button"
+          className="btn-outline mt-2 py-1 text-xs"
+          onClick={() => {
+            setState("searching");
+            // let the button repaint before the (blocking) layout runs
+            setTimeout(() => setState(findSize() ?? "none"), 30);
+          }}
+        >
+          Find a poster size where every line is clear
+        </button>
+      )}
+      {state === "searching" && <p className="mt-2">Checking larger sizes…</p>}
+      {state === "none" && (
+        <p className="mt-2">
+          No single poster up to 2A0 keeps every line clear for this family. The circled places stay
+          marked (they never print); hiding daughters reduces the density.
+        </p>
+      )}
+      {state !== "idle" && state !== "searching" && state !== "none" && (
+        <button type="button" className="btn-outline mt-2 py-1 text-xs" onClick={() => onChoose(state)}>
+          Use {state}: every line clear
         </button>
       )}
     </div>

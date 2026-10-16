@@ -53,13 +53,13 @@ describe("botanical layout", () => {
     }
   });
 
-  it("is deterministic for a given seed and varies with the seed", () => {
+  it("is deterministic, and places names by the genealogy alone (not the seed)", () => {
     const a = computePosterLayout(tree, { seed: 3 });
     const b = computePosterLayout(tree, { seed: 3 });
     const c = computePosterLayout(tree, { seed: 4 });
     expect(a.branches).toEqual(b.branches);
     expect(a.nodes.map((n) => n.angle)).toEqual(b.nodes.map((n) => n.angle));
-    expect(a.branches).not.toEqual(c.branches);
+    expect(c.nodes.map((n) => [n.x, n.y])).toEqual(a.nodes.map((n) => [n.x, n.y]));
   });
 
   it("includes daughters when showFemales is on", () => {

@@ -194,7 +194,7 @@ in `settings.posterSize`.
 
 | Preset | Look |
 | --- | --- |
-| Refined ivory (default) | fine gold rule on ivory, satin-silver leaves for sons, soft-gold capsules for daughters, ivory medallions, basmala and Ruqaa title |
+| Refined ivory (default) | fine gold rule on ivory, satin-silver leaves for sons, soft-gold capsules for daughters, ivory medallions, one muted colour per main branch, basmala and Ruqaa title |
 | Luxe | the same tree inside the Canva gold-foil frame, with the verse and hadith medallions |
 | Heritage | ivory roundels with gold rims, gold scalloped medallions, leafy canopy, basmala, verse and hadith medallions |
 | Silver & Gold | metallic silver (male) and gold (female) ovals, framed ancestor badges |
@@ -331,28 +331,82 @@ seed always produce the same poster.
    - If none fits legibly, the family is still laid out, smaller.
      `layout.legibility` then reports `ok: false` and how much larger the
      paper must be. The editor offers that size.
-5. **Partition.** Each crown node gets a slice of a 0–1 axis proportional to
-   the number of names in its sub-branch, so big branches get more room.
-   - The axis maps to an angle around the crown base by the arc length of
-     the crown outline.
-   - Sibling order is kept, so branches never cross at their roots.
-   - In RTL (Arabic) trees the eldest sits on the right.
-6. **Radius.** Distance from the crown base is mostly generation depth
-   (rings), partly how far the line still grows, so childless members
-   reach toward the rim.
-7. **Collision relaxation.** Label boxes are pushed apart along their axis
-   of least overlap, on a uniform grid. Trunk badges, the crown-base
-   medallion, stubs and corner medallions are fixed obstacles.
-8. **Verification.** Remaining overlaps are counted. If any remain, the
-   layout is redone with slightly smaller type, and legibility is judged
-   from the type actually used. A family is never silently shrunk.
-9. **Branches.** Each edge is a cubic Bézier. Its start continues the
-   parent's growth direction and its end leans upward. Width follows the
-   pipe model (∝ √leaves), with a minimum tied to the name size so stalks
-   never become hairlines.
-10. **Leaves are people.** Every childless son is a leaf pointing away from
-    his parent but kept near horizontal (at most 30° up, 12° down), with
-    the name on the blade. Daughters are capsules.
+5. **Partition by capacity.** Each crown node gets a slice of a 0–1 axis
+   proportional to the number of names in its sub-branch.
+   - The axis maps to an angle around the crown base by *capacity*: how
+     many horizontal names fit side by side at each angle. At the top a
+     name takes its full width; on the sides only its height.
+   - Sibling order is kept. In RTL (Arabic) trees the eldest sits on the
+     right.
+6. **Generation rings (a radial tidy tree).**
+   - Every name sits on the ring of its generation, inside its family's
+     sector, and siblings share a ring.
+   - On each ring, names are spaced along the ring in family order, with a
+     corridor between neighbours.
+   - Because the order is the same on every ring, lines between
+     consecutive rings cannot cross. No line has to pass a sibling's
+     place.
+7. **Collision relaxation along rays.** Overlaps are resolved by moving a
+   name outward along its own ray only, never sideways into a neighbouring
+   family. Labels near the page edge stay on their ray: the radius is
+   capped instead of clamping x.
+8. **Connections from the data.** Each line runs from the parent's label to
+   the child's label: a gentle cubic that arrives along the child's ray.
+   - Leaf stalks aim at the leaf's centre, and the leaf is drawn over it.
+   - Widths follow the pipe model, with fine twigs.
+9. **Relationship-clarity check** (`src/lib/layout/clarity.ts`). Every
+   layout is validated against the genealogy:
+   - every expected parent → child connection is drawn, from the right
+     parent, and ends at the right child;
+   - the trunk follows the father → son order;
+   - no line passes under an unrelated name;
+   - crossings are steep (≥ 30°) and away from labels;
+   - no two lines run together;
+   - no line's visible end touches another line (a false junction);
+   - siblings' lines neither cross nor touch in their outer half.
+10. **Untangling and retry.** A few remaining ambiguities are fixed locally:
+    mirror a leaf, move a name out along its ray, or turn it slightly
+    without changing the order. If ambiguity remains, the layout is
+    redone with more room per name.
+    - **Clean at a legible size:** done.
+    - **Clean only below the legible size:** `legibility.ok` is false, and
+      the editor recommends the larger poster.
+    - **Never clean:** the remaining spots are listed in
+      `layout.clarity.issues` and circled in the editor. They never print.
+11. **Lineage colours** (Refined style; *Style → Ornaments*). Each major
+    lineage gets one muted colour: forest green, burgundy, dusty blue,
+    ochre, deep teal, plum.
+    - A major lineage is a son of the crown base who has descendants, or a
+      side branch.
+    - The colour is carried by every descendant's line and name rim, and by
+      the branch head's ring.
+    - Fills keep their role meaning (silver son, gold daughter, ivory
+      father), and text stays dark ink. Neighbouring branches never share
+      a colour, and each colour is at least 3:1 against the paper.
+    - Colour reinforces the lines and never replaces them.
+12. **Crossing convention.** Every branch is drawn with a fine paper-coloured
+    edge, so where two lines do cross, one visibly passes over the other
+    with a small gap. A crossing never looks like a shared junction.
+
+**Tracing a line in the editor.** With **Trace lineage** on, selecting a
+person veils the rest of the poster and draws their line in red:
+ancestors up the trunk and every descendant. The set comes from the data
+(`lineagePath`), so half-siblings and cousins are never included. This
+layer is editor-only and never exported.
+
+**Measured clarity** (automated tests, `tests/clarity.test.ts`; all at a
+legible size, clean means zero issues):
+
+| Family | People | Clean on |
+| --- | --- | --- |
+| Small, Al-Kalali, several marriages, names | 11–38 | A2 |
+| Three wives, interleaved half-siblings | 82 | A2 |
+| Large | 195 | A1 |
+| Dense (7–11 children per father) | 220 | A1 |
+| Very large | 496 | not fully: 3 spots remain on 2A0, circled in the editor |
+
+Passing these checks is necessary, not sufficient: the renders are also
+inspected at print scale.
 
 ## Print export
 
@@ -377,7 +431,9 @@ seed always produce the same poster.
 For a fully vector PDF today, open the SVG in Inkscape and use "Save as PDF".
 
 **Validation families.** `/demo?sample=` with one of the following values
-loads each family used by `tests/composition.test.ts`:
+loads each family used by `tests/composition.test.ts` and
+`tests/clarity.test.ts` (also `dense` and `multi`). Add `&poster=A1` to set
+the poster size, and `&colors=1` to force lineage colours:
 
 - `small`: three generations;
 - `marriages`: several marriages and many daughters;

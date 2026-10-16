@@ -5,7 +5,7 @@ import type { PosterLayout, PosterNode } from "@/lib/layout/botanical";
 import { textWidth } from "@/lib/layout/botanical";
 import { LEAF_TONES, generationColor, generationLabel } from "@/lib/layout/palette";
 import { hashString } from "@/lib/layout/random";
-import { satinStops, shade, textOn } from "@/lib/theme";
+import { lineageColor, satinStops, shade, textOn } from "@/lib/theme";
 import { HADITH, VERSE, scallopPath, textInCircle } from "./ornaments";
 import type { PosterTheme } from "@/lib/types";
 
@@ -20,8 +20,13 @@ interface Props {
   meta: PosterMeta;
   theme: PosterTheme;
   selectedId?: string | null;
-  /** Ancestors of the selected member, outlined in gold. */
-  highlightIds?: Set<string>;
+  /**
+   * The selected person's direct line (ancestors and descendants). When set,
+   * the rest of the poster is dimmed and this line is traced on top.
+   */
+  lineageIds?: Set<string>;
+  /** Mark the spots the relationship-clarity check flagged (editor only). */
+  showIssues?: boolean;
   onSelect?: (memberId: string) => void;
   className?: string;
   /**
@@ -55,13 +60,21 @@ interface Palette {
   line: string;
   /** Fill, border and text colour of a name. */
   fill: (n: PosterNode) => { fill: string; border: string; text: string };
+  /** Colour of a lineage's branches (bark when branch colours are off). */
+  branch: (lineage: number | null | undefined) => string;
+  /** Rim colour carrying the lineage, or null to keep the role's own rim. */
+  rim: (lineage: number | null | undefined) => string | null;
 }
 
 function makePalette(theme: PosterTheme, layout: PosterLayout): Palette {
   const mono = theme.background === "white";
   const satin = (gender: string) => (gender === "FEMALE" ? "url(#sh-satin-f)" : "url(#sh-satin-m)");
+  const coloured = theme.branchColors && !mono;
+  const bark = mono ? "#1a1a1a" : theme.branch;
   return {
     mono,
+    branch: (i) => (coloured ? lineageColor(i, bark) : bark),
+    rim: (i) => (coloured && i != null ? lineageColor(i, bark) : null),
     ink: mono ? "#111111" : INK,
     line: mono ? "#111111" : GOLD,
     fill: (n) => {
@@ -103,15 +116,21 @@ function SatinGradient({ id, color }: { id: string; color: string }) {
  */
 export const TreePoster = memo(
   forwardRef<SVGSVGElement, Props>(function TreePoster(
-    { layout, meta, theme, selectedId, highlightIds, onSelect, className, frameSrc },
+    { layout, meta, theme, selectedId, lineageIds, showIssues, onSelect, className, frameSrc },
     ref,
   ) {
     const { width: W, height: H, rtl } = layout;
     const pal = makePalette(theme, layout);
     const bark = pal.mono ? "#1a1a1a" : theme.branch;
+    const withRim = (n: PosterNode) => {
+      const f = pal.fill(n);
+      const rim = pal.rim(n.lineage);
+      return rim ? { ...f, border: rim } : f;
+    };
     const artwork = theme.frame && !!frameSrc && !pal.mono;
     const click = (id: string) => (onSelect ? { onClick: () => onSelect(id), style: { cursor: "pointer" } } : {});
-    const marked = (id: string) => id === selectedId || !!highlightIds?.has(id);
+    const tracing = !!selectedId && !!lineageIds && lineageIds.size > 0;
+    const onLine = (id: string) => id === selectedId || !!lineageIds?.has(id);
 
     return (
       <svg
@@ -192,7 +211,11 @@ export const TreePoster = memo(
             {layout.foliage.twigs.map((t, i) => <path key={i} d={t.d} strokeWidth={t.w} />)}
           </g>
         )}
-        <g fill={bark}>{layout.branches.map((b, i) => <path key={i} d={b.d} />)}</g>
+        {/* Every branch has a fine paper-coloured edge, so where lines cross
+            the upper one visibly passes over the lower (never a shared junction) */}
+        <g stroke={pal.mono ? "#ffffff" : PAPER} strokeWidth={W * 0.0018} strokeLinejoin="round" paintOrder="stroke">
+          {layout.branches.map((b, i) => <path key={i} d={b.d} fill={pal.branch(b.lineage)} />)}
+        </g>
         {layout.foliage && (
           <g>
             {layout.foliage.leaves.map((l, i) => (
@@ -212,16 +235,7 @@ export const TreePoster = memo(
             fill="none" stroke={pal.mono ? "#111" : "#d9b45a"} strokeWidth={layout.trunkLabels[0].fontSize * 0.12} strokeLinejoin="round"
           />
         )}
-        {layout.trunkLabels.map((l) => (
-          <g key={l.member.id} {...click(l.member.id)}>
-            <title>{l.label}</title>
-            <rect x={l.x - l.w / 2} y={l.y - l.h / 2} width={l.w} height={l.h} rx={l.h / 2}
-              fill={pal.mono ? "#fff" : IVORY} stroke={pal.line} strokeWidth={l.fontSize * 0.07} />
-            <text x={l.x} y={l.y} textAnchor="middle" dominantBaseline="central" fontSize={l.fontSize} fontWeight={700} fill={pal.ink}>
-              {l.label}
-            </text>
-          </g>
-        ))}
+        {layout.trunkLabels.map((l) => <TrunkBadge key={l.member.id} label={l} pal={pal} onClick={click(l.member.id)} />)}
 
         {/* People */}
         {layout.stubs.map((n) => (
@@ -229,9 +243,9 @@ export const TreePoster = memo(
         ))}
         {layout.nodes.map((n) =>
           n.shape === "medallion" ? (
-            <Medallion key={n.id} node={n} pal={pal} onClick={click(n.id)} />
+            <Medallion key={n.id} node={n} pal={pal} onClick={click(n.id)} ring={pal.rim(n.lineage)} />
           ) : (
-            <PersonNode key={n.id} node={n} {...pal.fill(n)} pal={pal} onClick={click(n.id)} />
+            <PersonNode key={n.id} node={n} {...withRim(n)} pal={pal} onClick={click(n.id)} />
           ),
         )}
         {layout.base && <Medallion node={layout.base} pal={pal} onClick={click(layout.base.id)} strong />}
@@ -242,36 +256,94 @@ export const TreePoster = memo(
         <Footer layout={layout} theme={theme} pal={pal} meta={meta} />
 
         {/* Editor-only marks: removed from every export */}
-        <g data-ui="selection" fill="none" pointerEvents="none">
-          {[...layout.nodes, ...layout.stubs, ...(layout.base ? [layout.base] : [])]
-            .filter((n) => marked(n.id))
-            .map((n) => {
-              const pad = n.fontSize * 0.3;
-              const sel = n.id === selectedId;
-              return (
-                <rect
-                  key={n.id}
-                  x={n.x - n.w / 2 - pad} y={n.y - n.h / 2 - pad} width={n.w + 2 * pad} height={n.h + 2 * pad} rx={n.fontSize * 0.6}
-                  stroke={sel ? "#c62828" : "#d4a017"} strokeWidth={n.fontSize * (sel ? 0.18 : 0.12)}
-                  strokeDasharray={sel ? undefined : `${n.fontSize * 0.4} ${n.fontSize * 0.25}`}
-                />
-              );
-            })}
-          {layout.trunkLabels
-            .filter((l) => marked(l.member.id))
-            .map((l) => (
-              <rect
-                key={l.member.id}
-                x={l.x - l.w / 2 - l.fontSize * 0.25} y={l.y - l.h / 2 - l.fontSize * 0.25}
-                width={l.w + l.fontSize * 0.5} height={l.h + l.fontSize * 0.5} rx={l.h / 2}
-                stroke={l.member.id === selectedId ? "#c62828" : "#d4a017"} strokeWidth={l.fontSize * 0.15}
-              />
+        {tracing && (
+          <LineageTrace layout={layout} pal={pal} ids={lineageIds!} selectedId={selectedId!} W={W} H={H} click={click} />
+        )}
+        {!tracing && selectedId && (
+          <g data-ui="selection" fill="none" pointerEvents="none">
+            {[...layout.nodes, ...layout.stubs, ...(layout.base ? [layout.base] : [])]
+              .filter((n) => onLine(n.id))
+              .map((n) => (
+                <rect key={n.id} x={n.x - n.w / 2 - n.fontSize * 0.3} y={n.y - n.h / 2 - n.fontSize * 0.3}
+                  width={n.w + n.fontSize * 0.6} height={n.h + n.fontSize * 0.6} rx={n.fontSize * 0.6}
+                  stroke="#c62828" strokeWidth={n.fontSize * 0.18} />
+              ))}
+          </g>
+        )}
+        {showIssues && !layout.clarity.ok && (
+          <g data-ui="clarity" fill="none" stroke="#d32f2f" pointerEvents="none">
+            {layout.clarity.issues.filter((i) => i.at).map((i, k) => (
+              <circle key={k} cx={i.at!.x} cy={i.at!.y} r={W * 0.012} strokeWidth={W * 0.0025} strokeDasharray={`${W * 0.004} ${W * 0.003}`} />
             ))}
-        </g>
+          </g>
+        )}
       </svg>
     );
   }),
 );
+
+function TrunkBadge({ label: l, pal, onClick }: { label: PosterLayout["trunkLabels"][number]; pal: Palette; onClick: object }) {
+  return (
+    <g {...onClick}>
+      <title>{l.label}</title>
+      <rect x={l.x - l.w / 2} y={l.y - l.h / 2} width={l.w} height={l.h} rx={l.h / 2}
+        fill={pal.mono ? "#fff" : IVORY} stroke={pal.line} strokeWidth={l.fontSize * 0.07} />
+      <text x={l.x} y={l.y} textAnchor="middle" dominantBaseline="central" fontSize={l.fontSize} fontWeight={700} fill={pal.ink}>
+        {l.label}
+      </text>
+    </g>
+  );
+}
+
+/**
+ * Traces one person's direct line: the rest of the poster is veiled, and
+ * every connection between two people on the line (from the data, not from
+ * proximity) is drawn on top in a strong colour, with those people's labels.
+ * Editor only (data-ui): never exported.
+ */
+function LineageTrace({ layout, pal, ids, selectedId, W, H, click }: {
+  layout: PosterLayout; pal: Palette; ids: Set<string>; selectedId: string; W: number; H: number;
+  click: (id: string) => object;
+}) {
+  const on = (id: string) => id === selectedId || ids.has(id);
+  const TRACE = "#b3261e";
+  const edges = layout.edges.filter((e) => on(e.parentId) && on(e.childId));
+  const trunk = layout.trunkLabels.filter((l) => on(l.member.id));
+  // trunk thread: consecutive ancestors on the line, then up to the crown base
+  const chain = [...trunk.map((l) => ({ x: l.x, y: l.y })), ...(layout.base && on(layout.base.id) ? [{ x: layout.base.x, y: layout.base.y }] : [])];
+  const people = [...layout.nodes, ...layout.stubs, ...(layout.base ? [layout.base] : [])].filter((n) => on(n.id));
+  const f = (n: number) => n.toFixed(1);
+  return (
+    <g data-ui="lineage">
+      <rect width={W} height={H} fill={pal.mono ? "#ffffff" : PAPER} opacity={0.72} pointerEvents="none" />
+      <g fill="none" stroke={TRACE} strokeLinecap="round" strokeLinejoin="round" pointerEvents="none">
+        {edges.map((e) => (
+          <polyline key={`${e.parentId}-${e.childId}`} points={e.points.map((p) => `${f(p.x)},${f(p.y)}`).join(" ")}
+            strokeWidth={Math.max(W * 0.003, e.w0 * 0.9)} />
+        ))}
+        {chain.length > 1 && <polyline points={chain.map((p) => `${f(p.x)},${f(p.y)}`).join(" ")} strokeWidth={W * 0.003} />}
+      </g>
+      {trunk.map((l) => <TrunkBadge key={l.member.id} label={l} pal={pal} onClick={click(l.member.id)} />)}
+      {people.map((n) =>
+        n.shape === "medallion" ? (
+          <Medallion key={n.id} node={n} pal={pal} onClick={click(n.id)} strong={n.id === layout.base?.id} ring={n.id === layout.base?.id ? null : pal.rim(n.lineage)} />
+        ) : (
+          <PersonNode key={n.id} node={n} {...pal.fill(n)} border={pal.rim(n.lineage) ?? pal.fill(n).border} pal={pal} onClick={click(n.id)} />
+        ),
+      )}
+      {people.filter((n) => n.id === selectedId).map((n) => (
+        <rect key="sel" x={n.x - n.w / 2 - n.fontSize * 0.35} y={n.y - n.h / 2 - n.fontSize * 0.35}
+          width={n.w + n.fontSize * 0.7} height={n.h + n.fontSize * 0.7} rx={n.fontSize * 0.6}
+          fill="none" stroke={TRACE} strokeWidth={n.fontSize * 0.18} pointerEvents="none" />
+      ))}
+      {trunk.filter((l) => l.member.id === selectedId).map((l) => (
+        <rect key="sel-t" x={l.x - l.w / 2 - l.fontSize * 0.3} y={l.y - l.h / 2 - l.fontSize * 0.3}
+          width={l.w + l.fontSize * 0.6} height={l.h + l.fontSize * 0.6} rx={l.h / 2}
+          fill="none" stroke={TRACE} strokeWidth={l.fontSize * 0.15} pointerEvents="none" />
+      ))}
+    </g>
+  );
+}
 
 /** Leaf blade centred on the origin, pointing along +x: round base, pointed tip. */
 function leafPath(L: number, w: number): string {
@@ -307,7 +379,7 @@ function Divider({ x, y, w, pal }: { x: number; y: number; w: number; pal: Palet
 }
 
 /** Ivory disc with a fine double gold ring: branch heads, the crown base, stubs. */
-function Medallion({ node, pal, onClick, strong }: { node: PosterNode; pal: Palette; onClick: object; strong?: boolean }) {
+function Medallion({ node, pal, onClick, strong, ring }: { node: PosterNode; pal: Palette; onClick: object; strong?: boolean; ring?: string | null }) {
   const r = node.w / 2;
   const fs = node.fontSize;
   return (
@@ -318,7 +390,7 @@ function Medallion({ node, pal, onClick, strong }: { node: PosterNode; pal: Pale
       ) : (
         <>
           {strong && <path d={scallopPath(0, 0, r * 1.07, r * 1.07, 28, 0.025)} fill="none" stroke={GOLD} strokeWidth={fs * 0.05} />}
-          <circle r={r} fill={IVORY} stroke={GOLD} strokeWidth={fs * 0.09} />
+          <circle r={r} fill={IVORY} stroke={ring ?? GOLD} strokeWidth={fs * (ring ? 0.12 : 0.09)} />
           <circle r={r - fs * 0.22} fill="none" stroke={GOLD} strokeWidth={fs * 0.03} />
         </>
       )}
@@ -492,6 +564,18 @@ function Footer({ layout, theme, pal, meta }: { layout: PosterLayout; theme: Pos
   if (layout.nodes.some((n) => n.member.gender === "FEMALE")) items.push({ label: rtl ? "بنت" : "Daughter", swatch: (x) => pill(x, femaleFill, rim(theme.female)) });
   items.push({ label: rtl ? "له ذرية" : "Has descendants", swatch: (x) => pill(x, pal.mono ? "#fff" : IVORY, pal.line) });
   if (layout.trunkLabels.length) items.push({ label: rtl ? "سلسلة الآباء" : "Ancestral line", swatch: (x) => pill(x, pal.mono ? "#fff" : IVORY, pal.line) });
+  if (theme.branchColors && !pal.mono && new Set(layout.nodes.map((n) => n.lineage).filter((x) => x != null)).size >= 2) {
+    items.push({
+      label: rtl ? "لكل فرع لونه" : "Each branch its colour",
+      swatch: (x) => (
+        <g>
+          {[0, 1, 2].map((k) => (
+            <rect key={k} x={x + (k * sw) / 3} y={y - fs * 0.12} width={sw / 3.4} height={fs * 0.24} rx={fs * 0.1} fill={pal.branch(k)} />
+          ))}
+        </g>
+      ),
+    });
+  }
   if (theme.colorBy === "generation") {
     for (const g of generationsPresent.slice(0, 8)) {
       const c = generationColor(g - generationOffset).fill;

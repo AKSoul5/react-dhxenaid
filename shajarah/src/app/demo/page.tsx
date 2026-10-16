@@ -1,10 +1,11 @@
 import { TreeWorkspace } from "@/components/editor/TreeWorkspace";
 import { generateSampleTree } from "@/lib/sampleData";
 import { kalaliTree } from "@/lib/samples/kalali";
-import { marriagesFamily, namesFamily, smallFamily } from "@/lib/samples/fixtures";
+import { denseFamily, marriagesFamily, multiMarriageFamily, namesFamily, smallFamily } from "@/lib/samples/fixtures";
 
 const SAMPLES = {
   kalali: kalaliTree, small: smallFamily, marriages: marriagesFamily, names: namesFamily,
+  dense: denseFamily, multi: multiMarriageFamily,
   // ~500 people with daughters, for checking dense layouts and the size warning
   huge: () => {
     const t = generateSampleTree(5, 5000);
@@ -17,10 +18,23 @@ export const metadata = { title: "Demo — Shajarah" };
 /**
  * Fully working editor backed by an in-memory repository (no database).
  * /demo?sample=kalali loads the Al-Kalali lineage (آدم → أحمد بن نوفل);
- * small, marriages, names and huge load the other validation families.
+ * small, marriages, names, dense, multi and huge load the validation families.
+ * &colors=1 turns on lineage colours and &poster=A1 sets the poster size, so
+ * variants can be compared on identical data.
  */
-export default function DemoPage({ searchParams }: { searchParams: { sample?: string } }) {
+export default function DemoPage({ searchParams }: { searchParams: { sample?: string; colors?: string; poster?: string } }) {
   const make = SAMPLES[searchParams.sample as keyof typeof SAMPLES];
-  const tree = make ? make() : generateSampleTree();
+  const base = make ? make() : generateSampleTree();
+  const posterSize = ["A3", "A2", "A1", "A0", "2A0"].includes(searchParams.poster ?? "")
+    ? (searchParams.poster as "A3" | "A2" | "A1" | "A0" | "2A0")
+    : undefined;
+  const tree = {
+    ...base,
+    settings: {
+      ...base.settings,
+      ...(posterSize ? { posterSize } : {}),
+      theme: { ...base.settings?.theme, ...(searchParams.colors === "1" ? { branchColors: true } : {}) },
+    },
+  };
   return <TreeWorkspace key={tree.id} initialTree={tree} mode="local" />;
 }

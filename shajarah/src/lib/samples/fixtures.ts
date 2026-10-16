@@ -106,3 +106,87 @@ export function namesFamily(): TreeDTO {
     ]],
   ], { laqab: "رضي الله عنه" }]);
 }
+
+const SONS = ["محمد", "عبدالله", "عبدالرحمن", "سليمان", "إبراهيم", "صالح", "فهد", "سعد", "ناصر", "خالد", "فيصل", "سلطان", "تركي", "بندر", "منصور", "حمد", "علي", "عمر", "يوسف", "أحمد", "زيد", "راشد"];
+const DAUGHTERS = ["نورة", "سارة", "هيا", "منيرة", "لطيفة", "الجوهرة", "مها", "ريم", "العنود", "حصة", "موضي", "لولوة", "دلال", "أمل", "هند"];
+
+function familyFrom(id: string, title: string, subtitle: string, members: MemberDTO[], marriages: MarriageDTO[] = []): TreeDTO {
+  const gens = computeGenerations(members, "PATRILINEAL");
+  for (const m of members) m.generation = gens.get(m.id) ?? 0;
+  return {
+    id, name: title, title, subtitle, lineage: "PATRILINEAL", rootMemberId: members[0].id,
+    crownBaseId: null, trunkStartId: null, soilText: null,
+    settings: { showFemales: true, seed: 7, theme: {} },
+    members, marriages,
+  };
+}
+
+/**
+ * Deliberately dense: every father has many children (7–11 in the first two
+ * generations), so many sibling branches compete for the same space.
+ */
+export function denseFamily(): TreeDTO {
+  const members: MemberDTO[] = [];
+  let n = 0, k = 0;
+  const add = (gender: Gender, fatherId: string | null, order: number): MemberDTO => {
+    const pool = gender === "MALE" ? SONS : DAUGHTERS;
+    const m: MemberDTO = {
+      id: `dense-${++n}`, name: pool[(k++ * 7) % pool.length], laqab: null, gender, birthYear: null, deathYear: null,
+      isDeceased: false, birthOrder: order, generation: 0, notes: null, fatherId, motherId: null,
+    };
+    members.push(m);
+    return m;
+  };
+  const root = add("MALE", null, 0);
+  root.name = "عبدالعزيز";
+  const grow = (father: MemberDTO, kids: number, depth: number) => {
+    for (let i = 0; i < kids; i++) {
+      const daughter = i % 3 === 2;
+      const c = add(daughter ? "FEMALE" : "MALE", father.id, i);
+      if (!daughter && depth < 3) grow(c, depth === 1 ? 7 + (i % 3) : 2 + (i % 4), depth + 1);
+    }
+  };
+  grow(root, 11, 1);
+  return familyFrom("dense", "أسرة كثيفة الفروع", "اختبار وضوح الصلات", members);
+}
+
+/**
+ * Three wives with children born interleaved (half-siblings alternate by
+ * birth order), daughters throughout, and sons who themselves have two
+ * wives — so mothers and lines must be kept apart correctly.
+ */
+export function multiMarriageFamily(): TreeDTO {
+  const members: MemberDTO[] = [];
+  const marriages: MarriageDTO[] = [];
+  let n = 0, k = 0;
+  const add = (name: string, gender: Gender, fatherId: string | null, motherId: string | null, order: number): MemberDTO => {
+    const m: MemberDTO = {
+      id: `mm-${++n}`, name, laqab: null, gender, birthYear: null, deathYear: null,
+      isDeceased: false, birthOrder: order, generation: 0, notes: null, fatherId, motherId,
+    };
+    members.push(m);
+    return m;
+  };
+  const marry = (husband: MemberDTO, wifeName: string) => {
+    const w = add(wifeName, "FEMALE", null, null, 0);
+    marriages.push({ id: `mm-mar-${w.id}`, spouseAId: husband.id, spouseBId: w.id, startYear: null, endYear: null });
+    return w;
+  };
+  const root = add("حمد", "MALE", null, null, 0);
+  const wives = [marry(root, "فاطمة بنت سعد"), marry(root, "عائشة بنت علي"), marry(root, "خديجة بنت ناصر")];
+  // 12 children, mothers interleaved by birth order: 1,2,3,1,2,3,…
+  for (let i = 0; i < 12; i++) {
+    const daughter = i % 4 === 1;
+    const c = add(daughter ? DAUGHTERS[k++ % DAUGHTERS.length] : SONS[k++ % SONS.length], daughter ? "FEMALE" : "MALE", root.id, wives[i % 3].id, i);
+    if (daughter) continue;
+    // every other son has two wives himself, again interleaved
+    const own = i % 2 === 0 ? [marry(c, `زوجة ${c.name} الأولى`), marry(c, `زوجة ${c.name} الثانية`)] : [marry(c, `زوجة ${c.name}`)];
+    const kids = 3 + (i % 4);
+    for (let j = 0; j < kids; j++) {
+      const d = j % 3 === 1;
+      const g = add(d ? DAUGHTERS[k++ % DAUGHTERS.length] : SONS[k++ % SONS.length], d ? "FEMALE" : "MALE", c.id, own[j % own.length].id, j);
+      if (!d && j === 0) for (let q = 0; q < 3; q++) add(SONS[k++ % SONS.length], q === 1 ? "FEMALE" : "MALE", g.id, null, q);
+    }
+  }
+  return familyFrom("multi", "ذرية حمد من زوجاته الثلاث", "أبناء غير أشقاء وبنات", members, marriages);
+}
