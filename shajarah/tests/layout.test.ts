@@ -1,0 +1,95 @@
+import { describe, expect, it } from "vitest";
+import { computePosterLayout } from "@/lib/layout/botanical";
+import { computeGenerations, parentAssignmentError } from "@/lib/genealogy";
+import { generateSampleTree } from "@/lib/sampleData";
+import type { MemberDTO, TreeDTO } from "@/lib/types";
+
+const overlaps = (a: { x: number; y: number; w: number; h: number }, b: typeof a) =>
+  Math.abs(a.x - b.x) < (a.w + b.w) / 2 - 0.5 && Math.abs(a.y - b.y) < (a.h + b.h) / 2 - 0.5;
+
+describe("botanical layout", () => {
+  const tree = generateSampleTree();
+
+  it("places every lineage member on the trunk, a stub, or the crown", () => {
+    const layout = computePosterLayout(tree);
+    const males = tree.members.filter((m) => m.gender === "MALE").length;
+    const shown = layout.nodes.length + layout.trunkLabels.length + layout.stubs.length + (layout.base ? 1 : 0);
+    expect(shown).toBe(males);
+    expect(layout.stats.unplaced).toBe(0);
+    expect(layout.trunkLabels.map((l) => l.member.name)).toEqual(
+      ["قشعم", "سعد", "غزي", "حمود", "فاضل", "كنعان", "فارس", "ثويني"],
+    );
+    expect(layout.base?.member.name).toBe("نصار");
+    expect(layout.stubs.map((s) => s.member.name).sort()).toEqual(["غانم", "قتيبع"].sort());
+  });
+
+  it("produces no overlapping name tags", () => {
+    const layout = computePosterLayout(tree);
+    const all = [...layout.nodes, ...(layout.base ? [layout.base] : [])];
+    let count = 0;
+    for (let i = 0; i < all.length; i++)
+      for (let j = i + 1; j < all.length; j++) if (overlaps(all[i], all[j])) count++;
+    expect(count).toBe(0);
+  });
+
+  it("keeps nodes inside the poster and above the ground", () => {
+    const layout = computePosterLayout(tree);
+    for (const n of layout.nodes) {
+      expect(n.x - n.w / 2).toBeGreaterThan(0);
+      expect(n.x + n.w / 2).toBeLessThan(layout.width);
+      expect(n.y).toBeLessThan(layout.groundY);
+      expect(n.y - n.h / 2).toBeGreaterThan(layout.height * 0.06);
+    }
+  });
+
+  it("is deterministic for a given seed and varies with the seed", () => {
+    const a = computePosterLayout(tree, { seed: 3 });
+    const b = computePosterLayout(tree, { seed: 3 });
+    const c = computePosterLayout(tree, { seed: 4 });
+    expect(a.branches).toEqual(b.branches);
+    expect(a.leaves.length).toBe(b.leaves.length);
+    expect(a.branches).not.toEqual(c.branches);
+  });
+
+  it("includes daughters when showFemales is on", () => {
+    const layout = computePosterLayout(tree, { showFemales: true });
+    expect(layout.stats.placed).toBe(tree.members.length);
+  });
+
+  it("keeps small families compact and overlap-free", () => {
+    const small = generateSampleTree(5, 40);
+    const layout = computePosterLayout(small);
+    const all = [...layout.nodes, ...(layout.base ? [layout.base] : [])];
+    for (let i = 0; i < all.length; i++)
+      for (let j = i + 1; j < all.length; j++) expect(overlaps(all[i], all[j])).toBe(false);
+    const highest = Math.min(...layout.nodes.map((n) => n.y));
+    expect(highest).toBeGreaterThan(layout.crown.cy - layout.crown.ry);
+  });
+
+  it("handles empty and single-member trees", () => {
+    const empty: TreeDTO = { ...tree, members: [], rootMemberId: null };
+    expect(computePosterLayout(empty).nodes).toHaveLength(0);
+    const one: TreeDTO = { ...tree, members: [tree.members[0]], rootMemberId: null };
+    const layout = computePosterLayout(one);
+    expect(layout.base?.member.name).toBe("قشعم");
+  });
+});
+
+describe("genealogy rules", () => {
+  const m = (id: string, fatherId: string | null, gender: MemberDTO["gender"] = "MALE"): MemberDTO => ({
+    id, name: id, laqab: null, gender, birthYear: null, deathYear: null, isDeceased: false,
+    birthOrder: 0, generation: 0, notes: null, fatherId, motherId: null,
+  });
+  const members = [m("a", null), m("b", "a"), m("c", "b"), m("w", null, "FEMALE")];
+
+  it("computes generations from the lineage parent", () => {
+    const g = computeGenerations(members, "PATRILINEAL");
+    expect([g.get("a"), g.get("b"), g.get("c")]).toEqual([0, 1, 2]);
+  });
+
+  it("rejects loops and wrong-gender parents", () => {
+    expect(parentAssignmentError(members, "a", "c", "father")).toMatch(/loop/);
+    expect(parentAssignmentError(members, "c", "w", "father")).toMatch(/female/);
+    expect(parentAssignmentError(members, "c", "a", "father")).toBeNull();
+  });
+});

@@ -1,0 +1,106 @@
+// Shajarah — relational model for family hierarchies.
+//
+// Design notes
+// - A FamilyTree owns every Member and Marriage in it (cascade delete).
+// - Parentage is stored as two self-relations (fatherId / motherId). The
+//   poster's "lineage parent" (whose branch a person grows from) is chosen
+//   by FamilyTree.lineage: father first for patrilineal trees (the
+//   traditional nasab poster), mother first for matrilineal ones.
+// - `generation` is denormalised (0 = tree root) so that queries such as
+//   "everyone in the 5th generation" and the generation colour legend do not
+//   need a recursive CTE. The API recomputes it whenever parentage changes.
+// - Spouses are a separate Marriage table so a person can have several
+//   marriages, each with its own dates.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
+enum Lineage {
+  PATRILINEAL
+  MATRILINEAL
+}
+
+model FamilyTree {
+  id           String     @id @default(cuid())
+  name         String
+  // Poster headings, e.g. "شجرة نسب أسرة آل حقيل"
+  title        String?
+  subtitle     String?
+  lineage      Lineage    @default(PATRILINEAL)
+  // Optional explicit root. When null, the oldest member with no lineage
+  // parent is used.
+  rootMemberId String?    @unique
+  rootMember   Member?    @relation("TreeRoot", fields: [rootMemberId], references: [id], onDelete: SetNull)
+  // Free-form poster settings (palette, paper size, show females, ...)
+  settings     Json?
+  members      Member[]   @relation("TreeMembers")
+  marriages    Marriage[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Member {
+  id         String      @id @default(cuid())
+  treeId     String
+  tree       FamilyTree  @relation("TreeMembers", fields: [treeId], references: [id], onDelete: Cascade)
+
+  name       String
+  // Laqab / nickname shown under the name, e.g. "الملقب بلقمان"
+  laqab      String?
+  gender     Gender      @default(MALE)
+  birthYear  Int?
+  deathYear  Int?
+  isDeceased Boolean     @default(false)
+  // Order among siblings (left → right on the poster)
+  birthOrder Int         @default(0)
+  generation Int         @default(0)
+  notes      String?
+
+  fatherId   String?
+  father     Member?     @relation("Paternity", fields: [fatherId], references: [id], onDelete: SetNull)
+  childrenAsFather Member[] @relation("Paternity")
+
+  motherId   String?
+  mother     Member?     @relation("Maternity", fields: [motherId], references: [id], onDelete: SetNull)
+  childrenAsMother Member[] @relation("Maternity")
+
+  marriagesAsA Marriage[] @relation("SpouseA")
+  marriagesAsB Marriage[] @relation("SpouseB")
+  rootOfTree   FamilyTree? @relation("TreeRoot")
+
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@index([treeId])
+  @@index([fatherId])
+  @@index([motherId])
+  @@index([treeId, generation])
+}
+
+model Marriage {
+  id         String     @id @default(cuid())
+  treeId     String
+  tree       FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  spouseAId  String
+  spouseA    Member     @relation("SpouseA", fields: [spouseAId], references: [id], onDelete: Cascade)
+  spouseBId  String
+  spouseB    Member     @relation("SpouseB", fields: [spouseBId], references: [id], onDelete: Cascade)
+  startYear  Int?
+  endYear    Int?
+  createdAt  DateTime   @default(now())
+
+  @@unique([spouseAId, spouseBId])
+  @@index([treeId])
+}

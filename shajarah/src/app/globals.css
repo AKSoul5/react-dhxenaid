@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Amiri";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/amiri-arabic-400-normal.woff2") format("woff2");
+  unicode-range: U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF;
+}
+@font-face {
+  font-family: "Amiri";
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/amiri-arabic-700-normal.woff2") format("woff2");
+  unicode-range: U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF;
+}
+@font-face {
+  font-family: "Amiri";
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/amiri-latin-400-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+2000-206F;
+}
+@font-face {
+  font-family: "Amiri";
+  font-weight: 700;
+  font-display: swap;
+  src: url("/fonts/amiri-latin-700-normal.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+2000-206F;
+}
+
+@layer components {
+  .input {
+    @apply w-full rounded-md border border-parchment-300 bg-white px-2.5 py-1.5 text-sm outline-none
+      focus:border-gilt-500 focus:ring-2 focus:ring-gilt-400/30;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-1 rounded-md bg-bark-700 px-3 py-1.5 text-sm font-medium text-parchment-50
+      hover:bg-bark-900 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-outline {
+    @apply inline-flex items-center gap-1 rounded-md border border-parchment-300 bg-white px-3 py-1.5 text-sm
+      text-bark-700 hover:bg-parchment-50 disabled:opacity-50;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-bark-700 hover:bg-parchment-100;
+  }
+  .btn-danger {
+    @apply inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-700
+      hover:bg-red-50 disabled:opacity-50;
+  }
+  .section-title {
+    @apply mb-1.5 text-xs font-semibold uppercase tracking-wide text-bark-500;
+  }
+}
