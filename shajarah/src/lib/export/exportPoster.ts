@@ -83,6 +83,58 @@ export function pixelSize(paper: PaperSize, dpi: number) {
   return { width: Math.round((w / 25.4) * dpi), height: Math.round((h / 25.4) * dpi) };
 }
 
+let fontsWarm: Promise<void> | null = null;
+
+/**
+ * SVG-as-image documents load their embedded web fonts asynchronously, and
+ * img.decode() resolves before they are ready — Chrome then paints the text
+ * invisibly (font "block" period), so the first export would lose every
+ * name. Warm the fonts with a tiny probe image and wait until its text
+ * actually paints before rasterising the poster.
+ */
+function warmUpFonts(): Promise<void> {
+  fontsWarm ??= (async () => {
+    const css = await embeddedFontCss();
+    // One sample per embedded face (Arabic/Latin × regular/bold), each in
+    // its own quarter of the probe, so every face must have painted.
+    const samples = [
+      { text: "أبجد", weight: 400 }, { text: "أبجد", weight: 700 },
+      { text: "Abc", weight: 400 }, { text: "Abc", weight: 700 },
+    ];
+    const probe =
+      `<svg xmlns="${SVG_NS}" width="400" height="60"><style>${css}</style>` +
+      samples
+        .map((s, i) => `<text x="${i * 100 + 8}" y="42" font-family="Amiri" font-weight="${s.weight}" font-size="36" fill="#000">${s.text}</text>`)
+        .join("") +
+      `</svg>`;
+    const url = URL.createObjectURL(new Blob([probe], { type: "image/svg+xml;charset=utf-8" }));
+    const canvas = document.createElement("canvas");
+    canvas.width = 400;
+    canvas.height = 60;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+    try {
+      for (let attempt = 0; attempt < 80; attempt++) {
+        const img = new Image();
+        img.src = url;
+        await img.decode();
+        ctx.clearRect(0, 0, 400, 60);
+        ctx.drawImage(img, 0, 0);
+        const painted = samples.every((_, i) => {
+          const px = ctx.getImageData(i * 100, 0, 100, 60).data;
+          let ink = 0;
+          for (let k = 3; k < px.length; k += 4) if (px[k] > 128) ink++;
+          return ink > 80;
+        });
+        if (painted) return;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  })();
+  return fontsWarm;
+}
+
 async function rasterise(svg: SVGSVGElement, paper: PaperSize, dpi: number): Promise<HTMLCanvasElement> {
   const { width, height } = pixelSize(paper, dpi);
   if (width * height > MAX_CANVAS_PIXELS) {
@@ -90,7 +142,7 @@ async function rasterise(svg: SVGSVGElement, paper: PaperSize, dpi: number): Pro
       `${paper} at ${dpi} DPI is ${width}×${height}px, beyond what browsers can rasterise. Choose a lower DPI or use SVG export.`,
     );
   }
-  const markup = await serializePoster(svg, paper);
+  const [markup] = await Promise.all([serializePoster(svg, paper), warmUpFonts()]);
   const url = URL.createObjectURL(new Blob([markup], { type: "image/svg+xml;charset=utf-8" }));
   try {
     const img = new Image();
