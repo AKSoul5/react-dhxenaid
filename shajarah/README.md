@@ -64,7 +64,7 @@ NEXT_OUTPUT=standalone npm run build   # self-contained server in .next/standalo
 cd desktop/electron
 npm install
 npm run prepare-app                    # gathers the server and the migrations
-npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.3.exe (build on Windows)
+npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.4.exe (build on Windows)
 npm start                              # or run it unpackaged
 ```
 
@@ -341,6 +341,17 @@ is held in the page as a `data:` URL.
   order, split where the two sides weigh most alike. It works for any
   person in the canopy, at any depth: every branch on the way is centred
   in its father's space.
+
+## A daughter's family, on dotted lines
+
+On a father's-line poster a daughter's children belong to their father's
+line, so they are not drawn. To include them, select her and press
+**┈ Show her husband and children (dotted lines)** under *Poster tiers*
+(settings `familiesThrough`). Her husband's name is written with hers
+("زوجها …"), and her children and their descendants grow from her on
+dotted lines, counted in generations through her; the key explains the
+dots ("عن طريق البنات"). It works even with daughters hidden, and the
+other way round in a mother's-line tree.
 
 ## The three tiers: foundation, trunk, canopy
 

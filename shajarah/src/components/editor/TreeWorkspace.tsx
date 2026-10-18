@@ -281,6 +281,11 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   // the options replace a too-dense poster again whenever the layout changes
   useEffect(() => setShowDense(false), [layout]);
   // a branch poster needs at least one descendant to be a branch
+  // A daughter's own family (her children belong to their father's line):
+  // the poster can show it through her, on dotted lines.
+  const familiesThrough = tree.settings?.familiesThrough ?? [];
+  const selectedHasOwnFamily = !!selected && tree.members.some((c) =>
+    tree.lineage === "MATRILINEAL" ? c.fatherId === selected.id : c.motherId === selected.id);
   // only a name drawn in the canopy (not the trunk or the soil) can be centred
   const canopyIds = useMemo(
     () => new Set(layout.base ? lineagePath(tree.members, tree.lineage, layout.base.member.id).descendants : []),
@@ -620,6 +625,22 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                   >
                     🎯 Center this branch in the tree
                   </button>
+                )}
+                {selectedHasOwnFamily && (
+                  familiesThrough.includes(selected.id) ? (
+                    <button type="button" className="btn-outline w-full" onClick={() => updateSettings({ familiesThrough: familiesThrough.filter((id) => id !== selected.id) })}>
+                      ✓ {selected.gender === "FEMALE" ? "Her husband and children are" : "His wife and children are"} shown (dotted) — hide
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-outline w-full"
+                      title="Relatives outside the lineage: drawn from this person on dotted lines"
+                      onClick={() => updateSettings({ familiesThrough: [...familiesThrough, selected.id] })}
+                    >
+                      ┈ Show {selected.gender === "FEMALE" ? "her husband and children" : "his wife and children"} (dotted lines)
+                    </button>
+                  )
                 )}
                 {tree.settings?.focusId === selected.id ? (
                   <button type="button" className="btn-outline w-full" onClick={() => updateSettings({ focusId: null })}>

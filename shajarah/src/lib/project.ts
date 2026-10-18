@@ -82,7 +82,8 @@ export function withNewIds(s: TreeSnapshot, newId: () => string): TreeSnapshot {
   const settings = s.settings
     ? { ...s.settings,
       ...(s.settings.focusId !== undefined ? { focusId: opt(s.settings.focusId ?? null) } : {}),
-      ...(s.settings.centerBranchId !== undefined ? { centerBranchId: opt(s.settings.centerBranchId ?? null) } : {}) }
+      ...(s.settings.centerBranchId !== undefined ? { centerBranchId: opt(s.settings.centerBranchId ?? null) } : {}),
+      ...(s.settings.familiesThrough ? { familiesThrough: s.settings.familiesThrough.map(map) } : {}) }
     : s.settings;
   return {
     ...s,

@@ -81,6 +81,12 @@ export interface PosterSettings {
    * canopy (straight above the trunk), its brothers to either side.
    */
   centerBranchId?: string | null;
+  /**
+   * People (usually daughters) whose families the poster also shows: the
+   * husband's name with hers, and their children and descendants drawn from
+   * her on dotted lines, as relatives outside the lineage.
+   */
+  familiesThrough?: string[];
   /** Printed size the poster is designed for (legibility is judged at it). Default A2. */
   posterSize?: "A3" | "A2" | "A1" | "A0" | "2A0";
   seed?: number;

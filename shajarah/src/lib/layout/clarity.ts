@@ -25,7 +25,7 @@
  * Passing these checks is necessary, not sufficient: renders must still be
  * inspected at print scale.
  */
-import { lineageParentId } from "../genealogy";
+import { lineageParentId, posterParentId } from "../genealogy";
 import type { TreeDTO } from "../types";
 import type { Edge, PosterLayout } from "./botanical";
 import type { Vec } from "./geometry";
@@ -72,15 +72,17 @@ export function validateRelationships(layout: PosterLayout, tree: TreeDTO): Clar
   const drawn = new Map<string, Edge>();
   for (const e of layout.edges) drawn.set(edgeKey(e.parentId, e.childId), e);
   let expected = 0;
+  // (children of a daughter whose family is shown are drawn from her)
+  const through = new Set(layout.familiesThrough ?? []);
   for (const n of [...layout.nodes, ...layout.stubs]) {
-    const parentId = lineageParentId(n.member, tree.lineage);
+    const parentId = posterParentId(n.member, tree.lineage, through);
     if (!parentId || !boxes.has(parentId)) continue;
     expected++;
     if (!drawn.has(edgeKey(parentId, n.id))) issues.push({ kind: "missing", edge: [parentId, n.id] });
   }
   for (const e of layout.edges) {
     const child = byMember.get(e.childId);
-    if (child && lineageParentId(child, tree.lineage) !== e.parentId) {
+    if (child && posterParentId(child, tree.lineage, through) !== e.parentId) {
       issues.push({ kind: "missing", edge: [e.parentId, e.childId], detail: "drawn from the wrong parent" });
     }
   }

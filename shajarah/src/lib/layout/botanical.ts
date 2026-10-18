@@ -80,6 +80,8 @@ export interface LayoutOptions {
    * and their descendants (the canopy). Defaults to settings.focusId.
    */
   focusId?: string | null;
+  /** People whose families are drawn through them, on dotted lines. Defaults to settings.familiesThrough. */
+  familiesThrough?: string[];
   /** Primary lineage: the branch to centre in the canopy. Defaults to settings.centerBranchId. */
   centerBranchId?: string | null;
   /** Where the canopy starts. Defaults to tree.crownBaseId, then automatic. */
@@ -167,6 +169,11 @@ export interface Branch {
   d: string;
   w: number;
   lineage?: number | null;
+  /**
+   * A dotted line (a family shown through a daughter): `d` is then the
+   * line's centre, to be stroked `w` wide, not a filled outline.
+   */
+  dotted?: boolean;
 }
 
 export interface TrunkLabel {
@@ -235,6 +242,8 @@ export interface PosterLayout {
   tooDense: boolean;
   /** Set when the poster shows one branch only (see LayoutOptions.focusId). */
   focus: { id: string; label: string } | null;
+  /** People whose children are drawn from them on dotted lines (see LayoutOptions.familiesThrough). */
+  familiesThrough: string[];
   /** Oldest generation drawn on the canopy and its side branches; legend numbering and colours start here. */
   generationOffset: number;
   /** Generations present on crown / side-branch tags (for the legend). */
@@ -383,6 +392,12 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     ? tree.members
     : tree.members.filter((m) => m.gender !== "FEMALE");
   const byMemberId = new Map(tree.members.map((m) => [m.id, m]));
+  // A daughter whose family is shown is drawn even when daughters are hidden.
+  const through = new Set((opts.familiesThrough ?? tree.settings?.familiesThrough ?? []).filter((id) => byMemberId.has(id)));
+  if (through.size) {
+    const shownNow = new Set(visible);
+    visible = tree.members.filter((m) => shownNow.has(m) || through.has(m.id));
+  }
   // Focus: one branch of the family on its own poster (for families too
   // large to draw clearly on one sheet): the person's ancestors and
   // descendants only, with the canopy starting at the person.
@@ -390,7 +405,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const focusMember = requestedFocus ? byMemberId.get(requestedFocus) : undefined;
   let counted = tree.members;
   if (focusMember) {
-    const { ancestors, descendants } = lineagePath(tree.members, tree.lineage, focusMember.id);
+    const { ancestors, descendants } = lineagePath(tree.members, tree.lineage, focusMember.id, through);
     const keep = new Set([focusMember.id, ...ancestors, ...descendants]);
     // the focused person is drawn even when daughters are otherwise hidden
     const shown = new Set(visible);
@@ -435,12 +450,13 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },
     tooDense: false,
     focus: null,
+    familiesThrough: [...through],
     generationOffset: 0, generationsPresent: [], stats,
   };
   if (visible.length === 0) return empty;
 
   // ── 1. Lineage hierarchy ──────────────────────────────────────────────
-  const index = childrenIndex(visible, tree.lineage);
+  const index = childrenIndex(visible, tree.lineage, through);
   const seen = new Set<string>();
   const build = (m: MemberDTO): TNode => {
     seen.add(m.id); // guards against cycles
@@ -464,12 +480,39 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   }
   const root = hierarchy<TNode>(rootT, (d) => d.children).count() as HNode;
 
+  // Families shown through a daughter: her children (drawn from her, not
+  // from their father) and all their descendants are relatives outside
+  // the lineage, on dotted lines. Their generations are counted from her.
+  const dotted = new Set<string>();
+  const generationOf = new Map<string, number>();
+  if (through.size) {
+    root.each((n) => {
+      const m = n.data.member;
+      const p = n.parent?.data.member;
+      if (!m || !p) return;
+      // (drawn from their mother in a father's-line tree, or the reverse)
+      const throughHer = through.has(p.id) && (tree.lineage === "MATRILINEAL" ? m.fatherId === p.id : m.motherId === p.id);
+      if (dotted.has(p.id) || throughHer) {
+        dotted.add(m.id);
+        generationOf.set(m.id, (generationOf.get(p.id) ?? p.generation) + 1);
+      }
+    });
+  }
+  const genOf = (m: MemberDTO) => generationOf.get(m.id) ?? m.generation;
+
   const rtl = opts.rtl ?? ARABIC.test(root.data.member?.name ?? tree.title ?? "");
   // Children are in sibling order (eldest first); on RTL posters the eldest
   // sits on the right, i.e. at the end of the u axis.
   if (rtl) root.each((n) => n.children?.reverse());
 
   // Label text for a member, honouring the label mode and years option.
+  /** The other parent of a member's children, or a recorded spouse. */
+  const spouseOf = (m: MemberDTO): MemberDTO | undefined => {
+    const child = tree.members.find((c) => (c.fatherId === m.id && c.motherId) || (c.motherId === m.id && c.fatherId));
+    const id = child ? (child.fatherId === m.id ? child.motherId : child.fatherId)
+      : tree.marriages.map((r) => (r.spouseAId === m.id ? r.spouseBId : r.spouseBId === m.id ? r.spouseAId : null)).find(Boolean);
+    return id ? byMemberId.get(id) : undefined;
+  };
   const labelOf = (m: MemberDTO) => {
     let label = m.name;
     if (labelMode === "withFather") {
@@ -484,6 +527,12 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     // A laqab or honorific (الشيخ، رحمه الله …) is a quiet second line.
     const laqab = m.laqab?.trim();
     if (laqab) subLabel = subLabel ? `${laqab} · ${subLabel}` : laqab;
+    // whose family is shown through her: her husband's name with hers
+    const spouse = through.has(m.id) ? spouseOf(m) : undefined;
+    if (spouse) {
+      const line = ARABIC.test(spouse.name) ? `${m.gender === "FEMALE" ? "زوجها" : "زوجته"} ${spouse.name}` : `m. ${spouse.name}`;
+      subLabel = subLabel ? `${line} · ${subLabel}` : line;
+    }
     return { label, subLabel };
   };
 
@@ -968,7 +1017,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     }
     const node: LiveNode = {
       id: m.id, member: m, x: p.x, y: p.y, tx: p.x, ty: p.y, depth,
-      generation: m.generation, w, h, fontSize: fs, shape, label, subLabel, terminal,
+      generation: genOf(m), w, h, fontSize: fs, shape, label, subLabel, terminal,
       angle, leafLength, leafWidth, leafCount: n.value ?? 1,
       parentId: n.parent?.data.member?.id ?? null,
       mass: medallion ? 4 : 1, region, side,
@@ -1146,7 +1195,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       const size = Math.max(fs * 3.2, textWidth(label, fs) + fs, subLabel ? textWidth(subLabel, fs * 0.68) + fs * 1.4 : 0);
       const stub: LiveNode = {
         id: m.id, member: m, x: end.x, y: end.y, tx: end.x, ty: end.y, depth: 0,
-        generation: m.generation, w: size, h: size, fontSize: fs, shape: "medallion", label,
+        generation: genOf(m), w: size, h: size, fontSize: fs, shape: "medallion", label,
         subLabel, terminal: true, angle: 0, leafLength: 0, leafWidth: 0, leafCount: 1,
         parentId: o.anchor.data.member!.id, mass: 1e6, region: "fixed", side,
       };
@@ -1506,6 +1555,16 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const limbShare = mainLimbs ? clamp(1.05 / mainLimbs, 0.14, 0.4) : 0;
   for (const node of growing) {
     const c = curveOf.get(node.id)!;
+    if (dotted.has(node.member.id)) {
+      // outside the lineage: an even dotted line, a little heavier than a
+      // twig so the dots read
+      const w = Math.max(wMin * 2.2, node.shape === "leaf" ? widthOf(1) : widthOf(node.leafCount) * 0.8);
+      const p = (v: Vec) => `${v.x.toFixed(1)} ${v.y.toFixed(1)}`;
+      branches.push({ d: `M${p(c.p0)}C${p(c.c1)} ${p(c.c2)} ${p(c.p1)}`, w, lineage: node.lineage ?? null, dotted: true });
+      edges.push({ parentId: parentIdOf(node), childId: node.id, points: sample(c), w0: w, w1: w, lineage: node.lineage ?? null });
+      seedFrom(c);
+      continue;
+    }
     if (node.shape === "leaf") {
       // a thin stalk from the parent to the base of the leaf blade
       const tip = Math.max(wMin * 0.8, node.fontSize * 0.14);
@@ -1664,6 +1723,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     legibility,
     overlaps,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },
+    familiesThrough: [...through],
     focus: focusMember
       ? {
         id: focusMember.id,

@@ -55,6 +55,7 @@ export const updateTreeSchema = createTreeSchema.partial().extend({
       posterSize: z.enum(["A3", "A2", "A1", "A0", "2A0"]).optional(),
       focusId: z.string().nullable().optional(),
       centerBranchId: z.string().nullable().optional(),
+      familiesThrough: z.array(z.string()).max(1000).optional(),
       seed: z.number().int().optional(),
       theme: themeSchema.optional(),
     })

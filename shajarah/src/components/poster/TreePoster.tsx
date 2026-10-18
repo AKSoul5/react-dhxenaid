@@ -215,7 +215,14 @@ export const TreePoster = memo(
         {/* Every branch has a fine paper-coloured edge, so where lines cross
             the upper one visibly passes over the lower (never a shared junction) */}
         <g stroke={pal.mono ? "#ffffff" : PAPER} strokeWidth={W * 0.0018} strokeLinejoin="round" paintOrder="stroke">
-          {layout.branches.map((b, i) => <path key={i} d={b.d} fill={pal.branch(b.lineage)} />)}
+          {layout.branches.map((b, i) =>
+            b.dotted ? (
+              // a family shown through a daughter: round dots along the line
+              <path key={i} d={b.d} fill="none" stroke={pal.branch(b.lineage)} strokeWidth={b.w} strokeLinecap="round" strokeDasharray={`0.01 ${(b.w * 2.1).toFixed(1)}`} />
+            ) : (
+              <path key={i} d={b.d} fill={pal.branch(b.lineage)} />
+            ),
+          )}
         </g>
         {layout.foliage && (
           <g>
@@ -622,6 +629,14 @@ function Footer({ layout, theme, pal, meta }: { layout: PosterLayout; theme: Pos
             <rect key={k} x={x + (k * sw) / 3} y={y - fs * 0.12} width={sw / 3.4} height={fs * 0.24} rx={fs * 0.1} fill={pal.branch(k)} />
           ))}
         </g>
+      ),
+    });
+  }
+  if (layout.branches.some((b) => b.dotted)) {
+    items.push({
+      label: rtl ? "عن طريق البنات" : "Through a daughter",
+      swatch: (x) => (
+        <line x1={x + fs * 0.2} y1={y} x2={x + sw - fs * 0.2} y2={y} stroke={pal.branch(null)} strokeWidth={fs * 0.22} strokeLinecap="round" strokeDasharray={`0.01 ${(fs * 0.46).toFixed(1)}`} />
       ),
     });
   }

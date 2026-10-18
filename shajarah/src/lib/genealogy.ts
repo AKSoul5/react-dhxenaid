@@ -10,12 +10,29 @@ export function lineageParentId(
     : (m.fatherId ?? m.motherId);
 }
 
+/**
+ * The parent a member is drawn from on the poster: the lineage parent,
+ * except when the other parent is one of `through` (a daughter whose family
+ * the poster shows: her children are drawn from her, on dotted lines).
+ */
+export function posterParentId(
+  m: Pick<MemberDTO, "fatherId" | "motherId">,
+  lineage: Lineage,
+  through?: ReadonlySet<string>,
+): string | null {
+  if (through?.size) {
+    const other = lineage === "MATRILINEAL" ? m.fatherId : m.motherId;
+    if (other && through.has(other)) return other;
+  }
+  return lineageParentId(m, lineage);
+}
+
 /** Map of parentId → children, ordered by birthOrder then birthYear. */
-export function childrenIndex(members: MemberDTO[], lineage: Lineage) {
+export function childrenIndex(members: MemberDTO[], lineage: Lineage, through?: ReadonlySet<string>) {
   const ids = new Set(members.map((m) => m.id));
   const index = new Map<string | null, MemberDTO[]>();
   for (const m of members) {
-    let p = lineageParentId(m, lineage);
+    let p = posterParentId(m, lineage, through);
     if (p && !ids.has(p)) p = null;
     const list = index.get(p) ?? [];
     list.push(m);
@@ -120,19 +137,19 @@ export function nasab(members: MemberDTO[], id: string, depth = 4): string {
  * the root) and every descendant (through the lineage). Siblings, cousins
  * and half-siblings are not on it. Used to highlight a person's line.
  */
-export function lineagePath(members: MemberDTO[], lineage: Lineage, memberId: string) {
+export function lineagePath(members: MemberDTO[], lineage: Lineage, memberId: string, through?: ReadonlySet<string>) {
   const byId = new Map(members.map((m) => [m.id, m]));
   const ancestors: string[] = [];
   const seen = new Set<string>([memberId]);
   let cur = byId.get(memberId);
   while (cur) {
-    const p = lineageParentId(cur, lineage);
+    const p = posterParentId(cur, lineage, through);
     if (!p || seen.has(p)) break;
     ancestors.push(p);
     seen.add(p);
     cur = byId.get(p);
   }
-  const index = childrenIndex(members, lineage);
+  const index = childrenIndex(members, lineage, through);
   const descendants: string[] = [];
   const stack = [...(index.get(memberId) ?? [])];
   while (stack.length) {
