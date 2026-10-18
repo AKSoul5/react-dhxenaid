@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   resolve: { alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) } },
-  // the layout tests run full poster layouts (up to ~500 people): seconds each under parallel load
-  test: { include: ["tests/**/*.test.ts"], testTimeout: 30_000 },
+  // Speed budgets live in tests/bench/ and only run with BENCH=1 (npm run bench),
+  // alone: timing inside the parallel suite measures the machine, not the code.
+  test: { include: ["tests/**/*.test.ts"], fileParallelism: !process.env.BENCH },
 });

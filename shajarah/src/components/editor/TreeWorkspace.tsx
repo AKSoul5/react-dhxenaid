@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { computePosterLayout } from "@/lib/layout/botanical";
+import { branchHeads, clearestPaper, isClear, rankBranches, type BranchOption } from "@/lib/layout/branches";
 import { generationColor } from "@/lib/layout/palette";
 import { lineagePath, nasab } from "@/lib/genealogy";
 import type { Gender, TreeDTO } from "@/lib/types";
@@ -12,6 +13,8 @@ import { PosterViewport } from "../poster/PosterViewport";
 import { TreePoster } from "../poster/TreePoster";
 import { MemberForm, emptyDraft, type MemberDraft } from "./MemberForm";
 import { NasabImport } from "./NasabImport";
+import { GedcomPanel } from "./GedcomPanel";
+import { importReceipt, type ImportReceipt } from "@/lib/imports";
 import { RelationsPanel } from "./RelationsPanel";
 import { StylePanel } from "./StylePanel";
 import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
@@ -27,7 +30,8 @@ type Panel =
   | { kind: "list" }
   | { kind: "edit"; id: string }
   | { kind: "new"; draft: MemberDraft }
-  | { kind: "import" };
+  | { kind: "import" }
+  | { kind: "gedcom" };
 
 export function TreeWorkspace({ initialTree, mode }: Props) {
   const [tree, setTree] = useState(initialTree);
@@ -57,9 +61,13 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     [deferredTree, showFemales, seed, theme, posterSize],
   );
 
-  const mutate = useCallback(async (fn: () => Promise<TreeDTO>) => {
+  // The last bulk import, while it can still be undone exactly: any later
+  // change to the people in the tree ends that (poster settings do not).
+  const [lastImport, setLastImport] = useState<{ receipt: ImportReceipt; label: string } | null>(null);
+  const mutate = useCallback(async (fn: () => Promise<TreeDTO>, opts: { keepImport?: boolean } = {}) => {
     setBusy(true);
     setError(null);
+    if (!opts.keepImport) setLastImport(null);
     try {
       const next = await fn();
       setTree(next);
@@ -108,23 +116,39 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     const previous = tree.settings;
     const settings = { ...tree.settings, showFemales, seed, ...patch };
     setTree((t) => ({ ...t, settings })); // optimistic
-    void mutate(() => repo.updateTree({ settings })).then((saved) => {
+    void mutate(() => repo.updateTree({ settings }), { keepImport: true }).then((saved) => {
       // not saved: put the poster back as it was (the error is shown)
       if (!saved) setTree((t) => (t.settings === settings ? { ...t, settings: previous } : t));
     });
   };
 
   // What to offer when no single poster size is enough for the whole family
-  const branchHeads = useMemo(
-    () => layout.nodes.filter((n) => n.depth === 1 && !n.terminal).sort((a, b) => b.leafCount - a.leafCount),
-    [layout.nodes],
-  );
+  // (inside a branch poster: its sub-branches, so a branch can be narrowed again)
+  const branches = useMemo(() => branchHeads(deferredTree, layout), [deferredTree, layout]);
   const fallbacks: Fallbacks = {
-    // inside a focused branch these are its sub-branches: a branch that is still too big can be narrowed again
-    branches: branchHeads.map((n) => ({ id: n.id, name: n.member.name, size: n.leafCount })),
-    onFocus: (id) => updateSettings({ focusId: id }),
+    branches,
+    measure: (id) => clearestPaper(deferredTree, id, (p) => ({ showFemales, seed, ...layoutOptionsFor(theme, p) })),
+    onFocus: (id, paper) => updateSettings({ focusId: id, ...(paper ? { posterSize: paper } : {}) }),
     onHideDaughters: showFemales && tree.lineage !== "MATRILINEAL" ? () => updateSettings({ showFemales: false }) : null,
     onTiled: posterSize !== "2A0" ? () => updateSettings({ posterSize: "2A0" }) : null,
+  };
+  // a branch poster needs at least one descendant to be a branch
+  const selectedHasDescendants = useMemo(
+    () => !!selected && lineagePath(tree.members, tree.lineage, selected.id).descendants.length > 0,
+    [selected, tree.members, tree.lineage],
+  );
+
+  /** Runs a bulk import, remembering exactly what it added so it can be undone. */
+  const runImport = async (fn: () => Promise<TreeDTO>, source: string) => {
+    const before = tree;
+    const next = await mutate(fn);
+    if (!next) return;
+    const receipt = importReceipt(before, next);
+    const n = receipt.memberIds.length;
+    if (n || receipt.marriageIds.length || receipt.restore.length) {
+      setLastImport({ receipt, label: `Imported ${n} ${n === 1 ? "person" : "people"} from ${source}.` });
+    }
+    setPanel({ kind: "list" });
   };
 
   const filtered = useMemo(() => {
@@ -198,7 +222,24 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 <button type="button" className="btn-outline" title="Paste a nasab: أحمد بن نوفل بن …" onClick={() => setPanel({ kind: "import" })}>
                   بن…
                 </button>
+                <button type="button" className="btn-outline px-2 text-xs" title="Import or export a GEDCOM file" onClick={() => setPanel({ kind: "gedcom" })}>
+                  GEDCOM
+                </button>
               </div>
+              {lastImport && (
+                <div className="flex items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" role="status">
+                  <span className="flex-1">{lastImport.label}</span>
+                  <button
+                    type="button"
+                    className="btn-outline whitespace-nowrap py-0.5 text-xs"
+                    disabled={busy}
+                    onClick={() => void mutate(() => repo.undoImport(lastImport.receipt))}
+                  >
+                    Undo this import
+                  </button>
+                  <button type="button" className="text-emerald-700" aria-label="Dismiss" onClick={() => setLastImport(null)}>×</button>
+                </div>
+              )}
               <ul className="flex-1 overflow-auto">
                 {tree.members.length === 0 && (
                   <li className="p-6 text-center text-sm text-gray-500">
@@ -227,10 +268,17 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               tree={tree}
               busy={busy}
               onCancel={() => setPanel({ kind: "list" })}
-              onImport={async (text) => {
-                const next = await mutate(() => repo.importNasab(text));
-                if (next) setPanel({ kind: "list" });
-              }}
+              onImport={(text) => void runImport(() => repo.importNasab(text), "the pasted nasab")}
+            />
+          )}
+
+          {panel.kind === "gedcom" && (
+            <GedcomPanel
+              tree={tree}
+              busy={busy}
+              filename={exportName(tree.name)}
+              onCancel={() => setPanel({ kind: "list" })}
+              onImport={(text, fileName) => void runImport(() => repo.importGedcom(text), fileName)}
             />
           )}
 
@@ -307,8 +355,15 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                     ✓ Poster shows only this branch — show the whole family
                   </button>
                 ) : (
-                  <button type="button" className="btn-outline w-full" onClick={() => updateSettings({ focusId: selected.id })}>
+                  <button
+                    type="button"
+                    className="btn-outline w-full disabled:opacity-50"
+                    disabled={!selectedHasDescendants}
+                    title={selectedHasDescendants ? undefined : "No descendants recorded yet: there is no branch to show"}
+                    onClick={() => updateSettings({ focusId: selected.id })}
+                  >
                     🌿 Poster of this branch only (their ancestors and descendants)
+                    {!selectedHasDescendants && <span className="block text-xs text-gray-500">No descendants recorded yet</span>}
                   </button>
                 )}
               </div>
@@ -355,7 +410,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 // try each larger poster until the connections are unambiguous
                 for (const p of PAPER_ORDER.slice(PAPER_ORDER.indexOf(posterSize) + 1)) {
                   const l = computePosterLayout(deferredTree, { showFemales, seed, ...layoutOptionsFor(theme, p) });
-                  if (l.clarity.ok && l.overlaps === 0 && l.legibility.ok) return p;
+                  if (isClear(l)) return p;
                 }
                 return null;
               }}
@@ -508,31 +563,70 @@ function ClarityNotice({
 }
 
 type Fallbacks = {
-  branches: { id: string; name: string; size: number }[];
-  onFocus: (id: string) => void;
+  branches: Omit<BranchOption, "clearAt">[];
+  /** Smallest clear poster for one branch (runs layouts: slow on big families). */
+  measure: (id: string) => PaperSize | null;
+  onFocus: (id: string, paper: PaperSize | null) => void;
   onHideDaughters: (() => void) | null;
   onTiled: (() => void) | null;
 };
 
 /**
  * The ways out when a family is too big for one clear poster: a poster of
- * one branch, fewer names, or the largest size printed in tiles.
+ * one branch, fewer names, or the largest size printed in tiles. Branches
+ * are listed by the smallest poster each is clear on (the one that will
+ * actually work first), with the number of people on each.
  */
-function FallbackActions({ branches, onFocus, onHideDaughters, onTiled }: Fallbacks) {
-  const [branch, setBranch] = useState(branches[0]?.id ?? "");
-  useEffect(() => setBranch((b) => (branches.some((x) => x.id === b) ? b : branches[0]?.id ?? "")), [branches]);
+function FallbackActions({ branches, measure, onFocus, onHideDaughters, onTiled }: Fallbacks) {
+  const [ranked, setRanked] = useState<BranchOption[] | null>(null);
+  const [done, setDone] = useState(0);
+  const [choice, setChoice] = useState("");
+  const key = branches.map((b) => b.id).join(",");
+  useEffect(() => {
+    let live = true;
+    setRanked(null);
+    setDone(0);
+    const results: BranchOption[] = [];
+    // one branch per tick, so the notice can show progress between layouts
+    const next = (i: number) => {
+      if (!live) return;
+      if (i === branches.length) {
+        const r = rankBranches(results);
+        setRanked(r);
+        setChoice(r[0]?.id ?? "");
+        return;
+      }
+      results.push({ ...branches[i], clearAt: measure(branches[i].id) });
+      setDone(i + 1);
+      setTimeout(() => next(i + 1), 0);
+    };
+    const t = setTimeout(() => next(0), 30);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-measure only when the branches change
+  }, [key]);
+  const chosen = ranked?.find((b) => b.id === choice);
   return (
     <div className="mt-2 space-y-1.5">
-      {branches.length > 1 && (
-        <div className="flex items-center gap-1.5">
-          <select className="input w-auto min-w-0 flex-1 py-0.5 text-xs" value={branch} onChange={(e) => setBranch(e.target.value)} dir="auto">
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.name} ({b.size})</option>
+      {branches.length > 0 && !ranked && (
+        <p>Checking which poster size each branch fits… {done} of {branches.length}</p>
+      )}
+      {ranked && ranked.length > 0 && (
+        <div className="space-y-1">
+          <select className="input w-full py-0.5 text-xs" value={choice} onChange={(e) => setChoice(e.target.value)} dir="auto">
+            {ranked.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name} — {b.people} people — {b.clearAt ? `clear on ${b.clearAt}` : "not clear even on 2A0"}
+              </option>
             ))}
           </select>
-          <button type="button" className="btn-outline py-1 text-xs" onClick={() => branch && onFocus(branch)}>
-            Poster of this branch
-          </button>
+          {chosen && (
+            <button type="button" className="btn-outline py-1 text-xs" onClick={() => onFocus(chosen.id, chosen.clearAt)}>
+              {chosen.clearAt ? `Poster of this branch on ${chosen.clearAt}` : "Poster of this branch (then narrow it further)"}
+            </button>
+          )}
         </div>
       )}
       {onHideDaughters && (

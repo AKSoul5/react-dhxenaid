@@ -455,7 +455,11 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const trunkChain = chain.filter((n) => n !== base && n.data.member);
   const trunkStartId = opts.trunkStartId !== undefined ? opts.trunkStartId : tree.trunkStartId;
   const startIdx = trunkStartId ? trunkChain.findIndex((n) => n.data.member!.id === trunkStartId) : -1;
-  const customSoil = tree.soilText?.trim() || null;
+  // A custom soil inscription is written for the tree's own trunk start.
+  // A branch poster whose ancestry does not pass through it (the person is
+  // older than the trunk start) gets its soil from the data instead, so it
+  // never repeats ancestors already on its trunk.
+  const customSoil = focusMember && trunkStartId && startIdx < 0 ? null : tree.soilText?.trim() || null;
 
   const crownNodes = (base.descendants() as HNode[]).filter((n) => n !== base);
   const offshoots: { node: HNode; anchor: HNode }[] = [];

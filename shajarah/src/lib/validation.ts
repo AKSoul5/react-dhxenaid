@@ -64,6 +64,18 @@ export const importNasabSchema = z.object({
   text: z.string().trim().min(1, "Paste at least one nasab").max(50_000),
 });
 
+export const importGedcomSchema = z.object({
+  /** The text of a GEDCOM 5.5.1 file (decoded in the browser). */
+  text: z.string().min(1, "The file is empty").max(20_000_000, "The file is too large (over 20 MB)"),
+});
+
+export const undoImportSchema = z.object({
+  memberIds: z.array(z.string()).max(50_000),
+  marriageIds: z.array(z.string()).max(50_000),
+  restore: z.array(z.object({ id: z.string(), fatherId: z.string().nullable(), motherId: z.string().nullable() })).max(50_000),
+  rootMemberId: z.string().nullable(),
+});
+
 export const memberFieldsSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(120),
   laqab: optionalText(120),
@@ -97,3 +109,5 @@ export type CreateMemberInput = z.infer<typeof createMemberSchema>;
 export type UpdateMemberInput = z.infer<typeof updateMemberSchema>;
 export type CreateMarriageInput = z.infer<typeof createMarriageSchema>;
 export type ImportNasabInput = z.infer<typeof importNasabSchema>;
+export type ImportGedcomInput = z.infer<typeof importGedcomSchema>;
+export type UndoImportInput = z.infer<typeof undoImportSchema>;

@@ -1,6 +1,8 @@
 import { computeGenerations, parentAssignmentError } from "@/lib/genealogy";
 import type { MemberDTO, TreeDTO } from "@/lib/types";
 import { applyNasabLines } from "@/lib/nasab";
+import { parseGedcom, planGedcomImport } from "@/lib/gedcom";
+import { undoImportLocally, type ImportReceipt } from "@/lib/imports";
 import type {
   CreateMarriageInput, CreateMemberInput, UpdateMemberInput, UpdateTreeInput,
 } from "@/lib/validation";
@@ -15,6 +17,10 @@ export interface FamilyRepository {
   updateTree(input: UpdateTreeInput): Promise<TreeDTO>;
   /** One nasab per line ("أحمد بن نوفل بن …"); reuses existing ancestors. */
   importNasab(text: string): Promise<TreeDTO>;
+  /** The text of a GEDCOM file; reuses people already in the tree. */
+  importGedcom(text: string): Promise<TreeDTO>;
+  /** Removes what one import added (see importReceipt). */
+  undoImport(receipt: ImportReceipt): Promise<TreeDTO>;
 }
 
 async function call(url: string, method: string, body?: unknown): Promise<TreeDTO> {
@@ -37,6 +43,8 @@ export function apiRepository(treeId: string): FamilyRepository {
     deleteMarriage: (id) => call(`/api/marriages/${id}`, "DELETE"),
     updateTree: (input) => call(`/api/trees/${treeId}`, "PATCH", input),
     importNasab: (text) => call(`/api/trees/${treeId}/import-nasab`, "POST", { text }),
+    importGedcom: (text) => call(`/api/trees/${treeId}/import-gedcom`, "POST", { text }),
+    undoImport: (receipt) => call(`/api/trees/${treeId}/undo-import`, "POST", receipt),
   };
 }
 
@@ -119,6 +127,15 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
           ? newRootId
           : tree.rootMemberId;
       return commit({ ...tree, members, rootMemberId });
+    },
+    async importGedcom(text) {
+      const file = parseGedcom(text);
+      if (!file.people.length) throw new Error(file.warnings.at(-1) ?? "No people found in the file.");
+      const plan = planGedcomImport(tree, file, () => `local-${Date.now()}-${seq++}`);
+      return commit({ ...tree, members: plan.members, marriages: [...tree.marriages, ...plan.newMarriages], rootMemberId: plan.rootMemberId });
+    },
+    async undoImport(receipt) {
+      return commit(undoImportLocally(tree, receipt));
     },
     async updateTree(input) {
       return commit({

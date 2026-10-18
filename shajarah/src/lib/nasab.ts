@@ -33,24 +33,25 @@ export function parseNasab(text: string): ParsedNasab {
   const names = parts.filter((_, i) => i % 2 === 0);
   const firstSep = (parts[1] ?? "").toLowerCase();
   const gender: Gender = ["بنت", "bint", "daughter of"].includes(firstSep) ? "FEMALE" : "MALE";
-  const entries = names
-    .map((raw) => {
-      let name = raw.trim();
-      const laqabs: string[] = [];
-      name = name.replace(/\(([^)]*)\)/g, (_, inner: string) => {
-        laqabs.push(inner.trim());
-        return " ";
-      });
-      const hon = name.match(HONORIFIC);
-      if (hon) {
-        laqabs.push(hon[1]);
-        name = name.slice(0, hon.index);
-      }
-      name = name.replace(/\s+/g, " ").trim();
-      return { name, laqab: laqabs.filter(Boolean).join(" — ") || null };
-    })
-    .filter((e) => e.name);
+  const entries = names.map(splitLaqab).filter((e) => e.name);
   return { entries: entries.reverse(), gender };
+}
+
+/** Lifts "(laqab)" and a closing honorific (رحمه الله …) out of a name. */
+export function splitLaqab(raw: string): NasabEntry {
+  let name = raw.trim();
+  const laqabs: string[] = [];
+  name = name.replace(/\(([^)]*)\)/g, (_, inner: string) => {
+    laqabs.push(inner.trim());
+    return " ";
+  });
+  const hon = name.match(HONORIFIC);
+  if (hon) {
+    laqabs.push(hon[1]);
+    name = name.slice(0, hon.index);
+  }
+  name = name.replace(/\s+/g, " ").trim();
+  return { name, laqab: laqabs.filter(Boolean).join(" — ") || null };
 }
 
 /** Comparison key tolerant of spelling variants (أ/إ/آ/ا, ى/ي, ة/ه, spaces, diacritics). */

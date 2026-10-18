@@ -59,6 +59,66 @@ first:
   must agree before a line joins, so a lone «محمد» never links strangers.
 - A preview shows how many names are reused and how many are new. It warns
   when a line fits in two places equally well.
+- After an import, **Undo this import** in the member list removes exactly
+  what it added (see below).
+
+## Importing and exporting GEDCOM
+
+Click **GEDCOM** in the member list. GEDCOM 5.5.1 (`.ged`) is the file every
+genealogy program exports: Ancestry, MyHeritage, FamilySearch, Gramps,
+MacFamilyTree and others.
+
+- **Preview first.** The file is read and matched in the browser with the
+  same planner the server runs. You see how many people are new, how many
+  are already in the tree, the new marriages, members who gain a parent, the
+  new start of the trunk, and anything that could not be imported. Nothing is
+  saved until you press Import.
+- **Matching** reuses the nasab importer's spelling-tolerant names. A person
+  in the file is someone already in the tree when their names agree and their
+  line agrees: their matched parent has exactly one child of that name, or, at
+  the top of the file, the member has a child whose name agrees with one of
+  theirs (two names in a row, so a lone «محمد» never joins strangers). A file
+  that reaches further back than the tree adds the older ancestors above the
+  root. Members in the tree are never changed, except that one without a
+  recorded parent gets the parent from the file. A person who matches two
+  places equally well is added as new and counted, so you can check for
+  duplicates.
+- **What is read:**
+  - names (`NAME`/`GIVN`; a nasab written in the name is reduced to the
+    person's own name when the file links their parents);
+  - `NICK`/`NPFX`/`NSFX` and «(laqab)»/honorifics, which go to the laqab;
+  - sex, and birth and death years from any GEDCOM date form (`ABT`,
+    `BET … AND`, `1700/01`, calendar escapes);
+  - death or burial, which marks a person deceased;
+  - notes, including shared `NOTE` records and `CONC`/`CONT`;
+  - places, exact dates and occupations, kept as lines in the notes;
+  - parents (`FAMC`/`CHIL`, the first family when there are several);
+    marriages and divorces;
+  - birth order from the file's child order.
+- **Encodings:** UTF-8 and UTF-16, with or without a byte-order mark. Older
+  ANSEL files are read with a warning that accented letters may be wrong.
+- **Not imported yet:** sources and media. The preview says how many were
+  skipped.
+- **Bad data is reported, not imported:** a link that would make someone
+  their own ancestor is left out, and so are two fathers on one child, each
+  with a warning.
+- **Import is one transaction.** People are inserted parents-first, one
+  statement per generation (about 0.2 s for 320 people), and the result is
+  the full tree.
+- **Undo this import** removes exactly what the import added, in one
+  transaction: its members and marriages, and any parent links it filled in.
+  It also restores the previous root. The receipt is the difference between
+  the tree before and after the import, so the same button works for nasab
+  imports. It is offered until the next change to the family; changing
+  poster settings does not count.
+- **Export:** "Download GEDCOM" (or `GET /api/trees/:treeId/gedcom`) writes a
+  UTF-8 GEDCOM 5.5.1 file, which any genealogy program opens. Sibling order
+  across several marriages, which GEDCOM's per-family child lists cannot
+  express without dates, is kept in an `_SHAJARAH_ORDER` extension tag.
+  Other programs ignore that tag.
+  Exporting a family and importing it into an empty tree reproduces every
+  person, link, marriage and sibling order (tested on all sample families).
+  Importing it into the same tree reuses everyone and creates no one.
 
 ## The three tiers: foundation, trunk, canopy
 
@@ -220,6 +280,7 @@ Options:
 | --- | --- |
 | `npm test` | Layout engine and genealogy-rule tests |
 | `npm run typecheck` / `npm run lint` | Type and lint checks |
+| `npm run bench` | Layout speed budgets, run alone (not part of `npm test`: timing inside a parallel suite measures the machine, not the code) |
 | `npm run db:studio` | Browse the data in Prisma Studio |
 
 ## Project structure
@@ -242,6 +303,8 @@ shajarah/
 │   └── lib/
 │       ├── layout/              ← procedural layout engine (pure, framework-free)
 │       │   ├── botanical.ts     hierarchy → trunk/crown → positions → branches/leaves
+│       │   ├── clarity.ts       relationship-clarity validator
+│       │   ├── branches.ts      branch posters: options, smallest clear size, ranking
 │       │   ├── geometry.ts      Bézier + tapered "ribbon" outlines
 │       │   ├── palette.ts       generation colours (ألوان الأجيال)
 │       │   └── random.ts        seeded PRNG
@@ -249,11 +312,14 @@ shajarah/
 │       ├── data/                Prisma client, tree service, HTTP helpers
 │       ├── genealogy.ts         generations, cycle checks, nasab chain
 │       ├── nasab.ts             nasab parser + matcher for "X بن Y" import
+│       ├── gedcom.ts            GEDCOM 5.5.1 decode, parse, import plan, export
+│       ├── imports.ts           what an import changed, for "Undo this import"
 │       ├── theme.ts             style presets and colour helpers
 │       ├── samples/kalali.ts    the Al-Kalali lineage
 │       ├── validation.ts        zod schemas shared by API and UI
 │       └── sampleData.ts        deterministic sample family
-└── tests/                       layout, trunk/side-branch and nasab tests
+└── tests/                       layout, clarity, trunk, nasab and GEDCOM tests
+    └── bench/                   speed budgets, run alone with `npm run bench`
 ```
 
 ## Data model
@@ -304,6 +370,9 @@ reconcile partial state.
 | POST | `/api/trees/:treeId/marriages` | link two spouses |
 | DELETE | `/api/marriages/:marriageId` | unlink spouses |
 | POST | `/api/trees/:treeId/import-nasab` | import pasted nasab lines (`{ text }`) in one transaction |
+| POST | `/api/trees/:treeId/import-gedcom` | import a GEDCOM file's text (`{ text }`) in one transaction |
+| POST | `/api/trees/:treeId/undo-import` | undo one import (`{ memberIds, marriageIds, restore, rootMemberId }`) |
+| GET | `/api/trees/:treeId/gedcom` | the tree as a GEDCOM 5.5.1 file |
 
 - Setting a `deathYear` on a member also marks them deceased.
 - `settings: null` resets the poster settings to the defaults.
@@ -421,20 +490,38 @@ inspected at print scale.
 When no single sheet up to 2A0 is clear and legible, the warning offers
 three ways out instead of only reporting the problem:
 
-- **Poster of one branch.** Pick a branch (largest first). The poster then
-  shows that person's ancestors on the trunk and all their descendants in
-  the canopy, and says whose branch it is under the title ("فرع عبدالله بن
-  نصار"). Any member's panel has the same button ("🌿 Poster of this branch
-  only"). A banner in the editor shows the number of people on the poster,
-  and "Show the whole family" goes back. A branch that is still too big
-  offers its own sub-branches. Saved as `settings.focusId`; a focus on a
-  deleted person falls back to the whole family.
+- **Poster of one branch.** Each branch is listed with the number of people
+  its poster holds and the smallest size on which it is clear. The list is
+  ordered by that size, so the branches that will actually work come first;
+  the largest branch, which fits nowhere, comes last. Choosing one sets the
+  branch and that poster size.
+  - The poster shows that person's ancestors on the trunk and in the soil
+    (all of them, up to the root) and all their descendants in the canopy.
+    It says whose branch it is under the title ("فرع عبدالله بن نصار").
+  - Any member's panel has the same button ("🌿 Poster of this branch only").
+    It is disabled for someone with no descendants recorded yet, since there
+    is no branch to show.
+  - A banner in the editor shows the number of people on the poster, and
+    "Show the whole family" goes back. The banner is editor UI: it is not in
+    the SVG and never exported.
+  - A branch that is still too big offers its own sub-branches.
+  - A custom soil inscription is kept when the person descends through the
+    trunk start. For someone older than the trunk start it is replaced by
+    their own ancestors, so it never repeats names already on their trunk.
+  - Saved as `settings.focusId`. A focus on a deleted person falls back to
+    the whole family.
 - **Hide daughters** (patrilineal trees only).
 - **Use 2A0, printed as a Tiled PDF.**
 
-Measured on the 496-person family (`tests/hardening.test.ts`): every branch
-except the largest is clean and legible on A1 alone. The largest (282 people)
-is clean once narrowed to its biggest sub-branch.
+Measured on the 496-person family (`tests/hardening.test.ts`):
+
+| Branch | People | Clear on |
+| --- | --- | --- |
+| عبدالعزيز | 57 | A3 |
+| مسفر | 31 | A3 |
+| فايز | 25 | A3 |
+| سليمان | 135 | A1 |
+| عبدالله | 282 | no single sheet; its biggest sub-branch is clear on A1 |
 
 ## Print export
 
@@ -473,9 +560,15 @@ Without a sample value, `/demo` loads the large demo family.
 
 ## Next steps
 
-- Server-side vector PDF route (headless Chromium `page.pdf()`), plus
-  CMYK/bleed options for print shops
-- Hijri dates, and editable title, credits and sources panels like the
-  reference posters
-- Undo/redo, drag-to-reorder siblings, CSV/GEDCOM import
-- Authentication and per-family sharing
+In order:
+
+1. **Undo/redo** for every edit. Bulk imports already undo as one step.
+2. **Sources and media** in the data model, so GEDCOM `SOUR`/`OBJE` can be
+   imported instead of counted.
+3. **Server-side vector PDF** (headless Chromium `page.pdf()`), with
+   CMYK/bleed options, once print shops ask for it. Until then the SVG opens
+   in Inkscape.
+4. **Accounts and per-family sharing.**
+
+Also wanted: Hijri dates, editable title/credits/sources panels like the
+reference posters, and drag-to-reorder siblings.

@@ -2,9 +2,12 @@ import "server-only";
 import { Prisma, type Member } from "@prisma/client";
 import { computeGenerations, parentAssignmentError } from "../genealogy";
 import type { MemberDTO, PosterSettings, TreeDTO, TreeSummary } from "../types";
+import { randomUUID } from "node:crypto";
 import { parseNasab, planNasabImport, splitNasabLines } from "../nasab";
+import { parseGedcom, planGedcomImport } from "../gedcom";
 import type {
-  CreateMarriageInput, CreateMemberInput, CreateTreeInput, ImportNasabInput, UpdateMemberInput, UpdateTreeInput,
+  CreateMarriageInput, CreateMemberInput, CreateTreeInput, ImportGedcomInput, ImportNasabInput, UndoImportInput,
+  UpdateMemberInput, UpdateTreeInput,
 } from "../validation";
 import { prisma } from "./prisma";
 
@@ -206,10 +209,88 @@ export async function importNasab(treeId: string, input: ImportNasabInput): Prom
   return refreshGenerations(treeId);
 }
 
+/**
+ * Imports a GEDCOM file: people already in the tree are reused, the rest are
+ * created with their parents, marriages and birth order, all in one
+ * transaction. The plan is the same pure function the editor's preview runs.
+ */
+export async function importGedcom(treeId: string, input: ImportGedcomInput): Promise<TreeDTO> {
+  const file = parseGedcom(input.text);
+  if (!file.people.length) throw new DomainError(file.warnings.at(-1) ?? "No people found in the file.");
+  if (file.people.length > MAX_IMPORT) throw new DomainError(`The file has ${file.people.length} people; the limit is ${MAX_IMPORT}.`);
+  await prisma.$transaction(async (tx) => {
+    const tree = await getTreeWith(tx, treeId);
+    const plan = planGedcomImport(tree, file, () => randomUUID());
+    // Parents before children, one statement per level: a few queries
+    // instead of one per person, and every foreign key already exists.
+    const fresh = new Map(plan.newMembers.map((m) => [m.id, m]));
+    const level = new Map<string, number>();
+    const levelOf = (id: string): number => {
+      if (level.has(id)) return level.get(id)!;
+      level.set(id, 0); // the plan has no cycles; this only guards the recursion
+      const m = fresh.get(id)!;
+      const parents = [m.fatherId, m.motherId].filter((p): p is string => !!p && fresh.has(p));
+      const l = parents.length ? 1 + Math.max(...parents.map(levelOf)) : 0;
+      level.set(id, l);
+      return l;
+    };
+    const byLevel: (typeof plan.newMembers)[] = [];
+    for (const m of plan.newMembers) (byLevel[levelOf(m.id)] ??= []).push(m);
+    for (const batch of byLevel) {
+      if (!batch?.length) continue;
+      await tx.member.createMany({
+        data: batch.map(({ id, name, laqab, gender, birthYear, deathYear, isDeceased, birthOrder, generation, notes, fatherId, motherId }) => ({
+          id, treeId, name, laqab, gender, birthYear, deathYear, isDeceased, birthOrder, generation, notes, fatherId, motherId,
+        })),
+      });
+    }
+    for (const r of plan.relinks) {
+      await tx.member.update({ where: { id: r.id }, data: { fatherId: r.fatherId, motherId: r.motherId } });
+    }
+    if (plan.newMarriages.length) {
+      await tx.marriage.createMany({ data: plan.newMarriages.map((m) => ({ ...m, treeId })) });
+    }
+    if (plan.rootMemberId !== tree.rootMemberId) {
+      await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: plan.rootMemberId } });
+    }
+  }, { timeout: 120_000 });
+  return refreshGenerations(treeId);
+}
+
+const MAX_IMPORT = 20_000;
+
+/**
+ * Undoes one bulk import: deletes the members and marriages it created and
+ * gives the members it relinked their parents back. Only touches this tree.
+ */
+export async function undoImport(treeId: string, input: UndoImportInput): Promise<TreeDTO> {
+  await prisma.$transaction(async (tx) => {
+    const tree = await getTreeWith(tx, treeId);
+    const inTree = new Set(tree.members.map((m) => m.id));
+    const gone = new Set(input.memberIds.filter((id) => inTree.has(id)));
+    const keep = (id: string | null) => (id && inTree.has(id) && !gone.has(id) ? id : null);
+    await tx.marriage.deleteMany({ where: { treeId, id: { in: input.marriageIds } } });
+    for (const r of input.restore) {
+      if (!inTree.has(r.id) || gone.has(r.id)) continue;
+      await tx.member.update({ where: { id: r.id }, data: { fatherId: keep(r.fatherId), motherId: keep(r.motherId) } });
+    }
+    // children of removed people lose that parent (SetNull), as they had no such parent before
+    await tx.member.deleteMany({ where: { treeId, id: { in: [...gone] } } });
+    await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: keep(input.rootMemberId) } });
+  }, { timeout: 120_000 });
+  return refreshGenerations(treeId);
+}
+
 async function getTreeWith(tx: Prisma.TransactionClient, treeId: string) {
-  const tree = await tx.familyTree.findUnique({ where: { id: treeId }, include: { members: true } });
+  const tree = await tx.familyTree.findUnique({ where: { id: treeId }, include: { members: true, marriages: true } });
   if (!tree) throw new DomainError("Tree not found", 404);
-  return { ...tree, members: tree.members.map(toMemberDTO) };
+  return {
+    ...tree,
+    members: tree.members.map(toMemberDTO),
+    marriages: tree.marriages.map((m) => ({
+      id: m.id, spouseAId: m.spouseAId, spouseBId: m.spouseBId, startYear: m.startYear, endYear: m.endYear,
+    })),
+  };
 }
 
 /** Recomputes the denormalised `generation` column and returns the fresh tree. */
