@@ -60,11 +60,14 @@ describe("realistic test families", () => {
     expect(childless).toBeGreaterThan(10);
   });
 
-  it("are too dense for A2 (one clear warning) and nearly clear on A1", () => {
-    const at = (paper: "A2" | "A1") => computePosterLayout(tree, { ...layoutOptionsFor(resolveTheme(tree.settings), paper), showFemales: true });
-    expect(at("A2").tooDense).toBe(true);
-    const a1 = at("A1");
-    expect(a1.tooDense).toBe(false);
-    expect(a1.legibility.ok).toBe(true);
+  it("are drawn as a clear, legible tree from A2, with the branches balanced around the base", () => {
+    for (const paper of ["A2", "A1"] as const) {
+      const l = computePosterLayout(tree, { ...layoutOptionsFor(resolveTheme(tree.settings), paper), showFemales: true });
+      expect(l.clarity.ok, paper).toBe(true);
+      expect(l.legibility.ok, paper).toBe(true);
+      // the canopy spreads to both sides of the trunk, not one
+      const left = l.nodes.filter((n) => n.x < l.origin.x).length, right = l.nodes.length - left;
+      expect(Math.min(left, right) / Math.max(left, right)).toBeGreaterThan(0.6);
+    }
   }, 60000);
 });

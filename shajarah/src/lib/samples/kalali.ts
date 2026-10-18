@@ -68,6 +68,8 @@ function seeded(seed: number) {
  * daughters for the founder, 2–4 for his children, 1–3 for grandchildren,
  * then 0–2, with many lines ending.
  */
+const clampInt = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
 function childrenAt(d: number, rand: () => number): number {
   const between = (lo: number, hi: number) => lo + Math.floor(rand() * (hi - lo + 1));
   if (d === 0) return between(4, 6);
@@ -81,6 +83,8 @@ export interface RealisticOptions {
   seed?: number;
   /** Generations below the canopy base. */
   generations?: number;
+  /** About how many descendants the canopy base has. */
+  size?: number;
   /** Keep the real line under the canopy base (to أحمد بن نوفل), each with invented brothers and cousins. */
   keepLine?: boolean;
 }
@@ -90,8 +94,12 @@ export interface RealisticOptions {
  * عقيل, the canopy from his son فضل, and invented descendants with a
  * natural family's shape (see childrenAt). Daughters (about one child in
  * five) are drawn; their children belong to their husbands' families.
+ *
+ * Balanced, as families mostly are: each man passes his share of the
+ * family's size on to his sons about evenly (±25%), so no one branch
+ * explodes into a hundred people while its brothers have two.
  */
-export function kalaliRealisticTree({ seed = 1, generations = 7, keepLine = false }: RealisticOptions = {}): TreeDTO {
+export function kalaliRealisticTree({ seed = 1, generations = 7, size = 150, keepLine = false }: RealisticOptions = {}): TreeDTO {
   const tree = kalaliTree();
   // the direct line from شعلان down to أحمد بن نوفل (the chain runs oldest first)
   const line = tree.members.slice(tree.members.findIndex((m) => m.name === "شعلان"));
@@ -102,15 +110,20 @@ export function kalaliRealisticTree({ seed = 1, generations = 7, keepLine = fals
   const members = tree.members.filter((m) => !realBelow.includes(m) || lineIds.has(m.id));
   const rand = seeded(seed);
   let n = 0;
-  const grow = (father: MemberDTO, d: number) => {
+  /** `budget`: about how many descendants this man has. */
+  const grow = (father: MemberDTO, d: number, budget: number) => {
     if (d >= generations) return;
     const heir = keepLine ? realBelow[d] : undefined;
     const isLine = !!heir && heir.fatherId === father.id;
-    const count = Math.max(isLine ? 1 : 0, childrenAt(d, rand));
+    if (budget < 1 && !isLine) return;
+    // the family's shape, within what this man's share of the family allows
+    const most = Math.max(1, Math.floor(budget));
+    const count = clampInt(childrenAt(d, rand), isLine || budget >= 4 ? 1 : 0, most);
     const used = new Set<string>(isLine ? [heir!.name] : []);
     const kids: MemberDTO[] = isLine ? [heir!] : [];
     for (let i = kids.length; i < count; i++) {
-      const daughter = rand() < 0.2;
+      // at least one son while there is a share to pass on
+      const daughter = rand() < 0.2 && (i > 0 || budget <= count);
       const pool = daughter ? FILL_DAUGHTERS : FILL_SONS;
       let name = pool[Math.floor(rand() * pool.length)];
       for (let k = 0; used.has(name) && k < pool.length; k++) name = pool[(pool.indexOf(name) + 1) % pool.length];
@@ -126,9 +139,14 @@ export function kalaliRealisticTree({ seed = 1, generations = 7, keepLine = fals
       k.birthOrder = i;
       if (!lineIds.has(k.id)) members.push(k);
     });
-    for (const k of kids) if (k.gender === "MALE") grow(k, d + 1);
+    // the rest of his share goes to his sons, about evenly
+    const sons = kids.filter((k) => k.gender === "MALE");
+    const jitter = sons.map(() => 0.75 + rand() * 0.5);
+    const sum = jitter.reduce((a, b) => a + b, 0) || 1;
+    const rest = Math.max(0, budget - kids.length);
+    sons.forEach((k, i) => grow(k, d + 1, (rest * jitter[i]) / sum));
   };
-  grow(crownBase, 0);
+  grow(crownBase, 0, size);
   const gens = computeGenerations(members, "PATRILINEAL");
   for (const m of members) m.generation = gens.get(m.id) ?? 0;
   return {
@@ -142,21 +160,23 @@ export function kalaliRealisticTree({ seed = 1, generations = 7, keepLine = fals
   };
 }
 
-/** A natural family of about 150 under فضل: the first seed whose canopy holds 148–155 people. */
+/** A natural, balanced family of about 150 under فضل: of the first 100 seeds, the one closest to 150. */
 export function kalaliRealistic150(): TreeDTO {
   const canopyOf = (t: TreeDTO) => {
     const base = t.members.find((m) => m.id === t.crownBaseId)!;
     return t.members.filter((m) => m.generation > base.generation).length;
   };
-  for (let seed = 1; seed < 500; seed++) {
-    const t = kalaliRealisticTree({ seed });
-    const n = canopyOf(t);
-    if (n >= 148 && n <= 155) return t;
+  // (lines end on their own, so a family asked for ~260 has about 150)
+  let best: TreeDTO | null = null, bestOff = Infinity;
+  for (let seed = 1; seed <= 100 && bestOff > 0; seed++) {
+    const t = kalaliRealisticTree({ seed, size: 260 });
+    const off = Math.abs(canopyOf(t) - 150);
+    if (off < bestOff) [best, bestOff] = [t, off];
   }
-  return kalaliRealisticTree();
+  return best!;
 }
 
 /** The real line down to أحمد بن نوفل, with invented relatives in a natural family's shape. */
 export function kalaliFilledTree(seed = 3): TreeDTO {
-  return kalaliRealisticTree({ seed, generations: 14, keepLine: true });
+  return kalaliRealisticTree({ seed, generations: 14, size: 120, keepLine: true });
 }

@@ -321,6 +321,9 @@ const LOWER_SHARE = 0.3;
 const TRUNK_SHARE = 0.2;
 const BRANCH_TRUNK_NAMES = 6;
 
+/** The least share of its father's space a child gets (see partition). */
+const MIN_CHILD_SHARE = 0.1;
+
 /** Most ambiguous connections a poster may have before it counts as too dense for its paper. */
 export const CLARITY_LIMIT = 5;
 
@@ -768,11 +771,20 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     // sibling with as many descendants spread over later generations.
     // (Weighted by 1/√generations below, not 1/generations: outer rings are
     // also more crowded with their own cousins.)
-    const weights = kids.map((k) => k.descendants().reduce((sum, x) => sum + 1 / Math.sqrt(Math.max(1, x.depth - d0)), 0));
-    const sum = weights.reduce((a, b) => a + b, 0);
+    const rawWeights = kids.map((k) => k.descendants().reduce((sum, x) => sum + 1 / Math.sqrt(Math.max(1, x.depth - d0)), 0));
+    const totalWeight = rawWeights.reduce((a, b) => a + b, 0);
+    // Balance, at every level: every child with descendants of his own gets
+    // at least a minimum share of the space, so a lineage much larger than
+    // its brothers does not push them into a sliver at one edge and swing
+    // the tree to one side. (Not for a childless child: one name needs one
+    // place, and a floor for each of several would starve their brothers'
+    // families. 10%, not more: 15% made dense families tangle.)
+    const minWeight = totalWeight * MIN_CHILD_SHARE;
+    const weights = rawWeights.map((w, i) => (kids[i].children?.length ? Math.max(w, minWeight) : w));
+    const newTotal = weights.reduce((a, b) => a + b, 0);
     let a = u0;
     kids.forEach((k, i) => {
-      const span = ((u1 - u0) * weights[i]) / sum;
+      const span = ((u1 - u0) * weights[i]) / newTotal;
       partition(k, a, a + span, d0);
       a += span;
     });

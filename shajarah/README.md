@@ -337,7 +337,13 @@ poster can still be shown for reference (it stays exportable).
 **Sectors and fans.** Each sub-branch's slice of the canopy is proportional
 to the angle its names need, Σ 1/√(generations below): a name on an inner
 ring takes a wider angle, so a father of many children gets a wider slice
-than a sibling with as many descendants further out. The lines from a
+than a sibling with as many descendants further out. At every level, each
+child with a family of his own gets at least 10% of his father's space, so
+one large lineage cannot push its brothers into a sliver and swing the tree
+to one side. (Measured alternatives, rejected: a 15% floor, or a floor for
+childless children too, tangled dense families; an arc dipping further
+below horizontal put lines beside the trunk that cross; lifting crowded
+names off their ring crossed their neighbours' lines.) The lines from a
 father of more than five children leave him already heading for each
 child (an early first control point, little of his own growth direction),
 so they fan apart at once rather than running out side by side.
@@ -810,8 +816,9 @@ the poster size, and `&colors=1` to force lineage colours:
 - `names`: long names and honorifics;
 - `kalali`: an 85-name chain;
 - `kalali-realistic`: about 150 invented descendants under فضل with a
-  natural family's shape (4–6 children, then 2–4, then 1–3, then 0–2, many
-  lines ending; daughters drawn without their children);
+  natural, balanced family's shape (4–6 children, then 2–4, then 1–3, then
+  0–2, many lines ending; each man's share of the family passed to his sons
+  about evenly; daughters drawn without their children);
 - `kalali-filled`: the real line down to أحمد بن نوفل, with invented
   relatives in the same shape;
 - `huge`: about 500 people.
