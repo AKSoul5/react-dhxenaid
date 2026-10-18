@@ -306,11 +306,20 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   return result;
 }
 
-/** Most of the content height the foundation may take (a whole-family poster). */
+/**
+ * Most of the content height the foundation may take on a whole-family
+ * poster: less when the canopy holds more people than trunk and foundation.
+ */
 const SOIL_SHARE = 0.4;
-/** On a branch poster: trunk and foundation together, and the trunk alone. */
-const LOWER_SHARE = 0.4;
-const TRUNK_SHARE = 0.3;
+const SOIL_SHARE_SMALL = 0.25;
+/**
+ * On a branch poster: trunk and foundation together, and the trunk alone,
+ * so the canopy (the descendants, the poster's subject) has at least 70%;
+ * the trunk shows the nearest few ancestors, the rest go to the foundation.
+ */
+const LOWER_SHARE = 0.3;
+const TRUNK_SHARE = 0.2;
+const BRANCH_TRUNK_NAMES = 6;
 
 /** Most ambiguous connections a poster may have before it counts as too dense for its paper. */
 export const CLARITY_LIMIT = 5;
@@ -564,8 +573,10 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // take at most LOWER_SHARE of the page (the trunk at most TRUNK_SHARE),
   // leaving the canopy at least 60%.
   const branchMode = !!focusMember;
+  // (a whole family's foundation gets less room when the canopy is the larger part)
+  const soilShare = crownNodes.length > trunkChain.length ? SOIL_SHARE_SMALL : SOIL_SHARE;
   const soilBudget = (f: number, p: Plan) =>
-    branchMode ? Math.max(f * 6, avail * LOWER_SHARE - trunkSection(p.onTrunk.length, f, p.zig)) : avail * SOIL_SHARE;
+    branchMode ? Math.max(f * 6, avail * LOWER_SHARE - trunkSection(p.onTrunk.length, f, p.zig)) : avail * soilShare;
   const soilFor = (f: number, p: Plan): { ctx: SoilContext; height: number } => {
     const full = soilContextFor(f, p);
     const budget = soilBudget(f, p);
@@ -601,7 +612,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     }
   } else {
     // automatic: the nearest ancestors on the trunk, the rest in the foundation
-    const most = Math.min(trunkChain.length, opts.maxTrunkLabels ?? 12);
+    const most = Math.min(trunkChain.length, opts.maxTrunkLabels ?? (branchMode ? BRANCH_TRUNK_NAMES : 12));
     for (let k = most; k >= Math.min(most, 4); k--) {
       const onTrunk = trunkChain.slice(trunkChain.length - k), soil = trunkChain.slice(0, trunkChain.length - k);
       plans.push({ onTrunk, soil, zig: false });
@@ -616,6 +627,10 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     return lo;
   };
   const bestF = (p: Plan) => (totalFor(maxFont, p) <= avail ? maxFont : largestFitting(p, minFont, maxFont));
+  // On a branch poster the trunk is context: its nearest few ancestors
+  if (branchMode && plans.some((p) => p.onTrunk.length <= BRANCH_TRUNK_NAMES)) {
+    plans.splice(0, plans.length, ...plans.filter((p) => p.onTrunk.length <= BRANCH_TRUNK_NAMES));
+  }
   let plan = plans.find((p) => totalFor(minFont, p) <= avail);
   let f: number;
   if (plan) {
@@ -651,7 +666,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // trunk grows taller, rather than floating in empty paper.
   let stemExtra = 0;
   if (branchMode && slack > 0) {
-    // a branch poster's canopy takes at least 60% of the page
+    // a branch poster's canopy takes at least 70% of the page
     const grow = Math.min(slack, Math.max(0, avail * (1 - LOWER_SHARE) - (1.8 * ry + baseRFor(f))) ) / 1.8;
     rx = Math.min(rxMax, rx * (1 + grow / ry));
     ry += grow;
@@ -741,19 +756,24 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     const t = (target - cum[lo]) / (cum[hi] - cum[lo] || 1);
     return thetas[lo] + (thetas[hi] - thetas[lo]) * t;
   };
-  const partition = (node: HNode, u0: number, u1: number) => {
+  const partition = (node: HNode, u0: number, u1: number, d0 = node.depth) => {
     node.u0 = u0;
     node.u1 = u1;
     node.u = (u0 + u1) / 2;
     const kids = (node.children ?? []) as HNode[];
     if (!kids.length) return;
-    // proportional to the names in each sub-branch, so big families get room
-    const weights = kids.map((k) => k.descendants().length);
+    // Proportional to the angle each sub-branch needs: a name on an inner
+    // ring takes a wider angle than one further out (rings grow with their
+    // radius), so a father of many children claims a wider slice than a
+    // sibling with as many descendants spread over later generations.
+    // (Weighted by 1/√generations below, not 1/generations: outer rings are
+    // also more crowded with their own cousins.)
+    const weights = kids.map((k) => k.descendants().reduce((sum, x) => sum + 1 / Math.sqrt(Math.max(1, x.depth - d0)), 0));
     const sum = weights.reduce((a, b) => a + b, 0);
     let a = u0;
     kids.forEach((k, i) => {
       const span = ((u1 - u0) * weights[i]) / sum;
-      partition(k, a, a + span);
+      partition(k, a, a + span, d0);
       a += span;
     });
   };
@@ -1128,12 +1148,20 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const sideAnchor = new Map(visibleOffshoots.map((o) => [o.node.data.member!.id, o.anchor.data.member!.id]));
   const parentIdOf = (node: LiveNode) => node.parentId ?? sideAnchor.get(node.id) ?? base.data.member?.id ?? "";
   const curveOf = new Map<string, Cubic>();
+  // A father of more than five children: his lines leave him heading for
+  // each child (little of his own growth direction, an early first control
+  // point), so they fan apart at once instead of running out together.
+  const familySize = new Map<string, number>();
+  for (const n of growingNodes) if (n.parentId) familySize.set(n.parentId, (familySize.get(n.parentId) ?? 0) + 1);
+  const fanOf = (parentId: string | null) => clamp(((parentId ? familySize.get(parentId) ?? 0 : 0) - 5) / 4, 0, 1);
   const buildCurves = () => {
     const growthDir = new Map<string, Vec>();
     for (const node of growingNodes) {
       const parent = node.parentId ? byId.get(node.parentId) : undefined;
       const P: Vec = parent && parent.region !== "fixed" ? { x: parent.x, y: parent.y } : (stemStart.get(node.id) ?? origin);
       const gP = (node.parentId && growthDir.get(node.parentId)) || stemDir.get(node.id) || norm(sub(node, origin));
+      const fan = fanOf(node.parentId);
+      const follow = 0.3 * (1 - 0.8 * fan), reach0 = 0.38 - 0.16 * fan;
       if (node.shape === "leaf") {
         const a = (node.angle * Math.PI) / 180;
         const dir: Vec = { x: Math.cos(a), y: Math.sin(a) };
@@ -1143,24 +1171,24 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         const B: Vec = { x: node.x, y: node.y };
         const L = len(sub(B, P)) || 1;
         const dv = norm(sub(B, P));
-        const s0 = norm(add(scale(gP, 0.3), scale(dv, 0.7)));
+        const s0 = norm(add(scale(gP, follow), scale(dv, 1 - follow)));
         // arrive along the leaf's own ray, like every other line; arriving
         // along the (horizontal) blade would swing the end sideways across
         // a sibling's line
         void dir;
         const rayDirL = node.ray !== undefined ? dirOf(node.ray) : dv;
         const e0 = norm(add(scale(dv, 0.8), scale(rayDirL, 0.2)));
-        curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * 0.35)), c2: sub(B, scale(e0, L * 0.3)), p1: B });
+        curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * (reach0 - 0.03))), c2: sub(B, scale(e0, L * 0.3)), p1: B });
         continue;
       }
       const C: Vec = { x: node.x, y: node.y };
       const L = len(sub(C, P)) || 1;
       const dv = scale(sub(C, P), 1 / L);
-      const s0 = norm(add(scale(gP, 0.3), scale(dv, 0.7)));
+      const s0 = norm(add(scale(gP, follow), scale(dv, 1 - follow)));
       // arrive along the child's own ray (outward), never hooking back
       const rayDir = node.ray !== undefined ? dirOf(node.ray) : UP;
       const e0 = norm(add(scale(dv, 0.8), scale(rayDir, 0.2)));
-      curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * 0.38)), c2: sub(C, scale(e0, L * 0.3)), p1: C });
+      curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * reach0)), c2: sub(C, scale(e0, L * 0.3)), p1: C });
       growthDir.set(node.id, e0);
     }
   };

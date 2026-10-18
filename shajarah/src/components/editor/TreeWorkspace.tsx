@@ -137,6 +137,8 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   const selected = tree.members.find((m) => m.id === selectedId) ?? null;
   // The selected person's direct line, from the data (not from the drawing)
   const [trace, setTrace] = useState(true);
+  // A poster too dense for its paper is replaced by its options, unless asked for
+  const [showDense, setShowDense] = useState(false);
   const lineageIds = useMemo(() => {
     if (!selected || !trace) return undefined;
     const { ancestors, descendants } = lineagePath(tree.members, tree.lineage, selected.id);
@@ -266,6 +268,16 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     onHideDaughters: showFemales && tree.lineage !== "MATRILINEAL" ? () => updateSettings({ showFemales: false }) : null,
     onTiled: posterSize !== "2A0" ? () => updateSettings({ posterSize: "2A0" }) : null,
   };
+  /** The smallest larger poster on which every connection is unambiguous. */
+  const findClearSize = () => {
+    for (const p of PAPER_ORDER.slice(PAPER_ORDER.indexOf(posterSize) + 1)) {
+      const l = computePosterLayout(deferredTree, { showFemales, seed, ...layoutOptionsFor(theme, p) });
+      if (isClear(l)) return p;
+    }
+    return null;
+  };
+  // the options replace a too-dense poster again whenever the layout changes
+  useEffect(() => setShowDense(false), [layout]);
   // a branch poster needs at least one descendant to be a branch
   const selectedHasDescendants = useMemo(
     () => !!selected && lineagePath(tree.members, tree.lineage, selected.id).descendants.length > 0,
@@ -605,6 +617,19 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             />
           ) : (
             <>
+            {layout.tooDense && !showDense && (
+              <TooDensePanel
+                issues={layout.clarity.issues.length}
+                branch={!!layout.focus}
+                paper={posterSize}
+                fallbacks={fallbacks}
+                findSize={findClearSize}
+                onChoose={(p) => updateSettings({ posterSize: p })}
+                onShowAnyway={() => setShowDense(true)}
+              />
+            )}
+            {/* (kept in the page while hidden, so export still has the poster) */}
+            <div className={layout.tooDense && !showDense ? "invisible" : "contents"}>
             <PosterViewport width={layout.width} height={layout.height}>
               <TreePoster
                 ref={svgRef}
@@ -619,6 +644,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 className="block h-full w-full"
               />
             </PosterViewport>
+            </div>
             {layout.focus && (
               <div className="absolute bottom-4 start-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full border border-parchment-300 bg-white/95 px-4 py-1.5 text-xs shadow">
                 <span>
@@ -629,21 +655,13 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 </button>
               </div>
             )}
-            {!layout.clarity.ok && (
+            {!layout.clarity.ok && !(layout.tooDense && !showDense) && (
               <ClarityNotice
                 issues={layout.clarity.issues.length}
                 tooDense={layout.tooDense}
-                branch={!!layout.focus}
                 paper={posterSize}
                 fallbacks={fallbacks}
-                findSize={() => {
-                  // try each larger poster until the connections are unambiguous
-                  for (const p of PAPER_ORDER.slice(PAPER_ORDER.indexOf(posterSize) + 1)) {
-                    const l = computePosterLayout(deferredTree, { showFemales, seed, ...layoutOptionsFor(theme, p) });
-                    if (isClear(l)) return p;
-                  }
-                  return null;
-                }}
+                findSize={findClearSize}
                 onChoose={(p) => updateSettings({ posterSize: p })}
               />
             )}
@@ -745,12 +763,11 @@ function LegibilityNotice({
  * spots are circled on the poster; a larger poster usually resolves them.
  */
 function ClarityNotice({
-  issues, tooDense, branch, paper, fallbacks, findSize, onChoose,
+  issues, tooDense, paper, fallbacks, findSize, onChoose,
 }: {
   issues: number;
-  /** Too many to circle usefully: one prominent warning instead. */
+  /** Shown anyway although too dense: the lines are not circled (there are too many). */
   tooDense: boolean;
-  branch: boolean;
   paper: PaperSize;
   fallbacks: Fallbacks;
   findSize: () => PaperSize | null;
@@ -759,35 +776,13 @@ function ClarityNotice({
   const [state, setState] = useState<"idle" | "searching" | PaperSize | "none">("idle");
   useEffect(() => setState("idle"), [issues, paper]);
   return (
-    <div
-      role={tooDense ? "alert" : undefined}
-      className={
-        tooDense
-          ? "absolute start-1/2 top-1/3 z-20 w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border-2 border-red-400 bg-red-50/95 px-6 py-5 text-sm text-red-900 shadow-xl"
-          : "absolute end-4 top-4 z-10 max-w-sm rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900 shadow"
-      }
-    >
-      {tooDense ? (
-        <>
-          <p className="text-xl font-bold">
-            This {branch ? "branch" : "family"} is too dense for {paper}.
-          </p>
-          <p className="mt-2 text-base">
-            Please use a larger poster size or focus on a smaller sub-branch.
-          </p>
-          <p className="mt-2 text-xs text-red-800">
-            {issues} connections could be misread at this size, even with the names set smaller.
-          </p>
-        </>
-      ) : (
-        <>
-          <p className="font-semibold">Some connections are ambiguous on {paper}</p>
-          <p className="mt-1">
-            {issues} place{issues === 1 ? "" : "s"} (circled) where a line passes under another name, crosses
-            too shallowly or runs into another line, so a reader could misread who descends from whom.
-          </p>
-        </>
-      )}
+    <div className="absolute end-4 top-4 z-10 max-w-sm rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900 shadow">
+      <p className="font-semibold">{tooDense ? `Too dense for ${paper}: shown for reference only` : `Some connections are ambiguous on ${paper}`}</p>
+      <p className="mt-1">
+        {tooDense
+          ? `${issues} connections could be misread at this size. Do not print it on ${paper}.`
+          : `${issues} place${issues === 1 ? "" : "s"} (circled) where a line passes under another name, crosses too shallowly or runs into another line, so a reader could misread who descends from whom.`}
+      </p>
       {state === "idle" && (
         <button
           type="button"
@@ -816,6 +811,76 @@ function ClarityNotice({
           Use {state}: every line clear
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Replaces a poster too dense for its paper (more than CLARITY_LIMIT
+ * ambiguous connections even with smaller names): no tangled poster, just
+ * the ways to a clear one.
+ */
+function TooDensePanel({
+  issues, branch, paper, fallbacks, findSize, onChoose, onShowAnyway,
+}: {
+  issues: number;
+  branch: boolean;
+  paper: PaperSize;
+  fallbacks: Fallbacks;
+  findSize: () => PaperSize | null;
+  onChoose: (p: PaperSize) => void;
+  onShowAnyway: () => void;
+}) {
+  const [state, setState] = useState<"idle" | "searching" | PaperSize | "none">("idle");
+  useEffect(() => setState("idle"), [issues, paper]);
+  const larger = PAPER_ORDER.slice(PAPER_ORDER.indexOf(paper) + 1);
+  return (
+    <div className="absolute inset-0 z-20 flex items-center justify-center overflow-auto p-6">
+      <div role="alert" className="w-full max-w-xl rounded-2xl border-2 border-red-300 bg-white px-8 py-7 text-red-950 shadow-xl">
+        <p className="text-2xl font-bold">This {branch ? "branch" : "family"} is too dense for {paper}.</p>
+        <p className="mt-2 text-lg">Please use a larger poster size or focus on a smaller sub-branch.</p>
+        <p className="mt-2 text-sm text-red-800">
+          {issues} connections could be misread at this size, even with the names set smaller, so the poster is not shown.
+        </p>
+        {larger.length > 0 && (
+          <div className="mt-5">
+            <p className="text-sm font-semibold">A larger poster</p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              {larger.map((p) => (
+                <button key={p} type="button" className="btn-outline py-1.5 text-sm" onClick={() => onChoose(p)}>
+                  {p}
+                </button>
+              ))}
+              {state === "idle" && (
+                <button
+                  type="button"
+                  className="btn-primary py-1.5 text-sm"
+                  onClick={() => {
+                    setState("searching");
+                    setTimeout(() => setState(findSize() ?? "none"), 30);
+                  }}
+                >
+                  Find the smallest size where every line is clear
+                </button>
+              )}
+              {state === "searching" && <span className="text-sm">Checking larger sizes…</span>}
+              {state === "none" && <span className="text-sm">No single poster up to 2A0 is clear: use a sub-branch.</span>}
+              {state !== "idle" && state !== "searching" && state !== "none" && (
+                <button type="button" className="btn-primary py-1.5 text-sm" onClick={() => onChoose(state)}>
+                  Use {state}: every line clear
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+        <div className="mt-5 text-sm">
+          <p className="font-semibold">A smaller sub-branch</p>
+          <FallbackActions {...fallbacks} />
+        </div>
+        <button type="button" className="mt-5 text-xs text-red-800 underline" onClick={onShowAnyway}>
+          Show the poster anyway (for reference, not for printing)
+        </button>
+      </div>
     </div>
   );
 }
@@ -873,10 +938,11 @@ function FallbackActions({ branches, measure, onFocus, onHideDaughters, onTiled 
       )}
       {ranked && ranked.length > 0 && (
         <div className="space-y-1">
-          <select className="input w-full py-0.5 text-xs" value={choice} onChange={(e) => setChoice(e.target.value)} dir="auto">
+          <select className="input w-full py-0.5 text-xs" value={choice} onChange={(e) => setChoice(e.target.value)} dir="ltr">
             {ranked.map((b) => (
               <option key={b.id} value={b.id}>
-                {b.name} — {b.people} people — {b.clearAt ? `clear on ${b.clearAt}` : "not clear even on 2A0"}
+                {/* the name isolated (U+2068 … U+2069), so an Arabic name does not reorder the English around it */}
+                {`\u2068${b.name}\u2069`} — {b.people} people — {b.clearAt ? `clear on ${b.clearAt}` : "not clear even on 2A0"}
               </option>
             ))}
           </select>

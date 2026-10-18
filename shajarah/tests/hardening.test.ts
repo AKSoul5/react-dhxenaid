@@ -181,7 +181,7 @@ describe("branch posters keep the person's whole ancestry", () => {
     const deep = tree.members.filter((m) => depthBelowCrown(m.id) >= 2).sort((a, b) => depthBelowCrown(b.id) - depthBelowCrown(a.id))[0];
     const l = check(tree, deep.id);
     // the trunk is held to its share; the foundation keeps the nearest names and the end of the line
-    expect(l.trunkLabels.length).toBeGreaterThan(10);
+    expect(l.trunkLabels.length).toBeLessThanOrEqual(6);
     expect(l.soil!.texts.map((t) => t.text).join(" ")).toContain("آدم");
     expect(l.legibility.ok).toBe(true);
   });

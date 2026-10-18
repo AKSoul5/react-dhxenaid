@@ -1,11 +1,11 @@
 import { SOIL_STYLES, type SoilStyleId } from "@/lib/layout/soil";
 import { TreeWorkspace } from "@/components/editor/TreeWorkspace";
 import { generateSampleTree } from "@/lib/sampleData";
-import { kalaliFilledTree, kalaliTree } from "@/lib/samples/kalali";
+import { kalaliFilledTree, kalaliRealistic150, kalaliTree } from "@/lib/samples/kalali";
 import { denseFamily, marriagesFamily, multiMarriageFamily, namesFamily, smallFamily } from "@/lib/samples/fixtures";
 
 const SAMPLES = {
-  kalali: kalaliTree, "kalali-filled": kalaliFilledTree, small: smallFamily, marriages: marriagesFamily, names: namesFamily,
+  kalali: kalaliTree, "kalali-filled": kalaliFilledTree, "kalali-realistic": kalaliRealistic150, small: smallFamily, marriages: marriagesFamily, names: namesFamily,
   dense: denseFamily, multi: multiMarriageFamily,
   // ~500 people with daughters, for checking dense layouts and the size warning
   huge: () => {
@@ -19,7 +19,8 @@ export const metadata = { title: "Demo — Shajarah" };
 /**
  * Fully working editor backed by an in-memory repository (no database).
  * /demo?sample=kalali loads the Al-Kalali lineage (آدم → أحمد بن نوفل);
- * kalali-filled: its trunk from شعلان, every generation to أحمد filled to 6–7 (test data);
+ * kalali-filled: its trunk from شعلان, the real line to أحمد with invented relatives (test data);
+ * kalali-realistic: a natural ~150-person family under فضل (test data);
  * small, marriages, names, dense, multi and huge load the validation families.
  * &colors=1 turns on lineage colours, &poster=A1 sets the poster size and
  * &soil=column|spine|banner|pedestal|paragraph the foundation style, so

@@ -316,20 +316,31 @@ automatic choice) decides. Only the drawing changes.
 | **Inscribed panel** | The original: running text in a gold-ruled panel. | A root flare into a mound, with fine roots. |
 
 **Branch posters and very long lineages.** A branch poster is about the
-descendants: the trunk takes at most 30% of the content height (a long
-trunk switches to two staggered columns, then hands its oldest names to
-the foundation), and trunk and foundation together at most 40%, leaving
-the canopy at least 60%. The foundation never sets names below the
-legible minimum to fit: a lineage too long for its share (40% on a whole
-family poster) leaves names out of its middle, marked "…", keeping the
-nearest names and the last two (e.g. "… شيث بن آدم عليه السلام").
+descendants; its ancestors are context. The trunk shows the nearest six
+ancestors (two staggered columns when that is larger), at most 20% of the
+content height, and trunk and foundation together take at most 30%, so the
+canopy has at least 70%. The foundation never sets names below the legible
+minimum to fit: a lineage too long for its share leaves names out of its
+middle, marked "…", keeping the nearest names and the last two (e.g.
+"… شيث بن آدم عليه السلام"). On a whole-family poster the foundation's share
+is 40%, or 25% when the canopy holds more people than trunk and foundation.
 
 **Too dense for the paper.** A poster with more than 5 ambiguous
 connections is retried with the canopy's names a fifth smaller (when that
-stays legible). If it is still above 5, the editor does not circle
-dozens of places: it shows one warning, "This branch is too dense for
-A2. Please use a larger poster size or focus on a smaller sub-branch.",
-with the search for a size where every line is clear.
+stays legible). If it is still above 5, the editor does not show the
+tangled poster at all: one panel says "This branch is too dense for A2.
+Please use a larger poster size or focus on a smaller sub-branch.", with
+buttons for the larger sizes, a search for the smallest size where every
+line is clear, and the sub-branches ranked by the size each fits. The
+poster can still be shown for reference (it stays exportable).
+
+**Sectors and fans.** Each sub-branch's slice of the canopy is proportional
+to the angle its names need, Σ 1/√(generations below): a name on an inner
+ring takes a wider angle, so a father of many children gets a wider slice
+than a sibling with as many descendants further out. The lines from a
+father of more than five children leave him already heading for each
+child (an early first control point, little of his own growth direction),
+so they fan apart at once rather than running out side by side.
 
 **Long lineages.** A column of 49 names cannot be legible on A2: it would
 take a third of the poster. So the column and the spine each have a height
@@ -798,7 +809,15 @@ the poster size, and `&colors=1` to force lineage colours:
 - `marriages`: several marriages and many daughters;
 - `names`: long names and honorifics;
 - `kalali`: an 85-name chain;
+- `kalali-realistic`: about 150 invented descendants under فضل with a
+  natural family's shape (4–6 children, then 2–4, then 1–3, then 0–2, many
+  lines ending; daughters drawn without their children);
+- `kalali-filled`: the real line down to أحمد بن نوفل, with invented
+  relatives in the same shape;
 - `huge`: about 500 people.
+
+Add `&soil=column|spine|banner|pedestal|paragraph` for a foundation style,
+and `&focus=<member id or name>` for a branch poster.
 
 Without a sample value, `/demo` loads the large demo family.
 

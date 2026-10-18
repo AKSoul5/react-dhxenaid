@@ -50,66 +50,113 @@ const FILL_SONS = [
 ];
 const FILL_DAUGHTERS = ["فاطمة", "عائشة", "مريم", "نورة", "سارة", "هند", "خديجة", "لطيفة"];
 
-/**
- * A test of a full canopy on the real lineage: the trunk from شعلان down
- * four names to عقيل, the canopy from his son فضل, and every generation
- * from there to أحمد بن نوفل filled to 6–7 people: the direct ancestor
- * plus invented brothers, cousins and an occasional daughter (test data).
- */
-export function kalaliFilledTree(seed = 17): TreeDTO {
-  const tree = kalaliTree();
-  const byId = new Map(tree.members.map((m) => [m.id, m]));
-  // the direct line from شعلان down to أحمد بن نوفل (the chain runs oldest first)
-  const line = tree.members.slice(tree.members.findIndex((m) => m.name === "شعلان"));
-  const trunkStart = line[0]; // شعلان
-  const crownBase = line[5]; // فضل, son of the fourth name down (عقيل)
-  const below = line.slice(6); // the direct line under the crown base, one per generation
+/** Deterministic random numbers for test data (mulberry32). */
+function seeded(seed: number) {
   let state = seed >>> 0;
-  const rand = () => {
+  return () => {
     state = (state + 0x6d2b79f5) >>> 0;
     let t = state;
     t = Math.imul(t ^ (t >>> 15), t | 1);
     t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-  const members = [...tree.members];
-  let prevGen: MemberDTO[] = [crownBase];
+}
+
+/**
+ * How many children a man has, by his generation below the canopy base
+ * (1 = the base's sons), the way real families thin out: 4–6 sons and
+ * daughters for the founder, 2–4 for his children, 1–3 for grandchildren,
+ * then 0–2, with many lines ending.
+ */
+function childrenAt(d: number, rand: () => number): number {
+  const between = (lo: number, hi: number) => lo + Math.floor(rand() * (hi - lo + 1));
+  if (d === 0) return between(4, 6);
+  if (d === 1) return between(2, 4);
+  if (d === 2) return between(1, 3);
+  const r = rand();
+  return r < 0.38 ? 0 : r < 0.78 ? 1 : 2;
+}
+
+export interface RealisticOptions {
+  seed?: number;
+  /** Generations below the canopy base. */
+  generations?: number;
+  /** Keep the real line under the canopy base (to أحمد بن نوفل), each with invented brothers and cousins. */
+  keepLine?: boolean;
+}
+
+/**
+ * Test data on the real lineage: the trunk from شعلان down four names to
+ * عقيل, the canopy from his son فضل, and invented descendants with a
+ * natural family's shape (see childrenAt). Daughters (about one child in
+ * five) are drawn; their children belong to their husbands' families.
+ */
+export function kalaliRealisticTree({ seed = 1, generations = 7, keepLine = false }: RealisticOptions = {}): TreeDTO {
+  const tree = kalaliTree();
+  // the direct line from شعلان down to أحمد بن نوفل (the chain runs oldest first)
+  const line = tree.members.slice(tree.members.findIndex((m) => m.name === "شعلان"));
+  const trunkStart = line[0]; // شعلان
+  const crownBase = line[5]; // فضل, son of the fourth name down (عقيل)
+  const realBelow = line.slice(6);
+  const lineIds = new Set(keepLine ? realBelow.map((m) => m.id) : []);
+  const members = tree.members.filter((m) => !realBelow.includes(m) || lineIds.has(m.id));
+  const rand = seeded(seed);
   let n = 0;
-  below.forEach((direct, g) => {
-    const size = 6 + Math.floor(rand() * 2); // 6 or 7 in this generation
-    const fathers = prevGen.filter((m) => m.gender === "MALE");
-    const gen: MemberDTO[] = [direct];
-    const used = new Set([direct.name]);
-    for (let i = 1; i < size; i++) {
-      // sons of the line (and of earlier cousins), with now and then a daughter
-      const father = i <= 2 ? byId.get(direct.fatherId!)! : fathers[Math.floor(rand() * fathers.length)];
-      const daughter = rand() < 0.18 && i > 1;
+  const grow = (father: MemberDTO, d: number) => {
+    if (d >= generations) return;
+    const heir = keepLine ? realBelow[d] : undefined;
+    const isLine = !!heir && heir.fatherId === father.id;
+    const count = Math.max(isLine ? 1 : 0, childrenAt(d, rand));
+    const used = new Set<string>(isLine ? [heir!.name] : []);
+    const kids: MemberDTO[] = isLine ? [heir!] : [];
+    for (let i = kids.length; i < count; i++) {
+      const daughter = rand() < 0.2;
       const pool = daughter ? FILL_DAUGHTERS : FILL_SONS;
       let name = pool[Math.floor(rand() * pool.length)];
-      for (let k = 0; used.has(`${father.id}:${name}`) && k < pool.length; k++) name = pool[(pool.indexOf(name) + 1) % pool.length];
-      used.add(`${father.id}:${name}`);
-      const m: MemberDTO = {
-        id: `kalali-fill-${g}-${n++}`, name, laqab: null, gender: daughter ? "FEMALE" : "MALE", birthYear: null, deathYear: null,
+      for (let k = 0; used.has(name) && k < pool.length; k++) name = pool[(pool.indexOf(name) + 1) % pool.length];
+      used.add(name);
+      kids.push({
+        id: `kalali-gen-${d}-${n++}`, name, laqab: null, gender: daughter ? "FEMALE" : "MALE", birthYear: null, deathYear: null,
         isDeceased: false, birthOrder: 0, generation: 0, notes: null, fatherId: father.id, motherId: null,
-      };
-      gen.push(m);
-      members.push(m);
-      byId.set(m.id, m);
+      });
     }
-    prevGen = gen;
-  });
-  // birth order: the direct ancestor among his brothers, others after
-  const kids = new Map<string, MemberDTO[]>();
-  for (const m of members) if (m.fatherId) kids.set(m.fatherId, [...(kids.get(m.fatherId) ?? []), m]);
-  for (const list of kids.values()) list.forEach((m, i) => (m.birthOrder = i));
+    // the line's heir among his brothers, not always the eldest
+    if (isLine && kids.length > 1) kids.splice(Math.floor(rand() * kids.length), 0, kids.shift()!);
+    kids.forEach((k, i) => {
+      k.birthOrder = i;
+      if (!lineIds.has(k.id)) members.push(k);
+    });
+    for (const k of kids) if (k.gender === "MALE") grow(k, d + 1);
+  };
+  grow(crownBase, 0);
   const gens = computeGenerations(members, "PATRILINEAL");
   for (const m of members) m.generation = gens.get(m.id) ?? 0;
   return {
     ...tree,
-    id: "kalali-filled",
+    id: keepLine ? "kalali-filled" : "kalali-realistic",
     subtitle: "من آل عبد كلال — فروع تجريبية للاختبار",
     trunkStartId: trunkStart.id,
     crownBaseId: crownBase.id,
+    settings: { ...tree.settings, showFemales: true },
     members,
   };
+}
+
+/** A natural family of about 150 under فضل: the first seed whose canopy holds 148–155 people. */
+export function kalaliRealistic150(): TreeDTO {
+  const canopyOf = (t: TreeDTO) => {
+    const base = t.members.find((m) => m.id === t.crownBaseId)!;
+    return t.members.filter((m) => m.generation > base.generation).length;
+  };
+  for (let seed = 1; seed < 500; seed++) {
+    const t = kalaliRealisticTree({ seed });
+    const n = canopyOf(t);
+    if (n >= 148 && n <= 155) return t;
+  }
+  return kalaliRealisticTree();
+}
+
+/** The real line down to أحمد بن نوفل, with invented relatives in a natural family's shape. */
+export function kalaliFilledTree(seed = 3): TreeDTO {
+  return kalaliRealisticTree({ seed, generations: 14, keepLine: true });
 }
