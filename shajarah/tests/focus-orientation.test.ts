@@ -42,4 +42,16 @@ describe("branch poster orientation", () => {
     const l = check(generateHypotheticalTree(), "نوفل");
     expect(l.soil).not.toBeNull();
   });
+
+  it("a small branch is not stretched to fill the page", () => {
+    // نوفل has two sons: before CANOPY_GROWTH, their branches were drawn as
+    // long bare stalks reaching across three quarters of the sheet
+    const l = check(generateHypotheticalTree(), "نوفل");
+    const xs = l.nodes.map((n) => n.x);
+    const width = Math.max(...xs) - Math.min(...xs);
+    const height = l.base!.y - Math.min(...l.nodes.map((n) => n.y - n.h / 2));
+    expect(height).toBeLessThanOrEqual(width * 5);
+    expect(height / l.height).toBeLessThan(0.2);
+    expect(width / l.width).toBeLessThan(0.5);
+  });
 });

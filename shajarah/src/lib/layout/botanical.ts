@@ -328,6 +328,8 @@ const SOIL_SHARE_SMALL = 0.25;
  * the trunk shows the nearest few ancestors, the rest go to the foundation.
  */
 const LOWER_SHARE = 0.3;
+/** The most a canopy grows past its natural height to fill spare paper. */
+const CANOPY_GROWTH = 1.2;
 const TRUNK_SHARE = 0.2;
 const BRANCH_TRUNK_NAMES = 6;
 
@@ -677,18 +679,22 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // Spare height lets the canopy breathe, then the whole is centred.
   let { rx, ry } = crownDims(f);
   let slack = avail - totalFor(f, plan);
-  // A small family's canopy spreads out (up to twice its size) and its
-  // trunk grows taller, rather than floating in empty paper.
+  // A small family's canopy spreads out (up to twice its natural height)
+  // and its trunk grows taller, rather than floating in empty paper. A
+  // branch poster's canopy stops at CANOPY_GROWTH × its natural height, or
+  // a branch of two or three people is stretched into long bare stalks;
+  // height it cannot use is shared above and below.
+  const ryMax = ry * (branchMode ? CANOPY_GROWTH : 2);
   let stemExtra = 0;
   if (branchMode && slack > 0) {
-    // a branch poster's canopy takes at least 70% of the page
-    const grow = Math.min(slack, Math.max(0, avail * (1 - LOWER_SHARE) - (1.8 * ry + baseRFor(f))) ) / 1.8;
+    // a branch poster's canopy reaches for 70% of the page
+    const grow = Math.min(slack / 1.8, Math.max(0, avail * (1 - LOWER_SHARE) - (1.8 * ry + baseRFor(f))) / 1.8, ryMax - ry);
     rx = Math.min(rxMax, rx * (1 + grow / ry));
     ry += grow;
     slack -= grow * 1.8;
   }
   if (slack > 0) {
-    const grow = Math.min((slack * 0.7) / 1.8, ry);
+    const grow = Math.min((slack * 0.7) / 1.8, Math.max(0, ryMax - ry));
     rx = Math.min(rxMax, rx * (1 + grow / ry));
     ry += grow;
     slack -= grow * 1.8;

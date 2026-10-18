@@ -526,8 +526,10 @@ function Header({ layout, meta, theme, pal }: { layout: PosterLayout; meta: Post
   const titleFs = meta.title ? Math.min(W * 0.042, avail / ((textWidth(meta.title, 1) || 1) * 1.1)) : 0;
   const titleY = theme.bismillah || layout.frame.framed ? hd.title : H * 0.052;
   const subY = titleY + H * 0.024;
-  const focusY = (meta.subtitle ? subY : titleY) + H * 0.021;
-  const lastY = layout.focus ? focusY : meta.subtitle ? subY : titleY;
+  // a branch poster's "فرع …" line takes the subtitle's place
+  const subtitle = layout.focus ? null : meta.subtitle;
+  const focusY = titleY + H * 0.024;
+  const lastY = layout.focus ? focusY : subtitle ? subY : titleY;
   return (
     <g>
       {theme.bismillah && (
@@ -542,9 +544,9 @@ function Header({ layout, meta, theme, pal }: { layout: PosterLayout; meta: Post
           {meta.title}
         </text>
       )}
-      {meta.subtitle && (
+      {subtitle && (
         <text x={W / 2} y={subY} textAnchor="middle" fontSize={Math.min(W * 0.017, titleFs * 0.55)} fill={pal.mono ? "#444" : "#6b4a22"} direction={rtl ? "rtl" : "ltr"}>
-          {meta.subtitle}
+          {subtitle}
         </text>
       )}
       {layout.focus && (
