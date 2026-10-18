@@ -222,6 +222,34 @@ Below a person's details:
 Each change is saved at once and is one undo step; none of it waits for
 the form's Save.
 
+## The sources page
+
+**Poster | Sources** in the header switches the main area to every source
+of the family. `#sources` in the address keeps the view on reload.
+
+- **The list** shows each source with how many citations, people and files
+  it has; sources nobody cites are marked "not cited". Search covers title,
+  author and publication, spelling-tolerant like the rest of the app. The
+  list orders by title, most cited first, or unused first.
+- **A source** has an edit form (title, author, publication, notes) and a
+  table of everyone it is cited for, with the event and the page. A name
+  opens that person in the side panel. The source's own scans and
+  documents are listed too.
+- **Duplicates** are pointed out: a source whose title (spelling variants
+  and spacing aside) matches another's says "Looks like the same source
+  as …" and offers it first as the merge target.
+- **Merge** moves every citation and file to the source you keep. A citation
+  of the same person, event and page, or the same file, that the kept source
+  already has is dropped. The kept source keeps its own fields and takes the
+  other's only where its own are empty; notes are joined. The confirmation
+  names both sources with their authors and says what moves.
+- **Delete** removes a source with its citations and file links; the people
+  stay.
+
+Every one of these is one undo step, guarded by the two-tab version check.
+The merge is the same pure function on the server, in the demo and in the
+tests (`src/lib/sources.ts`).
+
 **Files** are uploaded to `POST /api/media/blob` and stored in the database
 under their SHA-256 (`MediaBlob`). The Media row keeps only the URL
 (`/api/media/blob/<sha256>`). This has three consequences:
@@ -417,7 +445,7 @@ shajarah/
 │   ├── components/
 │   │   ├── editor/              TreeWorkspace, MemberForm, RelationsPanel, MemberPicker, repository,
 │   │   │                        GedcomPanel + gedcom.worker (preview off the main thread),
-│   │   │                        MemberAttachments (photos, documents, sources)
+│   │   │                        MemberAttachments (photos, documents, sources), SourcesPage
 │   │   └── poster/              TreePoster (SVG), PosterViewport (d3-zoom), ExportMenu
 │   └── lib/
 │       ├── layout/              ← procedural layout engine (pure, framework-free)
@@ -435,6 +463,7 @@ shajarah/
 │       ├── imports.ts           what an import changed, for "Undo this import"
 │       ├── history.ts           undo/redo snapshots (50 steps, coalescing)
 │       ├── restore.ts           snapshot validation and restore-as-a-diff
+│       ├── sources.ts           source usage, likely duplicates, merging
 │       ├── theme.ts             style presets and colour helpers
 │       ├── samples/kalali.ts    the Al-Kalali lineage
 │       ├── validation.ts        zod schemas shared by API and UI
@@ -504,6 +533,8 @@ reconcile partial state.
 | POST | `/api/trees/:treeId/restore` | put the whole tree back to a snapshot (undo/redo); validated, written as a diff in one transaction |
 | POST | `/api/trees/:treeId/sources` | add a source (`title`, `author`, `publication`, `notes`) |
 | POST | `/api/trees/:treeId/citations` | cite a source for a person (`sourceId`, `memberId`, `eventType`, `page`) |
+| PATCH / DELETE | `/api/sources/:sourceId` | edit a source / remove it with its citations and file links |
+| POST | `/api/sources/:sourceId/merge` | merge this source into `{ intoId }` and remove it |
 | DELETE | `/api/citations/:citationId` | remove a citation |
 | POST | `/api/trees/:treeId/media` | attach a photo or document (`url`, `caption`, `fileType`) to a person or a source |
 | PATCH / DELETE | `/api/media/:mediaId` | change caption or file / remove |
@@ -702,12 +733,10 @@ Without a sample value, `/demo` loads the large demo family.
 
 In order:
 
-1. **A sources page** to edit or merge sources, and see everything each
-   one supports. Today sources are created and cited from a person.
-2. **Server-side vector PDF** (headless Chromium `page.pdf()`), with
+1. **Server-side vector PDF** (headless Chromium `page.pdf()`), with
    CMYK/bleed options, once print shops ask for it. Until then the SVG opens
    in Inkscape.
-3. **Accounts and per-family sharing**, building on the version check: live
+2. **Accounts and per-family sharing**, building on the version check: live
    updates between editors instead of "reload".
 
 Also wanted: Hijri dates, editable title/credits/sources panels like the

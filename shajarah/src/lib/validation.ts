@@ -89,6 +89,11 @@ export const sourceFields = z.object({
   notes: nullableText(2000),
 });
 export const createSourceSchema = sourceFields.partial({ author: true, publication: true, notes: true });
+export const updateSourceSchema = sourceFields.partial();
+export const mergeSourcesSchema = z.object({
+  /** The source that stays; the one in the URL is merged into it and removed. */
+  intoId: z.string().min(1),
+});
 
 export const citationFields = z.object({
   /** GEDCOM event tag ("BIRT", "DEAT", "MARR" …), or null for the person in general. */
@@ -208,6 +213,7 @@ export type ImportGedcomInput = z.infer<typeof importGedcomSchema>;
 export type UndoImportInput = z.infer<typeof undoImportSchema>;
 export type RestoreTreeInput = z.infer<typeof restoreTreeSchema>;
 export type CreateSourceInput = z.infer<typeof createSourceSchema>;
+export type UpdateSourceInput = z.infer<typeof updateSourceSchema>;
 export type CreateCitationInput = z.infer<typeof createCitationSchema>;
 export type CreateMediaInput = z.infer<typeof createMediaSchema>;
 export type UpdateMediaInput = z.infer<typeof updateMediaSchema>;

@@ -20,11 +20,11 @@ interface Props {
   onCreateSource: (input: CreateSourceInput) => Promise<TreeDTO | null>;
 }
 
-const EVENTS: [string, string][] = [
+export const EVENTS: [string, string][] = [
   ["", "In general"], ["BIRT", "Birth"], ["DEAT", "Death"], ["MARR", "Marriage"], ["BURI", "Burial"],
   ["OCCU", "Occupation"], ["RESI", "Residence"], ["EDUC", "Education"],
 ];
-const eventLabel = (tag: string | null) => (tag ? EVENTS.find(([t]) => t === tag)?.[1] ?? tag : null);
+export const eventLabel = (tag: string | null) => (tag ? EVENTS.find(([t]) => t === tag)?.[1] ?? tag : null);
 
 /** A file this page can show or open: uploaded here, on the web, or (demo) held in the page. */
 const reachable = (url: string) => /^(https?:\/\/|\/api\/media\/blob\/|data:)/i.test(url);
@@ -39,17 +39,29 @@ const fileName = (url: string) => url.split(/[\\/]/).pop() || url;
 export function MemberAttachments(props: Props) {
   return (
     <div className="space-y-4 border-t border-parchment-200 pt-4">
-      <MediaSection {...props} />
+      <MediaList {...props} files={props.tree.media.filter((m) => m.memberId === props.member.id)} ownerName={props.member.name} />
       <SourcesSection {...props} />
     </div>
   );
 }
 
-function MediaSection({ tree, member, busy, onUpload, onAddMedia, onUpdateMedia, onRemoveMedia }: Props) {
+export interface MediaListProps {
+  /** The files to show (of one person, or of one source). */
+  files: MediaDTO[];
+  /** Whose files: for the images' alternative text. */
+  ownerName: string;
+  busy: boolean;
+  onUpload: Props["onUpload"];
+  onAddMedia: Props["onAddMedia"];
+  onUpdateMedia: Props["onUpdateMedia"];
+  onRemoveMedia: Props["onRemoveMedia"];
+}
+
+/** Photos and documents of a person or a source: thumbnails, captions, upload, remove. */
+export function MediaList({ files: media, ownerName, busy, onUpload, onAddMedia, onUpdateMedia, onRemoveMedia }: MediaListProps) {
   const uid = useId();
   const [uploading, setUploading] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const media = tree.media.filter((m) => m.memberId === member.id);
 
   const upload = async (file: File | undefined, replace?: MediaDTO) => {
     if (!file) return;
@@ -76,7 +88,7 @@ function MediaSection({ tree, member, busy, onUpload, onAddMedia, onUpdateMedia,
             {isImage(m) ? (
               <a href={m.url} target="_blank" rel="noreferrer" className="shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element -- user files, any origin, any size */}
-                <img src={m.url} alt={m.caption ?? `Photo of ${member.name}`} className="h-16 w-16 rounded object-cover" loading="lazy" />
+                <img src={m.url} alt={m.caption ?? `Photo of ${ownerName}`} className="h-16 w-16 rounded object-cover" loading="lazy" />
               </a>
             ) : (
               <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded bg-parchment-100 text-2xl" aria-hidden>
@@ -252,7 +264,7 @@ function SourcesSection({ tree, member, busy, onCite, onRemoveCitation, onCreate
 }
 
 /** A small modal: title (required), author, publication, notes. */
-function NewSourceDialog({ busy, onCreate, onCancel }: { busy: boolean; onCreate: (input: CreateSourceInput) => void; onCancel: () => void }) {
+export function NewSourceDialog({ busy, onCreate, onCancel }: { busy: boolean; onCreate: (input: CreateSourceInput) => void; onCancel: () => void }) {
   const uid = useId();
   const id = (f: string) => `${uid}-${f}`;
   const [d, setD] = useState({ title: "", author: "", publication: "", notes: "" });

@@ -6,9 +6,11 @@ import type { CitationDTO, MediaDTO, MemberDTO, PosterSettings, SourceDTO, TreeD
 import { parseNasab, planNasabImport, splitNasabLines } from "../nasab";
 import { GEDCOM_MAX_PEOPLE, parseGedcom, planGedcomImport } from "../gedcom";
 import { planRestore, snapshotError } from "../restore";
+import { planMergeSources } from "../sources";
 import type {
   CreateCitationInput, CreateMarriageInput, CreateMediaInput, CreateMemberInput, CreateSourceInput, CreateTreeInput,
-  ImportGedcomInput, ImportNasabInput, RestoreTreeInput, UndoImportInput, UpdateMediaInput, UpdateMemberInput, UpdateTreeInput,
+  ImportGedcomInput, ImportNasabInput, RestoreTreeInput, UndoImportInput, UpdateMediaInput, UpdateMemberInput, UpdateSourceInput,
+  UpdateTreeInput,
 } from "../validation";
 import { prisma } from "./prisma";
 
@@ -108,9 +110,10 @@ async function changeTree(
 }
 
 /** The tree a member, marriage, citation or media row belongs to. */
-async function treeOf(kind: "member" | "marriage" | "citation" | "media", id: string): Promise<string> {
+async function treeOf(kind: "member" | "marriage" | "citation" | "media" | "source", id: string): Promise<string> {
   const row =
     kind === "member" ? await prisma.member.findUnique({ where: { id }, select: { treeId: true } })
+    : kind === "source" ? await prisma.source.findUnique({ where: { id }, select: { treeId: true } })
     : kind === "marriage" ? await prisma.marriage.findUnique({ where: { id }, select: { treeId: true } })
     : kind === "media" ? await prisma.media.findUnique({ where: { id }, select: { treeId: true } })
     : await prisma.citation.findUnique({ where: { id }, select: { member: { select: { treeId: true } } } }).then((c) => c && { treeId: c.member.treeId });
@@ -213,6 +216,44 @@ export async function createSource(treeId: string, input: CreateSourceInput, ver
     await tx.source.create({
       data: { treeId, title: input.title, author: input.author ?? null, publication: input.publication ?? null, notes: input.notes ?? null },
     });
+  });
+}
+
+export async function updateSource(sourceId: string, input: UpdateSourceInput, version?: string): Promise<TreeDTO> {
+  return changeTree(await treeOf("source", sourceId), version, async (tx) => {
+    await tx.source.update({ where: { id: sourceId }, data: input });
+  });
+}
+
+/** Removes a source with its citations and its files' links (the people stay). */
+export async function deleteSource(sourceId: string, version?: string): Promise<TreeDTO> {
+  return changeTree(await treeOf("source", sourceId), version, async (tx) => {
+    await tx.source.delete({ where: { id: sourceId } });
+  });
+}
+
+/**
+ * Merges one source into another (duplicates): citations and files move,
+ * ones the kept source already has are dropped, its blanks are filled, and
+ * the merged source is removed. The plan is the same pure function the
+ * demo and the tests use (src/lib/sources.ts).
+ */
+export async function mergeSources(fromId: string, intoId: string, version?: string): Promise<TreeDTO> {
+  return changeTree(await treeOf("source", fromId), version, async (tx, tree) => {
+    if (!tree.sources.some((x) => x.id === intoId)) throw new DomainError("Both sources must belong to this family.");
+    let m;
+    try {
+      m = planMergeSources(tree, fromId, intoId);
+    } catch (e) {
+      throw new DomainError(e instanceof Error ? e.message : String(e));
+    }
+    const { id, ...fields } = m.into;
+    await tx.source.update({ where: { id }, data: fields });
+    if (m.dropCitationIds.length) await tx.citation.deleteMany({ where: { id: { in: m.dropCitationIds } } });
+    if (m.moveCitations.length) await tx.citation.updateMany({ where: { id: { in: m.moveCitations.map((c) => c.id) } }, data: { sourceId: intoId } });
+    if (m.dropMediaIds.length) await tx.media.deleteMany({ where: { treeId: tree.id, id: { in: m.dropMediaIds } } });
+    if (m.moveMedia.length) await tx.media.updateMany({ where: { treeId: tree.id, id: { in: m.moveMedia.map((x) => x.id) } }, data: { sourceId: intoId } });
+    await tx.source.delete({ where: { id: m.removeSourceId } });
   });
 }
 

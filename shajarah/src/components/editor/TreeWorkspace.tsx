@@ -13,6 +13,7 @@ import { PosterViewport } from "../poster/PosterViewport";
 import { TreePoster } from "../poster/TreePoster";
 import { MemberForm, emptyDraft, type MemberDraft } from "./MemberForm";
 import { MemberAttachments } from "./MemberAttachments";
+import { SourcesPage } from "./SourcesPage";
 import { NasabImport } from "./NasabImport";
 import { GedcomPanel } from "./GedcomPanel";
 import { importReceipt, type ImportReceipt } from "@/lib/imports";
@@ -120,6 +121,17 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     },
     [commitHistory],
   );
+
+  // Poster or sources page; #sources in the address keeps the choice on reload
+  const [view, setView] = useState<"poster" | "sources">("poster");
+  const [sourceId, setSourceId] = useState<string | null>(null);
+  useEffect(() => {
+    if (window.location.hash === "#sources") setView("sources");
+  }, []);
+  const showView = (v: "poster" | "sources") => {
+    setView(v);
+    window.history.replaceState(null, "", v === "sources" ? "#sources" : window.location.pathname + window.location.search);
+  };
 
   const selectedId = panel.kind === "edit" ? panel.id : null;
   const selected = tree.members.find((m) => m.id === selectedId) ?? null;
@@ -298,6 +310,20 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             {tree.members.length} members · {tree.members.reduce((g, m) => Math.max(g, m.generation + 1), 0)} generations
             {mode === "local" && " · demo mode (changes are not saved)"}
           </p>
+        </div>
+        <div role="tablist" aria-label="View" className="flex overflow-hidden rounded-md border border-parchment-300 text-sm">
+          {(["poster", "sources"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              role="tab"
+              aria-selected={view === v}
+              className={`px-3 py-1 ${view === v ? "bg-bark-700 text-parchment-50" : "bg-white text-bark-700 hover:bg-parchment-50"}`}
+              onClick={() => showView(v)}
+            >
+              {v === "poster" ? "Poster" : `Sources (${tree.sources.length})`}
+            </button>
+          ))}
         </div>
         <div className="ms-auto flex items-center gap-3">
           {/* in a matrilineal tree the women are the line: they are always shown */}
@@ -554,61 +580,88 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
         </aside>
 
         <main className="relative min-w-0 flex-1">
-          <PosterViewport width={layout.width} height={layout.height}>
-            <TreePoster
-              ref={svgRef}
-              layout={layout}
-              meta={{ title: tree.title, subtitle: tree.subtitle, name: tree.name }}
-              theme={theme}
-              selectedId={selectedId}
-              lineageIds={lineageIds}
-              showIssues
-              onSelect={select}
-              frameSrc={frameSrc}
-              className="block h-full w-full"
-            />
-          </PosterViewport>
-          {layout.focus && (
-            <div className="absolute bottom-4 start-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full border border-parchment-300 bg-white/95 px-4 py-1.5 text-xs shadow">
-              <span>
-                Showing only the branch of <b dir="auto">{layout.focus.label}</b> ({layout.stats.total} of {tree.members.length} members)
-              </span>
-              <button type="button" className="btn-ghost whitespace-nowrap py-0.5 text-xs" onClick={() => updateSettings({ focusId: null })}>
-                Show the whole family
-              </button>
-            </div>
-          )}
-          {!layout.clarity.ok && (
-            <ClarityNotice
-              issues={layout.clarity.issues.length}
-              paper={posterSize}
-              fallbacks={fallbacks}
-              findSize={() => {
-                // try each larger poster until the connections are unambiguous
-                for (const p of PAPER_ORDER.slice(PAPER_ORDER.indexOf(posterSize) + 1)) {
-                  const l = computePosterLayout(deferredTree, { showFemales, seed, ...layoutOptionsFor(theme, p) });
-                  if (isClear(l)) return p;
-                }
-                return null;
+          {view === "sources" ? (
+            <SourcesPage
+              tree={tree}
+              busy={busy}
+              selectedId={sourceId}
+              onSelect={setSourceId}
+              onCreate={(input) => mutate(() => repo.createSource(input), { label: `Add source ${input.title}` })}
+              onUpdate={(id, input) => mutate(() => repo.updateSource(id, input), { label: "Edit source" })}
+              onDelete={(id) => mutate(() => repo.deleteSource(id), { label: `Delete source ${tree.sources.find((x) => x.id === id)?.title ?? ""}` })}
+              onMerge={(from, into) =>
+                mutate(() => repo.mergeSources(from, into), {
+                  label: `Merge ${tree.sources.find((x) => x.id === from)?.title ?? "source"} into ${tree.sources.find((x) => x.id === into)?.title ?? "source"}`,
+                })
+              }
+              onRemoveCitation={(id) => void mutate(() => repo.deleteCitation(id), { label: "Remove citation" })}
+              onOpenMember={select}
+              media={{
+                onUpload: (file) => repo.uploadMedia(file),
+                onAddMedia: (sid, m) => mutate(() => repo.createMedia({ ...m, sourceId: sid }), { label: "Add file to source" }),
+                onUpdateMedia: (id, input) => mutate(() => repo.updateMedia(id, input), { label: input.url ? "Upload file" : "Edit caption" }),
+                onRemoveMedia: (id) => void mutate(() => repo.deleteMedia(id), { label: "Remove file" }),
               }}
-              onChoose={(p) => updateSettings({ posterSize: p })}
             />
-          )}
-          {layout.clarity.ok && !layout.legibility.ok && (
-            <LegibilityNotice
-              smallestMm={layout.legibility.smallestTextMm}
-              minMm={layout.legibility.minTextMm}
-              paper={posterSize}
-              suggestion={paperForScale(posterSize, layout.legibility.scaleNeeded)}
-              fallbacks={fallbacks}
-              onChoose={(p) => updateSettings({ posterSize: p })}
-            />
-          )}
-          {layout.stats.unplaced > 0 && (
-            <div className="absolute start-4 top-4 rounded-md bg-white/90 px-3 py-2 text-xs shadow">
-              {layout.stats.unplaced} member(s) are not connected to the main lineage and are not drawn
-              (e.g. in-laws without recorded parents).
-            </div>
+          ) : (
+            <>
+            <PosterViewport width={layout.width} height={layout.height}>
+              <TreePoster
+                ref={svgRef}
+                layout={layout}
+                meta={{ title: tree.title, subtitle: tree.subtitle, name: tree.name }}
+                theme={theme}
+                selectedId={selectedId}
+                lineageIds={lineageIds}
+                showIssues
+                onSelect={select}
+                frameSrc={frameSrc}
+                className="block h-full w-full"
+              />
+            </PosterViewport>
+            {layout.focus && (
+              <div className="absolute bottom-4 start-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full border border-parchment-300 bg-white/95 px-4 py-1.5 text-xs shadow">
+                <span>
+                  Showing only the branch of <b dir="auto">{layout.focus.label}</b> ({layout.stats.total} of {tree.members.length} members)
+                </span>
+                <button type="button" className="btn-ghost whitespace-nowrap py-0.5 text-xs" onClick={() => updateSettings({ focusId: null })}>
+                  Show the whole family
+                </button>
+              </div>
+            )}
+            {!layout.clarity.ok && (
+              <ClarityNotice
+                issues={layout.clarity.issues.length}
+                paper={posterSize}
+                fallbacks={fallbacks}
+                findSize={() => {
+                  // try each larger poster until the connections are unambiguous
+                  for (const p of PAPER_ORDER.slice(PAPER_ORDER.indexOf(posterSize) + 1)) {
+                    const l = computePosterLayout(deferredTree, { showFemales, seed, ...layoutOptionsFor(theme, p) });
+                    if (isClear(l)) return p;
+                  }
+                  return null;
+                }}
+                onChoose={(p) => updateSettings({ posterSize: p })}
+              />
+            )}
+            {layout.clarity.ok && !layout.legibility.ok && (
+              <LegibilityNotice
+                smallestMm={layout.legibility.smallestTextMm}
+                minMm={layout.legibility.minTextMm}
+                paper={posterSize}
+                suggestion={paperForScale(posterSize, layout.legibility.scaleNeeded)}
+                fallbacks={fallbacks}
+                onChoose={(p) => updateSettings({ posterSize: p })}
+              />
+            )}
+            {layout.stats.unplaced > 0 && (
+              <div className="absolute start-4 top-4 rounded-md bg-white/90 px-3 py-2 text-xs shadow">
+                {layout.stats.unplaced} member(s) are not connected to the main lineage and are not drawn
+                (e.g. in-laws without recorded parents).
+              </div>
+            )}
+            </>
           )}
         </main>
       </div>

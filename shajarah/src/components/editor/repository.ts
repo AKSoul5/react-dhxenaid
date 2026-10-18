@@ -4,9 +4,10 @@ import { applyNasabLines } from "@/lib/nasab";
 import { parseGedcom, planGedcomImport } from "@/lib/gedcom";
 import { undoImportLocally, type ImportReceipt } from "@/lib/imports";
 import { snapshotError } from "@/lib/restore";
+import { applyMergeSources, planMergeSources } from "@/lib/sources";
 import type {
   CreateCitationInput, CreateMarriageInput, CreateMediaInput, CreateMemberInput, CreateSourceInput, UpdateMediaInput,
-  UpdateMemberInput, UpdateTreeInput,
+  UpdateMemberInput, UpdateSourceInput, UpdateTreeInput,
 } from "@/lib/validation";
 
 /** Every mutation resolves to the full, updated tree. */
@@ -26,6 +27,11 @@ export interface FamilyRepository {
   /** Puts the whole tree back to a snapshot (undo/redo). */
   restore(snapshot: TreeDTO): Promise<TreeDTO>;
   createSource(input: CreateSourceInput): Promise<TreeDTO>;
+  updateSource(id: string, input: UpdateSourceInput): Promise<TreeDTO>;
+  /** Removes a source with its citations and file links. */
+  deleteSource(id: string): Promise<TreeDTO>;
+  /** Moves everything of `fromId` to `intoId` (dropping repeats) and removes `fromId`. */
+  mergeSources(fromId: string, intoId: string): Promise<TreeDTO>;
   createCitation(input: CreateCitationInput): Promise<TreeDTO>;
   deleteCitation(id: string): Promise<TreeDTO>;
   /** Stores a file and returns the URL to attach (does not change the tree). */
@@ -89,6 +95,9 @@ export function apiRepository(treeId: string, initialVersion?: string): FamilyRe
     undoImport: (receipt) => call(`/api/trees/${treeId}/undo-import`, "POST", receipt),
     restore: ({ id: _id, version: _v, ...snapshot }) => call(`/api/trees/${treeId}/restore`, "POST", snapshot),
     createSource: (input) => call(`/api/trees/${treeId}/sources`, "POST", input),
+    updateSource: (id, input) => call(`/api/sources/${id}`, "PATCH", input),
+    deleteSource: (id) => call(`/api/sources/${id}`, "DELETE"),
+    mergeSources: (fromId, intoId) => call(`/api/sources/${fromId}/merge`, "POST", { intoId }),
     createCitation: (input) => call(`/api/trees/${treeId}/citations`, "POST", input),
     deleteCitation: (id) => call(`/api/citations/${id}`, "DELETE"),
     uploadMedia: async (file) => {
@@ -206,6 +215,20 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
     async createSource(input) {
       const source = { id: localId(), title: input.title, author: input.author ?? null, publication: input.publication ?? null, notes: input.notes ?? null };
       return commit({ ...tree, sources: [...tree.sources, source] });
+    },
+    async updateSource(id, input) {
+      return commit({ ...tree, sources: tree.sources.map((x) => (x.id === id ? { ...x, ...input } : x)) });
+    },
+    async deleteSource(id) {
+      return commit({
+        ...tree,
+        sources: tree.sources.filter((x) => x.id !== id),
+        citations: tree.citations.filter((c) => c.sourceId !== id),
+        media: tree.media.filter((x) => x.sourceId !== id),
+      });
+    },
+    async mergeSources(fromId, intoId) {
+      return commit(applyMergeSources(tree, planMergeSources(tree, fromId, intoId)));
     },
     async createCitation(input) {
       if (!tree.sources.some((x) => x.id === input.sourceId)) throw new Error("Source is not in this tree.");
