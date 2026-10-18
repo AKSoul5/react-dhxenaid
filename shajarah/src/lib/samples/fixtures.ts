@@ -156,6 +156,9 @@ export function denseFamily(): TreeDTO {
  * birth order), daughters throughout, and sons who themselves have two
  * wives — so mothers and lines must be kept apart correctly.
  */
+const WIVES = ["نورة", "هيا", "منيرة", "لولوة", "حصة", "مضاوي", "شيخة", "بدرية", "وضحى", "سلمى", "جواهر", "مزنة"];
+const WIFE_FAMILIES = ["السديري", "الشمري", "المطيري", "الحربي", "الزهراني", "الغامدي", "السبيعي"];
+
 export function multiMarriageFamily(): TreeDTO {
   const members: MemberDTO[] = [];
   const marriages: MarriageDTO[] = [];
@@ -173,15 +176,18 @@ export function multiMarriageFamily(): TreeDTO {
     marriages.push({ id: `mm-mar-${w.id}`, spouseAId: husband.id, spouseBId: w.id, startYear: null, endYear: null });
     return w;
   };
+  // wives from other families, by first and family name (or in full)
+  let w = 0;
+  const wife = () => `${WIVES[w % WIVES.length]} ${WIFE_FAMILIES[w++ % WIFE_FAMILIES.length]}`;
   const root = add("حمد", "MALE", null, null, 0);
-  const wives = [marry(root, "فاطمة بنت سعد"), marry(root, "عائشة بنت علي"), marry(root, "خديجة بنت ناصر")];
+  const wives = [marry(root, "فاطمة بنت سعد العتيبي"), marry(root, "عائشة بنت علي القحطاني"), marry(root, "خديجة بنت ناصر الدوسري")];
   // 12 children, mothers interleaved by birth order: 1,2,3,1,2,3,…
   for (let i = 0; i < 12; i++) {
     const daughter = i % 4 === 1;
     const c = add(daughter ? DAUGHTERS[k++ % DAUGHTERS.length] : SONS[k++ % SONS.length], daughter ? "FEMALE" : "MALE", root.id, wives[i % 3].id, i);
     if (daughter) continue;
     // every other son has two wives himself, again interleaved
-    const own = i % 2 === 0 ? [marry(c, `زوجة ${c.name} الأولى`), marry(c, `زوجة ${c.name} الثانية`)] : [marry(c, `زوجة ${c.name}`)];
+    const own = i % 2 === 0 ? [marry(c, wife()), marry(c, wife())] : [marry(c, wife())];
     const kids = 3 + (i % 4);
     for (let j = 0; j < kids; j++) {
       const d = j % 3 === 1;

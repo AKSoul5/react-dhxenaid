@@ -1,18 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { computePosterLayout } from "@/lib/layout/botanical";
+import { computePosterLayout, type PosterNode } from "@/lib/layout/botanical";
+import { givenAndFamilyName } from "@/lib/nasab";
 import { multiMarriageFamily } from "@/lib/samples/fixtures";
 import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
 
 // حمد has children by three wives, and some of his sons by two: with the
-// option on, each of those children carries his mother's name. (The
-// sons' wives get real names: the fixture's "زوجة يوسف الثانية" stand-ins
-// are far longer than names people record.)
-const NAMES = ["نورة", "هيا", "منيرة", "لولوة", "الجوهرة", "حصة", "مضاوي", "شيخة", "العنود", "بدرية", "وضحى", "سلمى"];
+// option on, each of those children carries his mother's first and family
+// names.
+// (on round name holders a long second line is set on two)
+const sub = (n: PosterNode) => n.subLabel?.replace(/\n/g, " ");
 
 describe("naming the mothers of half-siblings", () => {
-  const fixture = multiMarriageFamily();
-  let k = 0;
-  const tree = { ...fixture, members: fixture.members.map((m) => (m.name.startsWith("زوجة") ? { ...m, name: NAMES[k++ % NAMES.length] } : m)) };
+  const tree = multiMarriageFamily();
   const byId = new Map(tree.members.map((m) => [m.id, m]));
   const settings = { ...tree.settings, showFemales: true };
   const withNames = { ...tree, settings: { ...settings, theme: { motherNames: true } } };
@@ -33,17 +32,15 @@ describe("naming the mothers of half-siblings", () => {
       const several = m.fatherId && m.motherId && wivesOf(m.fatherId).size > 1;
       if (several) {
         named++;
-        const [word, ...name] = n.subLabel!.split(" ");
-        expect(word).toBe(m.gender === "FEMALE" ? "أمها" : "أمه");
-        expect(byId.get(m.motherId!)!.name.startsWith(name.join(" "))).toBe(true);
+        expect(sub(n)).toBe(`${m.gender === "FEMALE" ? "أمها" : "أمه"} ${givenAndFamilyName(byId.get(m.motherId!)!.name)}`);
       } else {
         expect(n.subLabel ?? "").not.toMatch(/^أم/);
       }
     }
     expect(named).toBeGreaterThan(20);
-    // her own name, without her father's ("فاطمة" for "فاطمة بنت سعد")
+    // her first and family names, without her father's
     const hamadKids = l.nodes.filter((n) => byId.get(n.member.fatherId ?? "")?.name === "حمد");
-    expect(new Set(hamadKids.map((n) => n.subLabel?.replace(/^أمها? /, "")))).toEqual(new Set(["فاطمة", "عائشة", "خديجة"]));
+    expect(new Set(hamadKids.map((n) => sub(n)?.replace(/^أمها? /, "")))).toEqual(new Set(["فاطمة العتيبي", "عائشة القحطاني", "خديجة الدوسري"]));
   });
 
   for (const nodeShape of ["auto", "oval", "circle", "leaf"] as const) {
@@ -56,17 +53,26 @@ describe("naming the mothers of half-siblings", () => {
     });
   }
 
-  it("keeps the full names when two wives share a first name", () => {
-    const same = { ...withNames, members: withNames.members.map((m) => (m.name === "عائشة بنت علي" ? { ...m, name: "فاطمة بنت علي" } : m)) };
+  it("keeps the full names when two wives share first and family names", () => {
+    const same = { ...withNames, members: withNames.members.map((m) => (m.name === "عائشة بنت علي القحطاني" ? { ...m, name: "فاطمة بنت علي العتيبي" } : m)) };
     const l = computePosterLayout(same, opts(same));
-    const subs = new Set(l.nodes.filter((n) => byId.get(n.member.fatherId ?? "")?.name === "حمد").map((n) => n.subLabel?.replace(/^أمها? /, "")));
-    expect(subs).toEqual(new Set(["فاطمة بنت سعد", "فاطمة بنت علي", "خديجة"]));
+    const subs = new Set(l.nodes.filter((n) => byId.get(n.member.fatherId ?? "")?.name === "حمد").map((n) => sub(n)?.replace(/^أمها? /, "")));
+    expect(subs).toEqual(new Set(["فاطمة بنت سعد العتيبي", "فاطمة بنت علي العتيبي", "خديجة الدوسري"]));
+  });
+
+  it("shortens a name to its first and family names", () => {
+    expect(givenAndFamilyName("فاطمة بنت سعد العتيبي")).toBe("فاطمة العتيبي");
+    expect(givenAndFamilyName("فاطمة بنت سعد بن ناصر آل سعود")).toBe("فاطمة آل سعود");
+    expect(givenAndFamilyName("فاطمة بنت سعد")).toBe("فاطمة");
+    expect(givenAndFamilyName("نورة السديري")).toBe("نورة السديري");
+    expect(givenAndFamilyName("الجوهرة بنت عبدالعزيز")).toBe("الجوهرة");
+    expect(givenAndFamilyName("Fatimah bint Saad Al-Otaibi")).toBe("Fatimah Al-Otaibi");
   });
 
   it("writes it in English for English names", () => {
     const en = { ...withNames, members: withNames.members.map((m, i) => ({ ...m, name: `Person ${i}` })) };
     const l = computePosterLayout(en, opts(en));
     const kid = l.nodes.find((n) => n.member.fatherId && wivesOf(n.member.fatherId).size > 1)!;
-    expect(kid.subLabel).toBe(`mother: Person ${en.members.findIndex((m) => m.id === kid.member.motherId)}`);
+    expect(sub(kid)).toBe(`mother: Person ${en.members.findIndex((m) => m.id === kid.member.motherId)}`);
   });
 });

@@ -1,6 +1,11 @@
 # Builds the Shajarah Windows installer on a real Windows machine, installs
 # it silently, starts the installed program in its smoke-test mode (its own
 # database, the app server, saving a family) and uploads the installer.
+#
+# A new version (desktop/electron/package.json) is published as a GitHub
+# release, which installed copies update themselves from. Then the previous
+# release is installed and updated to the new one, as on a user's laptop;
+# if that fails, the new release is withdrawn.
 name: Shajarah Windows installer
 
 on:
@@ -10,6 +15,9 @@ on:
     paths:
       - "shajarah/**"
       - ".github/workflows/shajarah-windows-installer.yml"
+
+permissions:
+  contents: write
 
 jobs:
   installer:
@@ -43,7 +51,8 @@ jobs:
           npm ci
           npm run prepare-app
           npx electron-builder --win nsis --publish never
-          Get-ChildItem dist -Filter *.exe | Format-Table Name, Length
+          Get-ChildItem dist -File | Format-Table Name, Length
+          if (-not (Test-Path dist/latest.yml)) { throw "No update information (latest.yml) was built" }
 
       - name: Install it and run the smoke test (first and second launch)
         working-directory: shajarah/desktop/electron
@@ -65,6 +74,62 @@ jobs:
           # a normal (not first) launch must be quick
           $seconds = [double](($result | Select-String '"startupSeconds":([0-9.]+)').Matches[0].Groups[1].Value)
           if ($seconds -gt 20) { throw "The second launch took $seconds s to start (limit 20 s)" }
+
+      - name: Publish a new version as a release
+        id: publish
+        working-directory: shajarah/desktop/electron
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          gh release view "v$version" --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) { "v$version is already released"; $global:LASTEXITCODE = 0; exit 0 }
+          $previous = gh release view --json tagName --jq .tagName 2>$null
+          $global:LASTEXITCODE = 0
+          $notes = (git log -1 --format=%B) -join "`n"
+          gh release create "v$version" "dist/Shajarah-Setup-$version.exe" "dist/Shajarah-Setup-$version.exe.blockmap" dist/latest.yml `
+            --target $env:GITHUB_SHA --title "Shajarah $version" --notes $notes
+          if ($LASTEXITCODE -ne 0) { throw "Could not publish the release" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "previous=$previous" >> $env:GITHUB_OUTPUT
+
+      - name: Update the previous release to the new one
+        if: steps.publish.outputs.previous != ''
+        working-directory: shajarah/desktop/electron
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW: ${{ steps.publish.outputs.version }}
+          OLD: ${{ steps.publish.outputs.previous }}
+        run: |
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Shajarah\Shajarah.exe'
+          $logs = Join-Path $env:APPDATA 'Shajarah\logs'
+          $installed = { (Get-Item $exe).VersionInfo.ProductVersion }
+          try {
+            gh release download $env:OLD --pattern 'Shajarah-Setup-*.exe' --dir previous
+            $old = Get-ChildItem previous -Filter 'Shajarah-Setup-*.exe' | Select-Object -First 1
+            Start-Process -FilePath $old.FullName -ArgumentList '/S' -Wait
+            "installed: $(& $installed)"
+            if (-not (& $installed).StartsWith($env:OLD.TrimStart('v'))) { throw "The previous version did not install" }
+            $p = Start-Process -FilePath $exe -ArgumentList '--update-test' -PassThru
+            if (-not $p.WaitForExit(300000)) { $p.Kill(); throw "The update check did not finish in 5 minutes" }
+            Get-Content (Join-Path $logs 'update-test.txt')
+            if ($p.ExitCode -ne 0) { throw "The update failed" }
+            # the downloaded installer runs on its own once the program has quit
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            while (-not (& $installed).StartsWith($env:NEW) -and $clock.Elapsed.TotalSeconds -lt 300) { Start-Sleep 5 }
+            "installed after the update: $(& $installed) ($([int]$clock.Elapsed.TotalSeconds) s)"
+            if (-not (& $installed).StartsWith($env:NEW)) { throw "The update did not install" }
+            Start-Sleep 10
+            $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru
+            if (-not $p.WaitForExit(300000)) { $p.Kill(); throw "The updated program did not start" }
+            Get-Content (Join-Path $logs 'smoke-test.txt')
+            if ($p.ExitCode -ne 0) { throw "The updated program failed its smoke test" }
+          } catch {
+            Get-Content (Join-Path $logs 'shajarah.log') -Tail 60 -ErrorAction SilentlyContinue
+            "Withdrawing v$env:NEW: $_"
+            gh release delete "v$env:NEW" --yes --cleanup-tag
+            throw
+          }
 
       - name: Upload the installer
         uses: actions/upload-artifact@v4

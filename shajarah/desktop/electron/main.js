@@ -6,8 +6,16 @@
 // `Shajarah --smoke-test` starts everything without a window, checks that
 // the app answers and can save a family, prints the result and exits
 // (0 = all good); the installer build runs it on a real Windows machine.
+//
+// Updates: each new version is published as a GitHub release. The program
+// checks for it when it starts (and every few hours), downloads only what
+// changed in the background, and offers to restart into it; otherwise it
+// installs when Shajarah is closed. The families in the database are kept.
+// `Shajarah --update-test` (used by the installer build) checks for the
+// latest version, downloads it and installs it silently.
 
 const { app, BrowserWindow, dialog, shell } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -17,6 +25,7 @@ const { Database } = require("./postgres");
 const { migrate } = require("./migrate");
 
 const SMOKE = process.argv.includes("--smoke-test");
+const UPDATE_TEST = process.argv.includes("--update-test");
 const userData = app.getPath("userData");
 const logDir = path.join(userData, "logs");
 fs.mkdirSync(logDir, { recursive: true });
@@ -104,8 +113,15 @@ let stopped = false;
 function stop() {
   stopping ??= (async () => {
     if (server && server.exitCode === null) {
+      // (waited for: an update can only replace the program's files once
+      // the server, which runs as Shajarah.exe too, has ended)
+      const ended = new Promise((resolve) => {
+        server.once("exit", resolve);
+        setTimeout(resolve, 10000);
+      });
       if (process.platform === "win32") spawn("taskkill", ["/pid", String(server.pid), "/t", "/f"], { windowsHide: true });
       else server.kill();
+      await ended;
     }
     await db.stop();
     stopped = true;
@@ -143,7 +159,11 @@ function mainWindow() {
 }
 
 async function smokeTest() {
-  const results = { startupSeconds };
+  const results = { startupSeconds, version: app.getVersion() };
+  // (reported, not required: there may be no release yet, or no connection)
+  autoUpdater.autoDownload = false;
+  results.latestRelease = await autoUpdater.checkForUpdates()
+    .then((r) => r?.updateInfo.version ?? null, (err) => `unavailable: ${err.message.split("\n")[0]}`);
   results.home = await get(appUrl);
   results.demo = await get(`${appUrl}/demo?sample=nouri`);
   const created = await fetch(`${appUrl}/api/trees`, {
@@ -158,7 +178,65 @@ async function smokeTest() {
   return { ok, results };
 }
 
-if (!app.requestSingleInstanceLock()) {
+// ── Updates ──────────────────────────────────────────────────────────
+autoUpdater.logger = {
+  info: (m) => log(`update: ${m}`), warn: (m) => log(`update: ${m}`),
+  error: (m) => log(`update error: ${m}`), debug: () => {},
+};
+
+/** Stops the server and the database, then restarts into the new version. */
+async function restartIntoUpdate() {
+  await stop();
+  autoUpdater.quitAndInstall(true, true);
+}
+
+function watchForUpdates(window) {
+  if (!app.isPackaged) return;
+  let offered = false;
+  autoUpdater.on("update-downloaded", async ({ version }) => {
+    if (offered) return;
+    offered = true;
+    const { response } = await dialog.showMessageBox(window, {
+      type: "info", buttons: ["Restart now", "Later"], defaultId: 0, cancelId: 1,
+      title: "Update ready",
+      message: `Shajarah ${version} is ready to install.`,
+      detail: "Restart now to update, or it will be installed when you close Shajarah. Your families are kept.",
+    });
+    if (response === 0) restartIntoUpdate();
+  });
+  // no connection, or no release yet: try again later, quietly
+  const check = () => autoUpdater.checkForUpdates().catch((err) => log(`update check failed: ${err.message}`));
+  check();
+  setInterval(check, 6 * 60 * 60 * 1000);
+}
+
+/** --update-test: finds, downloads and silently installs the latest version. */
+async function updateTest() {
+  const report = (line) => {
+    console.log(line);
+    log(line);
+    fs.writeFileSync(path.join(logDir, "update-test.txt"), line + "\n");
+  };
+  autoUpdater.autoInstallOnAppQuit = false;
+  try {
+    const found = await autoUpdater.checkForUpdates();
+    if (!found?.isUpdateAvailable) {
+      report(`UPDATE NONE current ${app.getVersion()} latest ${found?.updateInfo.version}`);
+      app.exit(2);
+      return;
+    }
+    await found.downloadPromise;
+    report(`UPDATE DOWNLOADED ${app.getVersion()} -> ${found.updateInfo.version}`);
+    autoUpdater.quitAndInstall(true, false);
+  } catch (err) {
+    report(`UPDATE FAIL ${err.message}`);
+    app.exit(1);
+  }
+}
+
+if (UPDATE_TEST) {
+  app.whenReady().then(updateTest);
+} else if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
@@ -192,15 +270,17 @@ if (!app.requestSingleInstanceLock()) {
       app.exit(ok ? 0 : 1);
       return;
     }
-    mainWindow();
+    const window = mainWindow();
     splash.destroy();
+    watchForUpdates(window);
   });
 
   app.on("window-all-closed", () => app.quit());
-  // Stop the server and the database before the program ends.
+  // Stop the server and the database before the program ends. (Then quit
+  // again, normally: a downloaded update installs as the program quits.)
   app.on("will-quit", (event) => {
     if (stopped) return;
     event.preventDefault();
-    stop().finally(() => app.exit(0));
+    stop().finally(() => app.quit());
   });
 }

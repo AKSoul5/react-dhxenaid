@@ -44,6 +44,7 @@
  */
 import { hierarchy, type HierarchyNode } from "d3-hierarchy";
 import { childrenIndex, lineagePath } from "../genealogy";
+import { givenAndFamilyName } from "../nasab";
 import type { MemberDTO, TreeDTO } from "../types";
 import {
   add, circlePath, cubicPoint as cubicPointAt, cubicTangent, len, norm, ribbonPath, scale, sub,
@@ -136,6 +137,7 @@ export interface PosterNode {
   fontSize: number;
   shape: PosterShape;
   label: string;
+  /** A quieter second line (on round holders it may be two, split by "\n"). */
   subLabel: string | null;
   /** True for members without (visible) children. */
   terminal: boolean;
@@ -561,9 +563,9 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       .filter(Boolean));
     const partners = lineParentId ? partnersOf(lineParentId) : new Set();
     if (opts.motherNames && !dotted.has(m.id) && other && partners.size > 1) {
-      // her own name ("فاطمة" for "فاطمة بنت سعد") tells the wives apart,
-      // unless two of them share it
-      const own = (name: string) => name.split(/\s+(?:بنت|بن|ابنة|bint|bin|ibn)\s+/i)[0].trim();
+      // her first and family names ("فاطمة العتيبي" for "فاطمة بنت سعد
+      // العتيبي") tell the wives apart, unless two of them share them
+      const own = givenAndFamilyName;
       const names = [...partners].map((id) => own(byMemberId.get(id as string)?.name ?? ""));
       const name = names.filter((x) => x === own(other.name)).length > 1 ? other.name : own(other.name);
       const line = ARABIC.test(other.name)
@@ -1014,16 +1016,23 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     n: HNode, p: Vec, depth: number, from: Vec, region: Region, side: number,
   ): LiveNode => {
     const m = n.data.member!;
-    const { label, subLabel } = labelOf(m);
+    const { label, subLabel: oneLine } = labelOf(m);
     const medallion = isMedallion(n, depth, region);
     const terminal = !n.children;
     let fs = fontFor(depth, medallion, fl);
-    const subH = subLabel ? fs * 0.8 : 0;
+    // a round name holder grows with its widest line: a second line much
+    // wider than the name goes onto two ("أمها منيرة" / "المطيري")
+    const round = medallion || (nodeShape === "circle" && !isLeaf(n));
+    const subLabel = oneLine && round && textWidth(oneLine, fs * 0.7) > textWidth(label, fs) * 1.15
+      ? splitInTwo(oneLine) : oneLine;
+    const subLines = subLabel ? subLabel.split("\n") : [];
+    const subW = Math.max(0, ...subLines.map((l) => textWidth(l, fs * 0.7)));
+    const subH = subLabel ? fs * 0.8 * subLines.length : 0;
     let shape: PosterShape;
     let w: number, h: number, angle = 0, leafLength = 0, leafWidth = 0;
     if (medallion) {
       shape = "medallion";
-      const tw = Math.max(textWidth(label, fs), subLabel ? textWidth(subLabel, fs * 0.7) : 0);
+      const tw = Math.max(textWidth(label, fs), subW);
       w = h = Math.max(fs * 2.7, tw + fs * 0.9) + subH * 0.5;
     } else if (isLeaf(n)) {
       // The leaf points away from its parent but stays close to horizontal
@@ -1047,7 +1056,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         // Uniform roundels (like engraved family charts); long names shrink to fit.
         // (long names widen the roundel rather than shrink below legibility)
         shape = "circle";
-        w = h = Math.max(fs * 2.55 + subH * 0.6, tw / 0.8);
+        w = h = Math.max(fs * 2.55 + subH * 0.6, Math.max(textWidth(label, fs), subW) / 0.8);
       } else if (nodeShape === "oval") {
         shape = "oval";
         w = tw + fs * OVAL_PAD;
@@ -1900,6 +1909,14 @@ function clamp(v: number, lo: number, hi: number) {
 const deg = (v: Vec) => (Math.atan2(v.y, v.x) * 180) / Math.PI;
 
 /** Approximate rendered width of a label in Amiri (naskh) or Latin text. */
+/** Splits a line in two at the space nearest its middle (not leaving a word like "m." alone). */
+function splitInTwo(text: string): string {
+  const spaces = [...text.matchAll(/ /g)].map((m) => m.index!).filter((i) => i >= 4 && text.length - i - 1 >= 4);
+  if (!spaces.length) return text;
+  const at = spaces.reduce((a, b) => (Math.abs(b - text.length / 2) < Math.abs(a - text.length / 2) ? b : a));
+  return `${text.slice(0, at)}\n${text.slice(at + 1)}`;
+}
+
 export function textWidth(text: string, fontSize: number): number {
   let w = 0;
   for (const ch of text) w += ARABIC.test(ch) ? 0.46 : ch === " " ? 0.28 : 0.52;

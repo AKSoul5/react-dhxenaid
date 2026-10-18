@@ -405,15 +405,34 @@ function Medallion({ node, pal, onClick, strong, ring }: { node: PosterNode; pal
           <ellipse rx={rx - inset} ry={ry - inset} fill="none" stroke={GOLD} strokeWidth={fs * 0.03} />
         </>
       )}
-      <text y={node.subLabel ? -fs * 0.32 : 0} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight={700} fill={pal.ink}>
+      <text y={nameY(node)} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight={700} fill={pal.ink}>
         {node.label}
       </text>
-      {node.subLabel && (
-        <text y={fs * 0.6} textAnchor="middle" dominantBaseline="central" fontSize={fs * 0.68} fill={pal.ink} opacity={0.8}>
-          {node.subLabel}
-        </text>
-      )}
+      <SubLines node={node} y={fs * 0.6} fontSize={fs * 0.68} fill={pal.ink} opacity={0.8} />
     </g>
+  );
+}
+
+/** Where the name sits: higher when there are lines under it. */
+function nameY(node: PosterNode) {
+  const lines = node.subLabel ? node.subLabel.split("\n").length : 0;
+  return lines ? -node.fontSize * (0.32 + (lines - 1) * 0.36) : 0;
+}
+
+/** The quieter line(s) under a name, starting at y (moved up for two lines). */
+function SubLines({ node, y, fontSize, fill, opacity }: { node: PosterNode; y: number; fontSize: number; fill: string; opacity: number }) {
+  if (!node.subLabel) return null;
+  const lines = node.subLabel.split("\n");
+  const step = fontSize * 1.08;
+  const top = y - (lines.length - 1) * node.fontSize * 0.36;
+  return (
+    <>
+      {lines.map((line, i) => (
+        <text key={i} y={top + i * step} textAnchor="middle" dominantBaseline="central" fontSize={fontSize} fill={fill} opacity={opacity}>
+          {line}
+        </text>
+      ))}
+    </>
   );
 }
 
@@ -461,14 +480,10 @@ function PersonNode({
       <title>{node.label}</title>
       {body}
       <g transform={flip ? "rotate(180)" : undefined}>
-        <text y={node.subLabel ? -fs * 0.32 : 0} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight={node.terminal ? 400 : 700} fill={text}>
+        <text y={nameY(node)} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight={node.terminal ? 400 : 700} fill={text}>
           {node.label}
         </text>
-        {node.subLabel && (
-          <text y={fs * 0.55} textAnchor="middle" dominantBaseline="central" fontSize={fs * 0.7} fill={text} opacity={0.85}>
-            {node.subLabel}
-          </text>
-        )}
+        <SubLines node={node} y={fs * 0.55} fontSize={fs * 0.7} fill={text} opacity={0.85} />
       </g>
     </g>
   );

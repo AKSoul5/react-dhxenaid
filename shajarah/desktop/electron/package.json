@@ -1,7 +1,7 @@
 {
   "name": "shajarah-desktop",
   "productName": "Shajarah",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Shajarah family tree posters",
   "author": "Shajarah",
   "private": true,
@@ -11,11 +11,12 @@
     "electron-builder": "26.16.1"
   },
   "dependencies": {
+    "electron-updater": "6.8.9",
     "pg": "8.13.1"
   },
   "optionalDependencies": {
-    "@embedded-postgres/windows-x64": "16.14.0-beta.17",
-    "@embedded-postgres/linux-x64": "16.14.0-beta.17"
+    "@embedded-postgres/linux-x64": "16.14.0-beta.17",
+    "@embedded-postgres/windows-x64": "16.14.0-beta.17"
   },
   "scripts": {
     "prepare-app": "node scripts/prepare.mjs",
@@ -78,6 +79,11 @@
       "icon": "build/icon.png",
       "category": "Office"
     },
-    "publish": null
+    "publish": {
+      "provider": "github",
+      "owner": "AKSoul5",
+      "repo": "react-dhxenaid",
+      "releaseType": "release"
+    }
   }
 }

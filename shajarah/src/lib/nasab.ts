@@ -37,6 +37,21 @@ export function parseNasab(text: string): ParsedNasab {
   return { entries: entries.reverse(), gender };
 }
 
+/**
+ * A person's given name and family name, without the chain of fathers
+ * between them: "فاطمة بنت سعد العتيبي" → "فاطمة العتيبي", "فاطمة بنت سعد" →
+ * "فاطمة". A name without a chain ("نورة السديري") stays as it is.
+ */
+export function givenAndFamilyName(name: string): string {
+  const parts = name.replace(/\s+/g, " ").trim().split(SEPARATOR).filter((_, i) => i % 2 === 0);
+  if (parts.length < 2) return name.trim();
+  // the family name ends the chain, after the last father's own name:
+  // "العتيبي", "آل سعود", "Al-Otaibi"
+  const last = parts[parts.length - 1].split(" ");
+  const at = last.findIndex((w, i) => i > 0 && /^(ال|آل$|al-|al$|el-)/i.test(w));
+  return at > 0 ? `${parts[0]} ${last.slice(at).join(" ")}` : parts[0];
+}
+
 /** Lifts "(laqab)" and a closing honorific (رحمه الله …) out of a name. */
 export function splitLaqab(raw: string): NasabEntry {
   let name = raw.trim();

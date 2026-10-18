@@ -56,6 +56,24 @@ to `shajarah/`: it builds on Windows, installs the result silently, runs
 reads a family) and uploads the installer as the run's
 `Shajarah-Windows-installer` artifact.
 
+### Automatic updates
+
+From version 1.0.7 Shajarah updates itself. When the version in
+`desktop/electron/package.json` goes up, the workflow publishes the
+installer as a GitHub release (`v<version>`, with `latest.yml` and the
+`.blockmap` that lets an update download only what changed). The installed
+program checks for a newer release when it starts and every six hours,
+downloads it in the background and asks to restart into it ("Restart now"
+or "Later": then it installs when Shajarah is closed). It stops the app
+server and the database before installing; the families are kept.
+
+Each release is tested the way a laptop gets it: the workflow installs the
+previous release, runs `Shajarah.exe --update-test` (find, download and
+silently install the newest version), checks that the new version is
+installed and runs its smoke test. If that fails the new release is
+deleted again, so no copy updates to it. (Copies older than 1.0.7 have no
+updater: install 1.0.7 once by hand.)
+
 To build it yourself:
 
 ```bash
@@ -64,7 +82,7 @@ NEXT_OUTPUT=standalone npm run build   # self-contained server in .next/standalo
 cd desktop/electron
 npm install
 npm run prepare-app                    # gathers the server and the migrations
-npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.5.exe (build on Windows)
+npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.7.exe (build on Windows)
 npm start                              # or run it unpackaged
 ```
 
@@ -364,8 +382,10 @@ choose the child's other parent under the name field.
 A father with children from more than one wife: his children are grouped by
 mother. Turn on **Style → Name the mothers of half-siblings** and each of
 them carries his or her mother's name on a second line ("أمه فاطمة",
-"أمها عائشة"; "mother: Fatimah" for English names). Her own name is used
-("فاطمة" for "فاطمة بنت سعد"), or her full name when two wives share it.
+"أمها عائشة"; "mother: Fatimah" for English names), by her first and
+family names: "أمه فاطمة العتيبي" for "فاطمة بنت سعد العتيبي" ("فاطمة" for
+"فاطمة بنت سعد", which has no family name), or her full name when two
+wives share both. In round name holders a long line goes onto two.
 It only applies to fathers with more than one recorded wife, and to
 children whose mother is recorded. (In a mother's-line tree it names the
 fathers instead.)
