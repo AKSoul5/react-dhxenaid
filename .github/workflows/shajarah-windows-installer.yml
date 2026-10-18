@@ -45,18 +45,26 @@ jobs:
           npx electron-builder --win nsis --publish never
           Get-ChildItem dist -Filter *.exe | Format-Table Name, Length
 
-      - name: Install it and run the smoke test
+      - name: Install it and run the smoke test (first and second launch)
         working-directory: shajarah/desktop/electron
         run: |
           $setup = Get-ChildItem dist -Filter 'Shajarah-Setup-*.exe' | Select-Object -First 1
           Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
           $exe = Join-Path $env:LOCALAPPDATA 'Programs\Shajarah\Shajarah.exe'
           if (-not (Test-Path $exe)) { throw "Not installed at $exe" }
-          $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -Wait -PassThru
           $logs = Join-Path $env:APPDATA 'Shajarah\logs'
-          Get-ChildItem $logs | ForEach-Object { "----- $($_.Name)"; Get-Content $_.FullName -Tail 40 }
-          if ($p.ExitCode -ne 0) { throw "Smoke test failed (exit $($p.ExitCode))" }
-          Get-Content (Join-Path $logs 'smoke-test.txt')
+          foreach ($launch in 'first', 'second') {
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -PassThru
+            if (-not $p.WaitForExit(300000)) { $p.Kill(); throw "The $launch launch did not finish in 5 minutes" }
+            $result = Get-Content (Join-Path $logs 'smoke-test.txt')
+            "$launch launch: $result (whole run $([int]$clock.Elapsed.TotalSeconds) s)"
+            if ($p.ExitCode -ne 0) { Get-Content (Join-Path $logs 'shajarah.log'); throw "Smoke test failed on the $launch launch" }
+          }
+          Get-Content (Join-Path $logs 'shajarah.log')
+          # a normal (not first) launch must be quick
+          $seconds = [double](($result | Select-String '"startupSeconds":([0-9.]+)').Matches[0].Groups[1].Value)
+          if ($seconds -gt 20) { throw "The second launch took $seconds s to start (limit 20 s)" }
 
       - name: Upload the installer
         uses: actions/upload-artifact@v4

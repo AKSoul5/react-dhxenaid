@@ -2,7 +2,7 @@
 // data folder in the user's profile, started and stopped with pg_ctl (which
 // also drops administrator rights on Windows, as PostgreSQL requires).
 
-const { execFile } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
@@ -15,13 +15,28 @@ function binDir() {
   return path.join(__dirname, "node_modules", "@embedded-postgres", `${PLATFORM}-${process.arch}`, "native", "bin");
 }
 
+// Runs a PostgreSQL tool with its output going straight to the log file, and
+// waits for the tool itself to exit. (`pg_ctl start` leaves the server
+// running with its output handles: waiting for pipes to close, as execFile
+// does, would last until a timeout on Windows.)
 function run(file, args, log) {
   return new Promise((resolve, reject) => {
-    execFile(file, args, { windowsHide: true, timeout: 120000 }, (err, stdout, stderr) => {
-      fs.appendFileSync(log, `$ ${path.basename(file)} ${args.join(" ")}\n${stdout}${stderr}\n`);
-      if (err) reject(new Error(`${path.basename(file)} failed: ${stderr || err.message}`));
-      else resolve(stdout);
-    });
+    fs.appendFileSync(log, `$ ${path.basename(file)} ${args.join(" ")}\n`);
+    const out = fs.openSync(log, "a");
+    const child = spawn(file, args, { windowsHide: true, stdio: ["ignore", out, out] });
+    const timer = setTimeout(() => child.kill(), 120000);
+    let settled = false;
+    const done = (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      fs.closeSync(out);
+      if (err) reject(err);
+      else resolve();
+    };
+    child.once("error", (err) => done(new Error(`${path.basename(file)} could not run: ${err.message}`)));
+    child.once("exit", (code, signal) => done(code === 0 ? null
+      : new Error(`${path.basename(file)} failed (${signal ?? `exit ${code}`}); see ${log}`)));
   });
 }
 

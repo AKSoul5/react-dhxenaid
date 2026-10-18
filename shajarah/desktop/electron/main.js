@@ -83,14 +83,20 @@ async function startServer() {
   if (!(await waitFor(appUrl, 90))) throw new Error("The app server did not start.");
 }
 
+let startupSeconds = null;
 async function start() {
+  const t0 = Date.now();
+  const step = (what) => log(`${what} (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
   log("starting");
   await db.init();
+  step("database ready on disk");
   await db.start(await freePort());
+  step("database started");
   const applied = await migrate(db.url, migrationsDir);
-  if (applied.length) log(`migrations applied: ${applied.join(", ")}`);
+  step(applied.length ? `migrations applied: ${applied.join(", ")}` : "database up to date");
   await startServer();
-  log(`ready at ${appUrl}`);
+  startupSeconds = (Date.now() - t0) / 1000;
+  step(`ready at ${appUrl}`);
 }
 
 let stopping = null;
@@ -137,7 +143,7 @@ function mainWindow() {
 }
 
 async function smokeTest() {
-  const results = {};
+  const results = { startupSeconds };
   results.home = await get(appUrl);
   results.demo = await get(`${appUrl}/demo?sample=nouri`);
   const created = await fetch(`${appUrl}/api/trees`, {
