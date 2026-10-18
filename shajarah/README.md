@@ -857,6 +857,8 @@ the poster size, and `&colors=1` to force lineage colours:
   with 2–4 children early on and 0–2 later, lines ending);
 - `sultan`: one founder with 40 sons, each with 5 sons (241 people):
   extreme fan-out on one ring; too small to be legible on A1, clean on A0;
+- `hypo`: a hypothetical Al-Kalali branch with many repeated names, each
+  labelled with its father's ("نوفل بن أحمد");
 - `huge`: about 500 people.
 
 Add `&soil=column|spine|banner|pedestal|paragraph` for a foundation style,
