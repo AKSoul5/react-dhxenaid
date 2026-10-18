@@ -28,7 +28,7 @@ export const themeSchema = z
     branch: hexColor,
     background: z.enum(["parchment", "white"]),
     metallic: z.boolean(),
-    nodeShape: z.enum(["leaf", "circle", "oval"]),
+    nodeShape: z.enum(["auto", "leaf", "circle", "oval"]),
     labelMode: z.enum(["name", "withFather"]),
     showYears: z.boolean(),
     trunkStyle: z.enum(["carved", "badges"]),

@@ -86,6 +86,7 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange, frameA
             <label className="flex items-center justify-between text-sm">
               Shape
               <select className="input w-36" value={theme.nodeShape} onChange={(e) => onChange({ nodeShape: e.target.value as PosterTheme["nodeShape"] })}>
+                <option value="auto">Auto</option>
                 <option value="leaf">Leaves</option>
                 <option value="circle">Circular badges</option>
                 <option value="oval">Oval medallions</option>

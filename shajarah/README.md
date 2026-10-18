@@ -396,7 +396,16 @@ reserved height matches what it draws.
 **Default style: Refined ivory.** The genealogy is the primary element:
 
 - **Paper:** flat ivory paper inside a fine double gold rule.
-- **Sons:** satin-silver leaves with the name on the leaf.
+- **Sons:** with the shape on **Auto** (the default in every preset that
+  used leaves), satin-silver leaves with the name on the leaf when the
+  branches carry at most 50 names, and upright satin ovals beyond that.
+  Tilted, pointed leaves are lovely on a sparse tree, but on a dense one
+  they read as a web and tilted Arabic is hard to read; ovals stay calm and
+  classical. Ovals and circles are never rotated. The Style panel can still
+  choose Leaves, Circular badges or Oval medallions outright.
+- **Branches:** gentle S-curves: a line leaves its father half along his
+  own growth direction and arrives partly along its own ray (measured on
+  every sample: no less clear than straight lines).
 - **Daughters:** soft-gold capsules.
 - **Fathers:** members with descendants are ivory capsules with a gold
   rim.

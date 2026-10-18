@@ -56,6 +56,16 @@ import { namesOf, shortenSoil, wordsOf } from "./soil/common";
 import { mulberry32 } from "./random";
 
 export type NodeShape = "leaf" | "circle" | "oval";
+
+/**
+ * With nodeShape "auto": leaves for a canopy of at most this many names,
+ * ovals beyond. Leaves (tilted, pointed) are lovely on a sparse tree; on a
+ * dense one they read as a web, and tilted Arabic is hard to read, while
+ * upright ovals stay calm and classical.
+ */
+export const AUTO_LEAF_LIMIT = 50;
+/** An oval's width beyond its name, and its height, in name sizes (slim enough for dense canopies). */
+const OVAL_PAD = 1.2, OVAL_H = 1.6;
 export type LabelMode = "name" | "withFather";
 
 export interface LayoutOptions {
@@ -72,7 +82,7 @@ export interface LayoutOptions {
   focusId?: string | null;
   /** Where the canopy starts. Defaults to tree.crownBaseId, then automatic. */
   crownBaseId?: string | null;
-  nodeShape?: NodeShape;
+  nodeShape?: NodeShape | "auto";
   labelMode?: LabelMode;
   showYears?: boolean;
   /** How the foundation (the ancestors below the trunk) is drawn. Default: the inscribed panel. */
@@ -333,7 +343,6 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const H = opts.height ?? Math.round(W * Math.SQRT2);
   const seed = opts.seed ?? tree.settings?.seed ?? 7;
   const showFemales = opts.showFemales ?? tree.settings?.showFemales ?? false;
-  const nodeShape = opts.nodeShape ?? "leaf";
   const labelMode = opts.labelMode ?? "name";
   const showYears = opts.showYears ?? false;
   const rand = mulberry32(seed);
@@ -491,6 +500,10 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     if (c === base) continue;
     for (const k of (c.children ?? []) as HNode[]) if (!chainSet.has(k)) offshoots.push({ node: k, anchor: c });
   }
+  // the names' shape: "auto" chooses by how many names the branches carry
+  const branchNames = crownNodes.length + offshoots.reduce((sum, o) => sum + o.node.descendants().length, 0);
+  const requestedShape = opts.nodeShape ?? "auto";
+  const nodeShape: NodeShape = requestedShape === "auto" ? (branchNames > AUTO_LEAF_LIMIT ? "oval" : "leaf") : requestedShape;
 
   // Label sizing, shared by the space estimate and the real nodes.
   // Branch heads (sons with descendants on the first ring) are medallions.
@@ -512,7 +525,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       return L * Math.max(fs * 1.6, L * 0.36) * 1.15;
     }
     if (nodeShape === "circle") return (fs * 2.55) ** 2;
-    if (nodeShape === "oval") return (textWidth(label, fs) + fs * 1.5) * fs * 1.75;
+    if (nodeShape === "oval") return (textWidth(label, fs) + fs * OVAL_PAD) * fs * OVAL_H;
     return (textWidth(label, fs) + fs * 0.9) * fs * 1.45;
   };
 
@@ -822,8 +835,8 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         w = h = Math.max(fs * 2.55 + subH * 0.6, tw / 0.8);
       } else if (nodeShape === "oval") {
         shape = "oval";
-        w = tw + fs * 1.5;
-        h = fs * 1.75 + subH;
+        w = tw + fs * OVAL_PAD;
+        h = fs * OVAL_H + subH;
       } else {
         shape = "pill";
         w = tw + fs * 0.9;
@@ -1156,7 +1169,11 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       const P: Vec = parent && parent.region !== "fixed" ? { x: parent.x, y: parent.y } : (stemStart.get(node.id) ?? origin);
       const gP = (node.parentId && growthDir.get(node.parentId)) || stemDir.get(node.id) || norm(sub(node, origin));
       const fan = fanOf(node.parentId);
-      const follow = 0.3 * (1 - 0.8 * fan), reach0 = 0.38 - 0.16 * fan;
+      // Organic curves: a line leaves its father half along his own growth
+      // direction and arrives partly along its own ray, so it bends in a
+      // gentle S rather than shooting out straight (measured: no less clear).
+      const follow = 0.5 * (1 - 0.8 * fan), reach0 = 0.38 - 0.16 * fan;
+      const arrive = 0.4;
       if (node.shape === "leaf") {
         const a = (node.angle * Math.PI) / 180;
         const dir: Vec = { x: Math.cos(a), y: Math.sin(a) };
@@ -1172,7 +1189,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         // a sibling's line
         void dir;
         const rayDirL = node.ray !== undefined ? dirOf(node.ray) : dv;
-        const e0 = norm(add(scale(dv, 0.8), scale(rayDirL, 0.2)));
+        const e0 = norm(add(scale(dv, 1 - arrive), scale(rayDirL, arrive)));
         curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * (reach0 - 0.03))), c2: sub(B, scale(e0, L * 0.3)), p1: B });
         continue;
       }
@@ -1182,7 +1199,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       const s0 = norm(add(scale(gP, follow), scale(dv, 1 - follow)));
       // arrive along the child's own ray (outward), never hooking back
       const rayDir = node.ray !== undefined ? dirOf(node.ray) : UP;
-      const e0 = norm(add(scale(dv, 0.8), scale(rayDir, 0.2)));
+      const e0 = norm(add(scale(dv, 1 - arrive), scale(rayDir, arrive)));
       curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * reach0)), c2: sub(C, scale(e0, L * 0.3)), p1: C });
       growthDir.set(node.id, e0);
     }

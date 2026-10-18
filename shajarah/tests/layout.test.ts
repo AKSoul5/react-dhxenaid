@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { computePosterLayout } from "@/lib/layout/botanical";
+import { AUTO_LEAF_LIMIT, computePosterLayout } from "@/lib/layout/botanical";
+import { smallFamily } from "@/lib/samples/fixtures";
 import { computeGenerations, parentAssignmentError } from "@/lib/genealogy";
 import { generateSampleTree } from "@/lib/sampleData";
 import type { MemberDTO, TreeDTO } from "@/lib/types";
@@ -23,8 +24,8 @@ describe("botanical layout", () => {
     expect(layout.stubs.map((s) => s.member.name).sort()).toEqual(["غانم", "قتيبع"].sort());
   });
 
-  it("draws every childless crown member as a named leaf", () => {
-    const layout = computePosterLayout(tree);
+  it("with leaves chosen: draws every childless crown member as a named leaf", () => {
+    const layout = computePosterLayout(tree, { nodeShape: "leaf" });
     // daughters are hidden by default, so only sons make a member a fork
     const withChildren = new Set(tree.members.filter((m) => m.gender === "MALE").map((m) => m.fatherId));
     for (const n of layout.nodes) {
@@ -32,6 +33,19 @@ describe("botanical layout", () => {
       else expect(n.shape).toBe(withChildren.has(n.id) ? "pill" : "leaf");
     }
     expect(layout.nodes.filter((n) => n.shape === "leaf").length).toBeGreaterThan(50);
+  });
+
+  it("auto shape: upright ovals for a canopy of more than 50 names, leaves for a smaller one", () => {
+    const big = computePosterLayout(tree);
+    expect(big.nodes.length).toBeGreaterThan(AUTO_LEAF_LIMIT);
+    for (const n of big.nodes) {
+      expect(n.shape).not.toBe("leaf");
+      expect(n.angle).toBe(0);
+    }
+    expect(big.nodes.some((n) => n.shape === "oval")).toBe(true);
+    const few = computePosterLayout(smallFamily(), { nodeShape: "auto" });
+    expect(few.nodes.length).toBeLessThanOrEqual(AUTO_LEAF_LIMIT);
+    expect(few.nodes.some((n) => n.shape === "leaf")).toBe(true);
   });
 
   it("produces no overlapping name tags", () => {

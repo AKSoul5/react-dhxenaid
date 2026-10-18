@@ -9,7 +9,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "refined", colorBy: "gender",
     male: "#c9cbc7", female: "#dcbc6a", ancestor: "#b08a2e", branch: "#6e5538",
     background: "parchment", metallic: true, nodeRim: "#8d8f8a",
-    nodeShape: "leaf", femaleCapsule: true, branchColors: true, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "column",
+    nodeShape: "auto", femaleCapsule: true, branchColors: true, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "column",
     foliage: false, bismillah: true, verse: false, hadith: false, frame: false,
   },
   luxe: {
@@ -17,7 +17,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "luxe", colorBy: "gender",
     male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#5b4128",
     background: "parchment", metallic: true, nodeRim: "#6f6f6f",
-    nodeShape: "leaf", femaleCapsule: true, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "banner",
+    nodeShape: "auto", femaleCapsule: true, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "banner",
     foliage: false, ...ORNAMENTS,
   },
   heritage: {
@@ -41,7 +41,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "classic", colorBy: "generation",
     male: "#3f8434", female: "#d9708a", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false, nodeRim: "#2f4a1a",
-    nodeShape: "leaf", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "carved", soilStyle: "paragraph",
+    nodeShape: "auto", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "carved", soilStyle: "paragraph",
     foliage: true, ...ORNAMENTS,
   },
   emerald: {
@@ -49,7 +49,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "emerald", colorBy: "gender",
     male: "#1f7a4d", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false, nodeRim: "#0f3d26",
-    nodeShape: "leaf", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "spine",
+    nodeShape: "auto", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "spine",
     foliage: true, ...ORNAMENTS,
   },
   mono: {

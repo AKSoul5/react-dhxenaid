@@ -594,7 +594,8 @@ function Footer({ layout, theme, pal, meta }: { layout: PosterLayout; theme: Pos
   const rim = (c: string) => (pal.mono ? "#111" : shade(c, -0.38));
   items.push({
     label: rtl ? "ابن" : "Son",
-    swatch: (x) => theme.nodeShape === "leaf"
+    // (the shape actually drawn: "auto" may have chosen either)
+    swatch: (x) => layout.nodes.some((n) => n.shape === "leaf")
       ? <path transform={`translate(${x + sw / 2} ${y}) scale(${sw})`} d={leafPath(1, 0.45)} fill={maleFill} stroke={rim(theme.male)} strokeWidth={0.04} />
       : pill(x, maleFill, rim(theme.male)),
   });

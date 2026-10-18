@@ -43,7 +43,8 @@ export interface PosterTheme {
   background: "parchment" | "white";
   /** Metallic gradients on nodes (silver / gold look). */
   metallic: boolean;
-  nodeShape: "leaf" | "circle" | "oval";
+  /** "auto": leaves for a small canopy, ovals for a large one (see AUTO_LEAF_LIMIT). */
+  nodeShape: "auto" | "leaf" | "circle" | "oval";
   labelMode: "name" | "withFather";
   showYears: boolean;
   /** Ancestors carved into the bark, or stacked as framed badges. */
