@@ -91,8 +91,10 @@ export interface LayoutOptions {
   labelMode?: LabelMode;
   showYears?: boolean;
   /**
-   * Half-siblings: when a man has children by more than one wife, each child
-   * carries his mother's name on a second line (the father, in a mother's-line tree).
+   * Half-siblings: when a man has children by more than one wife, each wife
+   * is a holder on his branch with her own children growing from it (the
+   * husbands, in a mother's-line tree). (The husbands of a daughter whose
+   * family is shown are always on her line.)
    */
   motherNames?: boolean;
   /** How the foundation (the ancestors below the trunk) is drawn. Default: the inscribed panel. */
@@ -183,6 +185,28 @@ export interface Branch {
   dotted?: boolean;
 }
 
+/**
+ * A spouse's name holder (a cartouche) on the branch: a father's wife, with
+ * the children she bore him growing from her holder, or the husband of a
+ * daughter whose family is shown, on her dotted line.
+ */
+export interface SpouseHolder {
+  /** "spouse:<partner id>:<spouse id>" (the drawn connections run partner → holder → child). */
+  id: string;
+  member: MemberDTO;
+  partnerId: string;
+  childIds: string[];
+  label: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  fontSize: number;
+  /** On a dotted line (a family shown through a daughter). */
+  dotted: boolean;
+  lineage?: number | null;
+}
+
 export interface TrunkLabel {
   member: MemberDTO;
   label: string;
@@ -212,6 +236,8 @@ export interface PosterLayout {
   base: PosterNode | null;
   stubs: PosterNode[];
   nodes: PosterNode[];
+  /** Spouses on the branches, between a partner and their children. */
+  spouses: SpouseHolder[];
   /** Branch outlines (filled with bark), with an optional light-side highlight. */
   branches: Branch[];
   /** Centrelines of every drawn parent → child connection. */
@@ -449,7 +475,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const empty: PosterLayout = {
     width: W, height: H, rtl: true, crown, origin, groundY,
     trunkPath: trunkOutline(origin, groundY, trunkWidth), trunkWidth,
-    trunkLabels: [], soil: null, trunkZigzag: false, base: null, stubs: [], nodes: [],
+    trunkLabels: [], soil: null, trunkZigzag: false, base: null, stubs: [], nodes: [], spouses: [],
     branches: [], edges: [], canopy: null, foliage: null, surfaceRoots: [], medallions: [],
     frame: place,
     legibility: { minTextMm, smallestTextMm: minTextMm, ok: true, scaleNeeded: 1 },
@@ -515,13 +541,6 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   if (rtl) root.each((n) => n.children?.reverse());
 
   // Label text for a member, honouring the label mode and years option.
-  /** The other parent of a member's children, or a recorded spouse. */
-  const spouseOf = (m: MemberDTO): MemberDTO | undefined => {
-    const child = tree.members.find((c) => (c.fatherId === m.id && c.motherId) || (c.motherId === m.id && c.fatherId));
-    const id = child ? (child.fatherId === m.id ? child.motherId : child.fatherId)
-      : tree.marriages.map((r) => (r.spouseAId === m.id ? r.spouseBId : r.spouseBId === m.id ? r.spouseAId : null)).find(Boolean);
-    return id ? byMemberId.get(id) : undefined;
-  };
   const labelOf = (m: MemberDTO) => {
     let label = m.name;
     if (labelMode === "withFather") {
@@ -536,48 +555,6 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     // A laqab or honorific (الشيخ، رحمه الله …) is a quiet second line.
     const laqab = m.laqab?.trim();
     if (laqab) subLabel = subLabel ? `${laqab} · ${subLabel}` : laqab;
-    // whose family is shown through her: her husband's name with hers; when
-    // her children have different fathers (she remarried), each child
-    // carries his own father's name instead ("بن سعد العتيبي")
-    const otherParents = (id: string) => new Set(tree.members
-      .filter((c) => (tree.lineage === "MATRILINEAL" ? c.fatherId === id : c.motherId === id))
-      .map((c) => (tree.lineage === "MATRILINEAL" ? c.motherId : c.fatherId))
-      .filter(Boolean));
-    const throughParent = dotted.has(m.id) ? (tree.lineage === "MATRILINEAL" ? m.fatherId : m.motherId) : null;
-    if (throughParent && through.has(throughParent) && otherParents(throughParent).size > 1) {
-      const parentOfLine = byMemberId.get((tree.lineage === "MATRILINEAL" ? m.motherId : m.fatherId) ?? "");
-      if (parentOfLine) {
-        const line = ARABIC.test(parentOfLine.name)
-          ? `${m.gender === "FEMALE" ? "بنت" : "بن"} ${parentOfLine.name}`
-          : `${m.gender === "FEMALE" ? "daughter" : "son"} of ${parentOfLine.name}`;
-        subLabel = subLabel ? `${line} · ${subLabel}` : line;
-      }
-    }
-    // half-siblings: the mother of each child of a man with several wives
-    const lineParentId = tree.lineage === "MATRILINEAL" ? m.motherId : m.fatherId;
-    const otherParentId = tree.lineage === "MATRILINEAL" ? m.fatherId : m.motherId;
-    const other = otherParentId ? byMemberId.get(otherParentId) : undefined;
-    const partnersOf = (id: string) => new Set(tree.members
-      .filter((c) => (tree.lineage === "MATRILINEAL" ? c.motherId : c.fatherId) === id)
-      .map((c) => (tree.lineage === "MATRILINEAL" ? c.fatherId : c.motherId))
-      .filter(Boolean));
-    const partners = lineParentId ? partnersOf(lineParentId) : new Set();
-    if (opts.motherNames && !dotted.has(m.id) && other && partners.size > 1) {
-      // her first and family names ("فاطمة العتيبي" for "فاطمة بنت سعد
-      // العتيبي") tell the wives apart, unless two of them share them
-      const own = givenAndFamilyName;
-      const names = [...partners].map((id) => own(byMemberId.get(id as string)?.name ?? ""));
-      const name = names.filter((x) => x === own(other.name)).length > 1 ? other.name : own(other.name);
-      const line = ARABIC.test(other.name)
-        ? `${tree.lineage === "MATRILINEAL" ? (m.gender === "FEMALE" ? "أبوها" : "أبوه") : m.gender === "FEMALE" ? "أمها" : "أمه"} ${name}`
-        : `${tree.lineage === "MATRILINEAL" ? "father" : "mother"}: ${name}`;
-      subLabel = subLabel ? `${line} · ${subLabel}` : line;
-    }
-    const spouse = through.has(m.id) && otherParents(m.id).size <= 1 ? spouseOf(m) : undefined;
-    if (spouse) {
-      const line = ARABIC.test(spouse.name) ? `${m.gender === "FEMALE" ? "زوجها" : "زوجته"} ${spouse.name}` : `m. ${spouse.name}`;
-      subLabel = subLabel ? `${line} · ${subLabel}` : line;
-    }
     return { label, subLabel };
   };
 
@@ -902,10 +879,26 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // canopy for that; a retry with smaller names keeps the canopy's size).
   let meanCrownReach = 0;
   for (let i = 0; i <= 32; i++) meanCrownReach += (reach(thetaEnd + ((thetaStart - thetaEnd) * i) / 32) * 0.95) / 33;
+  // (a generation growing from spouses' holders needs room for them too)
+  const holderRoom = new Set<number>();
+  {
+    const matri = tree.lineage === "MATRILINEAL";
+    const partners = new Map<string, Set<string>>();
+    for (const c of tree.members) {
+      const lineParent = matri ? c.motherId : c.fatherId, other = matri ? c.fatherId : c.motherId;
+      if (lineParent && other) partners.set(lineParent, (partners.get(lineParent) ?? new Set()).add(other));
+    }
+    base.each((n) => {
+      const id = n.data.member?.id;
+      if (n.children && id && (through.has(id) || (opts.motherNames && (partners.get(id)?.size ?? 0) > 1))) holderRoom.add(n.depth - base.depth + 1);
+    });
+  }
   const ringT: number[] = (() => {
-    const gap = (f * 2.6) / Math.max(1, meanCrownReach - r0);
+    const span = Math.max(1, meanCrownReach - r0);
+    const gap = (f * 2.6) / span;
+    const room = (d: number) => (holderRoom.has(d) ? (f * 3.2) / span : 0);
     const t = [0];
-    for (let d = 1; d <= maxDepth; d++) t.push(Math.max(d / maxDepth, d === 1 ? 0 : t[d - 1] + gap));
+    for (let d = 1; d <= maxDepth; d++) t.push(Math.max(d / maxDepth, (d === 1 ? 0 : t[d - 1] + gap) + room(d)));
     const top = t[maxDepth];
     return top > 1 ? t.map((v) => v / top) : t;
   })();
@@ -1401,11 +1394,167 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const sideAnchor = new Map(visibleOffshoots.map((o) => [o.node.data.member!.id, o.anchor.data.member!.id]));
   const parentIdOf = (node: LiveNode) => node.parentId ?? sideAnchor.get(node.id) ?? base.data.member?.id ?? "";
   const curveOf = new Map<string, Cubic>();
+
+  // Spouses on the branch: a father's wives (when he has children by more
+  // than one, and the option is on), each a cartouche on his branch with
+  // the children she bore him growing from it; and the husbands of a
+  // daughter whose family is shown, on her dotted line. Children whose
+  // other parent is not recorded grow from the partner directly.
+  type Holder = SpouseHolder & { anchorOf: LiveNode; kids: LiveNode[]; dir: Vec; clear: boolean };
+  const holders: Holder[] = [];
+  const holderOf = new Map<string, Holder>();
+  {
+    const matri = tree.lineage === "MATRILINEAL";
+    const kidsOf = new Map<string, LiveNode[]>();
+    for (const n of growingNodes) {
+      const pid = parentIdOf(n);
+      if (n.parentId && pid) kidsOf.set(pid, [...(kidsOf.get(pid) ?? []), n]);
+    }
+    // everyone whose children (in the line) have more than one other parent
+    const partners = new Map<string, Set<string>>();
+    for (const c of tree.members) {
+      const lineParent = matri ? c.motherId : c.fatherId, other = matri ? c.fatherId : c.motherId;
+      if (lineParent && other) partners.set(lineParent, (partners.get(lineParent) ?? new Set()).add(other));
+    }
+    for (const [pid, kids] of kidsOf) {
+      const throughHer = through.has(pid);
+      if (!throughHer && !(opts.motherNames && (partners.get(pid)?.size ?? 0) > 1)) continue;
+      const groups = new Map<string, LiveNode[]>();
+      for (const k of kids) {
+        // through a daughter: her children's fathers; otherwise a father's wives
+        if (throughHer !== dotted.has(k.member.id)) continue;
+        const other = throughHer ? (matri ? k.member.motherId : k.member.fatherId) : (matri ? k.member.fatherId : k.member.motherId);
+        if (other && byMemberId.has(other)) groups.set(other, [...(groups.get(other) ?? []), k]);
+      }
+      const names = [...groups.keys()].map((id) => givenAndFamilyName(byMemberId.get(id)!.name));
+      for (const [sid, group] of groups) {
+        const spouse = byMemberId.get(sid)!;
+        const short = givenAndFamilyName(spouse.name);
+        const label = names.filter((x) => x === short).length > 1 ? spouse.name : short;
+        const fs = Math.max(floorFor(fl), Math.min(...group.map((k) => k.fontSize)) * 0.9);
+        const lineages = new Set(group.map((k) => k.lineage ?? null));
+        const h: Holder = {
+          id: `spouse:${pid}:${sid}`, member: spouse, partnerId: pid, childIds: group.map((k) => k.id),
+          label, fontSize: fs, w: textWidth(label, fs) + fs * 2, h: fs * 1.6, x: 0, y: 0,
+          dotted: throughHer || group.every((k) => dotted.has(k.member.id)),
+          lineage: lineages.size === 1 ? [...lineages][0] : null,
+          anchorOf: group[0], kids: group, dir: UP, clear: true,
+        };
+        holders.push(h);
+        for (const k of group) holderOf.set(k.id, h);
+      }
+    }
+  }
+  // Where a line to a child starts: its parent's name, or for a main limb
+  // the canopy base (or the trunk, for a side branch).
+  const startOf = (node: LiveNode): Vec => {
+    const parent = node.parentId ? byId.get(node.parentId) : undefined;
+    return parent && parent.region !== "fixed" ? { x: parent.x, y: parent.y } : (stemStart.get(node.id) ?? origin);
+  };
+  const baseBoxOf = () => (base.data.member ? { x: origin.x, y: origin.y, w: baseOval.rx * 2, h: baseOval.ry * 2 } : null);
+  // A holder sits on the way from the partner to the children she bore,
+  // nearer the partner, wherever it and the lines to and from it are clear
+  // of every other name and holder.
+  const placeHolders = () => {
+    type Rect = { x: number; y: number; w: number; h: number; id?: string };
+    const obstacles: Rect[] = [...nodes, ...trunkLabels.map((l) => ({ ...l, id: l.member.id }))];
+    const bb = baseBoxOf();
+    if (bb) obstacles.push({ ...bb, id: base.data.member?.id });
+    const placed: { h: Holder; from: Vec }[] = [];
+    const within = (p: Vec, o: Rect, pad = 0) => Math.abs(p.x - o.x) < o.w / 2 + pad && Math.abs(p.y - o.y) < o.h / 2 + pad;
+    // a straight line from a to b passing under r (outside a's and b's own boxes)
+    const lineHits = (a: Vec, b: Vec, r: Rect, skip: Rect[]) => {
+      if (r.x + r.w / 2 < Math.min(a.x, b.x) || r.x - r.w / 2 > Math.max(a.x, b.x)
+        || r.y + r.h / 2 < Math.min(a.y, b.y) || r.y - r.h / 2 > Math.max(a.y, b.y)) return false;
+      for (let i = 1; i < 12; i++) {
+        const p = add(a, scale(sub(b, a), i / 12));
+        if (skip.some((o) => within(p, o))) continue;
+        if (within(p, r, -Math.min(r.w, r.h) * 0.08)) return true;
+      }
+      return false;
+    };
+    // A partner's spouses sit at the same distance from them (so no line to
+    // one passes another), turned a little either way if that finds room.
+    const byPartner = new Map<string, Holder[]>();
+    for (const h of holders) byPartner.set(h.partnerId, [...(byPartner.get(h.partnerId) ?? []), h]);
+    for (const group of byPartner.values()) {
+      const P = startOf(group[0].anchorOf);
+      const partnerBox = obstacles.find((o) => o.id === group[0].partnerId) ?? { x: P.x, y: P.y, w: 0, h: 0 };
+      for (const h of group) {
+        const G = h.kids.reduce((a, k) => add(a, scale({ x: k.x, y: k.y }, 1 / h.kids.length)), { x: 0, y: 0 } as Vec);
+        h.dir = norm(sub(G, P));
+      }
+      const reach = Math.max(0, Math.min(...group.flatMap((h) => h.kids.map((k) => (k.x - P.x) * h.dir.x + (k.y - P.y) * h.dir.y))));
+      const fits = (h: Holder, J: Vec, also: { h: Holder; from: Vec }[], linesToo = true) => {
+        const pad = h.fontSize * 0.25;
+        const me = { x: J.x, y: J.y, w: h.w + pad * 2, h: h.h + pad * 2 };
+        const others = [...obstacles, ...also.map((q) => q.h)];
+        if (others.some((o) => Math.abs(o.x - J.x) < (o.w + h.w) / 2 + pad && Math.abs(o.y - J.y) < (o.h + h.h) / 2 + pad)) return false;
+        if (!linesToo) return true;
+        // the partner's line to it, and its lines to the children
+        if (others.some((o) => o !== partnerBox && lineHits(P, J, o, [partnerBox, me]))) return false;
+        for (const k of h.kids) if (others.some((o) => o !== k && lineHits(J, k, o, [me, k]))) return false;
+        // and no line already drawn to another holder runs under it
+        return !also.some((q) => lineHits(q.from, q.h, me, [q.h]));
+      };
+      const turned = (d: Vec, deg: number) => {
+        const a = (deg * Math.PI) / 180;
+        return { x: d.x * Math.cos(a) - d.y * Math.sin(a), y: d.x * Math.sin(a) + d.y * Math.cos(a) };
+      };
+      const TS = [0.45, 0.38, 0.52, 0.31, 0.6, 0.25, 0.68, 0.2, 0.76, 0.84, 0.9];
+      const DEGS = [0, 8, -8, 16, -16, 24, -24, 32, -32];
+      const spot = (h: Holder, ts: number[], also: { h: Holder; from: Vec }[], linesToo = true, shared = true) => {
+        // towards her children, turned a little either way, or towards one of them
+        const dirs = [...DEGS.map((deg) => turned(h.dir, deg)), ...h.kids.map((k) => norm(sub(k, P)))];
+        for (const t of ts) for (const d of dirs) {
+          const along = Math.min(...h.kids.map((k) => (k.x - P.x) * d.x + (k.y - P.y) * d.y));
+          if (along <= 0) continue;
+          const c = add(P, scale(d, (shared ? Math.min(reach, along) : along) * t));
+          if (fits(h, c, also, linesToo)) return c;
+        }
+        return null;
+      };
+      const tryAt = (ts: number[]) => {
+        const got: { h: Holder; from: Vec; J: Vec }[] = [];
+        for (const h of group) {
+          const J = spot(h, ts, [...placed, ...got]);
+          if (!J) return null;
+          got.push({ h, from: P, J });
+        }
+        return got;
+      };
+      // all at one distance; failing that, each where it finds room
+      let got: { h: Holder; from: Vec; J: Vec }[] | null = null;
+      for (const t of TS) if ((got = tryAt([t]))) break;
+      if (!got) {
+        got = [];
+        // (where no spot keeps every line clear, one clear of every name:
+        // the clarity check reports the line)
+        for (const h of group) {
+          const J = spot(h, TS, [...placed, ...got], true, false) ?? spot(h, TS, [...placed, ...got], false, false);
+          if (J) got.push({ h, from: P, J });
+        }
+      }
+      for (const h of group) {
+        const J = got?.find((g) => g.h === h)?.J;
+        h.clear = !!J;
+        const at = J ?? add(P, scale(h.dir, reach * 0.45));
+        h.x = at.x;
+        h.y = at.y;
+        placed.push({ h, from: P });
+      }
+    }
+  };
   // A father of more than five children: his lines leave him heading for
   // each child (little of his own growth direction, an early first control
   // point), so they fan apart at once instead of running out together.
   const familySize = new Map<string, number>();
-  for (const n of growingNodes) if (n.parentId) familySize.set(n.parentId, (familySize.get(n.parentId) ?? 0) + 1);
+  for (const n of growingNodes) {
+    const h = holderOf.get(n.id);
+    const key = h ? h.id : n.parentId;
+    if (key) familySize.set(key, (familySize.get(key) ?? 0) + 1);
+  }
+  for (const h of holders) familySize.set(h.partnerId, (familySize.get(h.partnerId) ?? 0) + 1);
   const fanOf = (parentId: string | null) => clamp(((parentId ? familySize.get(parentId) ?? 0 : 0) - 5) / 4, 0, 1);
   // Two touches that make branches read as wood rather than wire:
   //  - the main limbs (from the canopy base) rise out of the trunk before
@@ -1430,13 +1579,32 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     }
     return { ...c, c1, c2 };
   };
+  const holderCurve = new Map<string, Cubic>();
   const buildCurves = () => {
     const growthDir = new Map<string, Vec>();
+    placeHolders();
     for (const node of growingNodes) {
-      const parent = node.parentId ? byId.get(node.parentId) : undefined;
-      const P: Vec = parent && parent.region !== "fixed" ? { x: parent.x, y: parent.y } : (stemStart.get(node.id) ?? origin);
-      const gP = (node.parentId && growthDir.get(node.parentId)) || stemDir.get(node.id) || norm(sub(node, origin));
-      const fan = fanOf(node.parentId);
+      let P = startOf(node);
+      let gP = (node.parentId && growthDir.get(node.parentId)) || stemDir.get(node.id) || norm(sub(node, origin));
+      const holder = holderOf.get(node.id);
+      if (holder) {
+        // the partner's line to the spouse's holder (once), then the
+        // children's lines from the holder onwards
+        if (holder.kids[0] === node) {
+          const S: Vec = { x: holder.x, y: holder.y };
+          const L = len(sub(S, P)) || 1;
+          const dv = scale(sub(S, P), 1 / L);
+          const fan = fanOf(holder.partnerId);
+          const follow = 0.5 * (1 - 0.8 * fan), reach0 = 0.38 - 0.16 * fan;
+          const s0 = norm(add(scale(gP, follow), scale(dv, 1 - follow)));
+          const e0 = norm(add(scale(dv, 0.6), scale(holder.dir, 0.4)));
+          holderCurve.set(holder.id, organic({ ...node, parentId: null }, { p0: P, c1: add(P, scale(s0, L * reach0)), c2: sub(S, scale(e0, L * 0.3)), p1: S }));
+          growthDir.set(holder.id, e0);
+        }
+        P = { x: holder.x, y: holder.y };
+        gP = growthDir.get(holder.id) ?? holder.dir;
+      }
+      const fan = fanOf(holder ? holder.id : node.parentId);
       // Organic curves: a line leaves its father half along his own growth
       // direction and arrives partly along its own ray, so it bends in a
       // gentle S rather than shooting out straight (measured: no less clear).
@@ -1458,7 +1626,8 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         void dir;
         const rayDirL = node.ray !== undefined ? dirOf(node.ray) : dv;
         const e0 = norm(add(scale(dv, 1 - arrive), scale(rayDirL, arrive)));
-        curveOf.set(node.id, organic(node, { p0: P, c1: add(P, scale(s0, L * (reach0 - 0.03))), c2: sub(B, scale(e0, L * 0.3)), p1: B }));
+        const leafCurve = { p0: P, c1: add(P, scale(s0, L * (reach0 - 0.03))), c2: sub(B, scale(e0, L * 0.3)), p1: B };
+        curveOf.set(node.id, holder ? leafCurve : organic(node, leafCurve));
         continue;
       }
       const C: Vec = { x: node.x, y: node.y };
@@ -1468,7 +1637,8 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       // arrive along the child's own ray (outward), never hooking back
       const rayDir = node.ray !== undefined ? dirOf(node.ray) : UP;
       const e0 = norm(add(scale(dv, 1 - arrive), scale(rayDir, arrive)));
-      curveOf.set(node.id, organic(node, { p0: P, c1: add(P, scale(s0, L * reach0)), c2: sub(C, scale(e0, L * 0.3)), p1: C }));
+      const curve = { p0: P, c1: add(P, scale(s0, L * reach0)), c2: sub(C, scale(e0, L * 0.3)), p1: C };
+      curveOf.set(node.id, holder ? curve : organic(node, curve));
       growthDir.set(node.id, e0);
     }
   };
@@ -1501,10 +1671,12 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       buildCurves();
       const drawnEdges: Edge[] = [
         ...edges,
-        ...growingNodes.map((n) => ({ parentId: parentIdOf(n), childId: n.id, points: sample(curveOf.get(n.id)!), w0: lineW, w1: lineW / 2 })),
+        ...growingNodes.map((n) => ({ parentId: holderOf.get(n.id)?.id ?? parentIdOf(n), childId: n.id, points: sample(curveOf.get(n.id)!), w0: lineW, w1: lineW / 2 })),
+        ...holders.map((h) => ({ parentId: h.partnerId, childId: h.id, points: sample(holderCurve.get(h.id)!), w0: lineW, w1: lineW })),
       ];
       const provisional = {
-        nodes: growingNodes, stubs, base: baseBox, trunkLabels, edges: drawnEdges, origin, trunkWidth,
+        nodes: growingNodes, stubs, base: baseBox, trunkLabels, edges: drawnEdges, origin, trunkWidth, spouses: holders,
+        familiesThrough: [...through],
       } as unknown as PosterLayout;
       return validateRelationships(provisional, tree).issues;
     };
@@ -1531,6 +1703,18 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       n.x = origin.x + d.x * rr;
       n.y = origin.y + d.y * rr;
     };
+    // a spouse's holder with no room: her children move a little further
+    // out along their rays (where that overlaps nothing), then try again
+    for (let round = 0; round < 3 && holders.some((h) => !h.clear); round++) {
+      for (const h of holders.filter((x) => !x.clear)) {
+        for (const k of h.kids) {
+          const saved = { x: k.x, y: k.y };
+          outward(k, h.h * 1.6 + h.fontSize);
+          if (overlapsAny(k)) Object.assign(k, saved);
+        }
+      }
+      placeHolders();
+    }
     let issues = check();
     // only near-clean layouts are untangled; many issues mean crowding,
     // which more room (the caller's retry) solves
@@ -1583,6 +1767,9 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     }
   }
 
+  // a spouse's holder with no clear place counts as overlapping names
+  overlaps += holders.filter((h) => !h.clear).length;
+
   // ── 6. Branches ──────────────────────────────────────────────────────
   const growing = nodes.filter((n) => n.region !== "fixed");
   const totalLeaves = Math.max(1, base.value ?? 1);
@@ -1603,17 +1790,39 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // to their own width over the first stretch, instead of thin twigs
   // poking out of a broad trunk. (They start at the canopy base's centre,
   // inside the wood, under its oval.)
-  const mainLimbs = growing.filter((n) => n.region === "crown" && n.depth === 1 && !n.terminal).length;
+  // (a wife's holder on the canopy base's branch is one limb, carrying her sons)
+  const baseHolder = (h: Holder) => h.anchorOf.region === "crown" && h.anchorOf.depth === 1;
+  const mainLimbs = growing.filter((n) => n.region === "crown" && n.depth === 1 && !n.terminal && !holderOf.has(n.id)).length
+    + holders.filter(baseHolder).length;
   const limbShare = mainLimbs ? clamp(1.05 / mainLimbs, 0.14, 0.4) : 0;
+  for (const h of holders) {
+    const c = holderCurve.get(h.id)!;
+    const leaves = h.kids.reduce((a, k) => a + (k.shape === "leaf" ? 1 : k.leafCount), 0);
+    const w = widthOf(leaves);
+    if (h.dotted) {
+      const wd = Math.max(wMin * 2.2, w * 0.8);
+      const p = (v: Vec) => `${v.x.toFixed(1)} ${v.y.toFixed(1)}`;
+      branches.push({ d: `M${p(c.p0)}C${p(c.c1)} ${p(c.c2)} ${p(c.p1)}`, w: wd, lineage: h.lineage ?? null, dotted: true });
+      edges.push({ parentId: h.partnerId, childId: h.id, points: sample(c), w0: wd, w1: wd, lineage: h.lineage ?? null });
+    } else {
+      const mainLimb = baseHolder(h);
+      const w0 = mainLimb ? Math.max(w * 1.15, trunkWidth * limbShare) : w;
+      branches.push({ ...shaded(c, w0, w * 0.85, 14, mainLimb ? 4 : 2), lineage: h.lineage ?? null });
+      edges.push({ parentId: h.partnerId, childId: h.id, points: sample(c), w0: mainLimb ? w * 1.15 : w, w1: w * 0.85, lineage: h.lineage ?? null });
+    }
+    seedFrom(c);
+  }
   for (const node of growing) {
     const c = curveOf.get(node.id)!;
+    const holder = holderOf.get(node.id);
+    const from = holder?.id ?? parentIdOf(node);
     if (dotted.has(node.member.id)) {
       // outside the lineage: an even dotted line, a little heavier than a
       // twig so the dots read
       const w = Math.max(wMin * 2.2, node.shape === "leaf" ? widthOf(1) : widthOf(node.leafCount) * 0.8);
       const p = (v: Vec) => `${v.x.toFixed(1)} ${v.y.toFixed(1)}`;
       branches.push({ d: `M${p(c.p0)}C${p(c.c1)} ${p(c.c2)} ${p(c.p1)}`, w, lineage: node.lineage ?? null, dotted: true });
-      edges.push({ parentId: parentIdOf(node), childId: node.id, points: sample(c), w0: w, w1: w, lineage: node.lineage ?? null });
+      edges.push({ parentId: from, childId: node.id, points: sample(c), w0: w, w1: w, lineage: node.lineage ?? null });
       seedFrom(c);
       continue;
     }
@@ -1621,15 +1830,15 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       // a thin stalk from the parent to the base of the leaf blade
       const tip = Math.max(wMin * 0.8, node.fontSize * 0.14);
       branches.push({ d: ribbonPath(c, widthOf(1), tip, 10), w: widthOf(1), lineage: node.lineage ?? null });
-      edges.push({ parentId: parentIdOf(node), childId: node.id, points: sample(c), w0: widthOf(1), w1: tip, lineage: node.lineage ?? null });
+      edges.push({ parentId: from, childId: node.id, points: sample(c), w0: widthOf(1), w1: tip, lineage: node.lineage ?? null });
     } else {
       const w = widthOf(node.leafCount);
-      const mainLimb = node.region === "crown" && node.depth === 1 && !node.terminal;
-      const w0 = mainLimb ? Math.max(w * 1.15, trunkWidth * limbShare) : node.depth === 1 ? w * 1.15 : w;
+      const mainLimb = node.region === "crown" && node.depth === 1 && !node.terminal && !holder;
+      const w0 = mainLimb ? Math.max(w * 1.15, trunkWidth * limbShare) : node.depth === 1 && !holder ? w * 1.15 : w;
       branches.push({ ...shaded(c, w0, w * 0.7, 14, mainLimb ? 4 : 2), lineage: node.lineage ?? null });
       // (the line's own width, for the clarity check: a main limb's wide
       // start lies under the canopy base's oval)
-      edges.push({ parentId: parentIdOf(node), childId: node.id, points: sample(c), w0: node.depth === 1 ? w * 1.15 : w, w1: w * 0.7, lineage: node.lineage ?? null });
+      edges.push({ parentId: from, childId: node.id, points: sample(c), w0: node.depth === 1 && !holder ? w * 1.15 : w, w1: w * 0.7, lineage: node.lineage ?? null });
     }
     seedFrom(c);
   }
@@ -1726,13 +1935,18 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   for (const n of growing) if (n.shape !== "medallion") gens.add(n.generation);
 
   const placed = growing.length + stubs.length + trunkLabels.length + ancient.length + (baseNode ? 1 : 0);
-  stats.placed = placed;
-  stats.unplaced = Math.max(0, visible.length - placed);
+  // (a spouse shown on a branch is drawn, even if not of the family)
+  const visibleIds = new Set(visible.map((m) => m.id));
+  const drawnIds = new Set([...growing, ...stubs].map((n) => n.id));
+  const spousesDrawn = new Set(holders.map((h) => h.member.id).filter((id) => visibleIds.has(id) && !drawnIds.has(id))).size;
+  stats.placed = placed + spousesDrawn;
+  stats.unplaced = Math.max(0, visible.length - placed - spousesDrawn);
 
   // Legibility: the smallest text anywhere on the genealogy, in print mm.
   const smallest = Math.min(
     ...growing.map((n) => n.fontSize), ...stubs.map((n) => n.fontSize),
     ...trunkLabels.map((l) => l.fontSize), ...(soil ? [soil.fontSize] : []), ...(baseNode ? [baseNode.fontSize] : []),
+    ...holders.map((h) => h.fontSize),
   );
   const legibility = {
     minTextMm,
@@ -1762,6 +1976,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     base: baseNode,
     stubs: stubs.map((s) => strip(s as LiveNode)),
     nodes: growing.map(strip),
+    spouses: holders.map(({ anchorOf: _a, kids: _k, dir: _d, clear: _c, ...h }) => h),
     branches,
     edges,
     canopy,

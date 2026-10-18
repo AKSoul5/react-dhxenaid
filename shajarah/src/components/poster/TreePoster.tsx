@@ -1,7 +1,7 @@
 "use client";
 
 import { forwardRef, memo, type ReactNode } from "react";
-import type { PosterLayout, PosterNode } from "@/lib/layout/botanical";
+import type { PosterLayout, PosterNode, SpouseHolder } from "@/lib/layout/botanical";
 import type { SoilInk } from "@/lib/layout/soil";
 import { textWidth } from "@/lib/layout/botanical";
 import { LEAF_TONES, generationColor, generationLabel } from "@/lib/layout/palette";
@@ -46,6 +46,9 @@ const PAPER = "#f7f1e3";
 const IVORY = "#fcf8ee";
 const GOLD = "#b08a2e";
 const INK = "#2a1c0c";
+/** Spouses' cartouches: a soft rose, apart from the line's own names. */
+const SPOUSE_FILL = "#f8ece6";
+const SPOUSE_RIM = "#9a6656";
 /** Foliage leaf tones: [light, dark] pairs from yellow-green to deep green. */
 const FOLIAGE = [
   ["#b9d36a", "#5d8f2c"],
@@ -246,6 +249,9 @@ export const TreePoster = memo(
         )}
         {layout.trunkLabels.map((l) => <TrunkBadge key={l.member.id} label={l} pal={pal} onClick={click(l.member.id)} />)}
 
+        {/* Spouses on the branches */}
+        {layout.spouses.map((s) => <Cartouche key={s.id} holder={s} pal={pal} onClick={click(s.member.id)} />)}
+
         {/* People */}
         {layout.stubs.map((n) => (
           <Medallion key={n.id} node={n} pal={pal} onClick={click(n.id)} />
@@ -409,6 +415,32 @@ function Medallion({ node, pal, onClick, strong, ring }: { node: PosterNode; pal
         {node.label}
       </text>
       <SubLines node={node} y={fs * 0.6} fontSize={fs * 0.68} fill={pal.ink} opacity={0.8} />
+    </g>
+  );
+}
+
+/**
+ * A cartouche: a name panel with its corners cut in as quarter circles,
+ * the classic frame of a name in a manuscript; centred on 0, 0.
+ */
+function cartouchePath(w: number, h: number): string {
+  const x = w / 2, y = h / 2, r = h * 0.3;
+  const f = (v: number) => v.toFixed(1);
+  return `M${f(-x + r)} ${f(-y)}H${f(x - r)}A${f(r)} ${f(r)} 0 0 0 ${f(x)} ${f(-y + r)}V${f(y - r)}`
+    + `A${f(r)} ${f(r)} 0 0 0 ${f(x - r)} ${f(y)}H${f(-x + r)}A${f(r)} ${f(r)} 0 0 0 ${f(-x)} ${f(y - r)}`
+    + `V${f(-y + r)}A${f(r)} ${f(r)} 0 0 0 ${f(-x + r)} ${f(-y)}Z`;
+}
+
+function Cartouche({ holder: s, pal, onClick }: { holder: SpouseHolder; pal: Palette; onClick: object }) {
+  const fs = s.fontSize;
+  const inset = fs * 0.2;
+  return (
+    <g transform={`translate(${s.x.toFixed(1)} ${s.y.toFixed(1)})`} {...onClick}>
+      <title>{s.member.name}</title>
+      <path d={cartouchePath(s.w, s.h)} fill={pal.mono ? "#fff" : SPOUSE_FILL} stroke={pal.mono ? "#111" : SPOUSE_RIM} strokeWidth={fs * 0.08}
+        strokeDasharray={s.dotted ? `${(fs * 0.25).toFixed(1)} ${(fs * 0.18).toFixed(1)}` : undefined} />
+      {!pal.mono && <path d={cartouchePath(s.w - inset * 2, s.h - inset * 2)} fill="none" stroke={GOLD} strokeWidth={fs * 0.03} />}
+      <text textAnchor="middle" dominantBaseline="central" fontSize={fs} fill={pal.ink}>{s.label}</text>
     </g>
   );
 }
@@ -652,6 +684,16 @@ function Footer({ layout, theme, pal, meta }: { layout: PosterLayout; theme: Pos
       label: rtl ? "عن طريق البنات" : "Through a daughter",
       swatch: (x) => (
         <line x1={x + fs * 0.2} y1={y} x2={x + sw - fs * 0.2} y2={y} stroke={pal.branch(null)} strokeWidth={fs * 0.22} strokeLinecap="round" strokeDasharray={`0.01 ${(fs * 0.46).toFixed(1)}`} />
+      ),
+    });
+  }
+  if (layout.spouses.length) {
+    const kinds = new Set(layout.spouses.map((s) => s.member.gender));
+    items.push({
+      label: rtl ? (kinds.size > 1 ? "زوج / زوجة" : kinds.has("MALE") ? "زوج" : "زوجة") : "Spouse",
+      swatch: (x) => (
+        <path transform={`translate(${x + sw / 2} ${y})`} d={cartouchePath(sw, fs * 0.95)}
+          fill={pal.mono ? "#fff" : SPOUSE_FILL} stroke={pal.mono ? "#111" : SPOUSE_RIM} strokeWidth={fs * 0.08} />
       ),
     });
   }

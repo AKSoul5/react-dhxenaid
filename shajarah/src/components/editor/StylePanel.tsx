@@ -125,9 +125,9 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange, frameA
               <input type="checkbox" checked={theme.showYears} onChange={(e) => onChange({ showYears: e.target.checked })} />
               Show birth / death years
             </label>
-            <label className="flex items-center gap-2 text-sm" title="For a man with children by more than one wife: each child shows his or her mother's name (أمه فاطمة)">
+            <label className="flex items-center gap-2 text-sm" title="For a man with children by more than one wife: each wife is a name panel on his branch, and the children she bore him grow from it">
               <input type="checkbox" checked={theme.motherNames} onChange={(e) => onChange({ motherNames: e.target.checked })} />
-              Name the mothers of half-siblings
+              Show the wives of fathers with several (on the branch)
             </label>
           </section>
 

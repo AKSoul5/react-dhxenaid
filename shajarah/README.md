@@ -82,7 +82,7 @@ NEXT_OUTPUT=standalone npm run build   # self-contained server in .next/standalo
 cd desktop/electron
 npm install
 npm run prepare-app                    # gathers the server and the migrations
-npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.7.exe (build on Windows)
+npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.8.exe (build on Windows)
 npm start                              # or run it unpackaged
 ```
 
@@ -365,30 +365,37 @@ is held in the page as a `data:` URL.
 On a father's-line poster a daughter's children belong to their father's
 line, so they are not drawn. To include them, select her and press
 **┈ Show her husband and children (dotted lines)** under *Poster tiers*
-(settings `familiesThrough`). Her husband's name is written with hers
-("زوجها …"), and her children and their descendants grow from her on
-dotted lines, counted in generations through her; the key explains the
-dots ("عن طريق البنات"). It works even with daughters hidden, and the
-other way round in a mother's-line tree.
+(settings `familiesThrough`). Her husband is a cartouche on her line, and
+her children and their descendants grow from it on dotted lines, counted in
+generations through her; the key explains the dots ("عن طريق البنات").
+It works even with daughters hidden, and the other way round in a
+mother's-line tree.
 
 A mother with children from more than one husband (divorced or widowed and
-remarried): her children are grouped by father, and each carries his
-father's name on a second line ("بن سعد العتيبي") instead of one husband
-under her name. When adding a child to someone married more than once,
-choose the child's other parent under the name field.
+remarried): each husband is his own cartouche on her line, with the
+children he fathered growing from it. When adding a child to someone
+married more than once, choose the child's other parent under the name
+field.
 
-## Half-siblings: naming the mothers
+## Spouses on the branch: fathers with several wives
 
-A father with children from more than one wife: his children are grouped by
-mother. Turn on **Style → Name the mothers of half-siblings** and each of
-them carries his or her mother's name on a second line ("أمه فاطمة",
-"أمها عائشة"; "mother: Fatimah" for English names), by her first and
-family names: "أمه فاطمة العتيبي" for "فاطمة بنت سعد العتيبي" ("فاطمة" for
-"فاطمة بنت سعد", which has no family name), or her full name when two
-wives share both. In round name holders a long line goes onto two.
-It only applies to fathers with more than one recorded wife, and to
-children whose mother is recorded. (In a mother's-line tree it names the
-fathers instead.)
+A father with children from more than one wife: turn on **Style → Show the
+wives of fathers with several (on the branch)** and each wife is a
+cartouche (a name panel with its corners cut in, the manuscript frame for
+a name, in soft rose) on his branch, with the children she bore him growing
+from it: father → wife → her children. The key adds "زوجة" ("Spouse").
+
+- Spouses are named by first and family name: "فاطمة العتيبي" for "فاطمة
+  بنت سعد العتيبي" ("فاطمة" for "فاطمة بنت سعد", which has no family name),
+  or in full when two wives share both.
+- It applies to fathers with more than one recorded wife; a child whose
+  mother is not recorded grows from the father directly. (In a
+  mother's-line tree it shows a mother's husbands.)
+- A man's wives sit at one distance from him, so no line to one passes
+  another; each is placed where it, the line to it and the lines from it
+  pass no other name (her children move a little further out when there is
+  no room). The relationship check treats father → wife → child as the
+  connection from father to child. Clicking a cartouche opens that person.
 
 ## The three tiers: foundation, trunk, canopy
 

@@ -35,17 +35,27 @@ describe("a daughter's family on dotted lines", () => {
     for (const n of l.nodes.filter((x) => tree.members.find((m) => m.id === x.member.id)!.motherId === amina.id)) {
       expect(n.parentId).toBe(amina.id);
     }
-    expect(l.branches.filter((b) => b.dotted)).toHaveLength(theirs.size);
     expect(l.clarity.issues).toEqual([]);
     expect(l.overlaps).toBe(0);
-    // the husbands are not people of the lineage: named with their wives, not drawn
+    // the husbands are not people of the lineage: each is a cartouche on his
+    // wife's dotted line, their children growing from it
     const hassan = tree.members.find((m) => m.name === "Hassan" && !m.fatherId)!;
     expect(drawn.has(hassan.id)).toBe(false);
-    expect(l.nodes.find((n) => n.member.id === amina.id)!.subLabel).toBe("m. Hassan");
+    const holders = l.spouses.map((s) => [s.label, s.partnerId, s.childIds.length, s.dotted]);
+    expect(holders).toEqual(expect.arrayContaining([["Hassan", amina.id, 3, true], ["Sami", layla.id, 2, true]]));
+    expect(l.spouses).toHaveLength(2);
+    for (const s of l.spouses) {
+      expect(l.edges.some((e) => e.parentId === s.partnerId && e.childId === s.id)).toBe(true);
+      for (const c of s.childIds) expect(l.edges.some((e) => e.parentId === s.id && e.childId === c)).toBe(true);
+    }
+    // every line of theirs dotted: to each husband and to each descendant
+    expect(l.branches.filter((b) => b.dotted)).toHaveLength(theirs.size + 2);
+    expect(l.nodes.find((n) => n.member.id === amina.id)!.subLabel ?? null).toBeNull();
     // generations count through her: Ibrahim 0, Amina 1, her children 2
     const yusuf = l.nodes.find((n) => n.member.name === "Yusuf" && n.parentId === amina.id)!;
     expect(yusuf.generation).toBe(2);
-    expect(l.stats.unplaced).toBe(computePosterLayout(tree, opts).stats.unplaced - 11);
+    // (the husbands are drawn too, on their cartouches)
+    expect(l.stats.unplaced).toBe(computePosterLayout(tree, opts).stats.unplaced - 11 - 2);
   });
 
   it("shows her family even when daughters are hidden", () => {
@@ -57,7 +67,7 @@ describe("a daughter's family on dotted lines", () => {
     expect(l.clarity.issues).toEqual([]);
   });
 
-  it("a mother with children from two husbands: grouped by father, each child naming his father", () => {
+  it("a mother with children from two husbands: each husband on her line with his own children", () => {
     // Amina remarried: Rania (born between her brothers) is the daughter of
     // her second husband
     const second = { ...amina, id: "second-husband", name: "Fahd Al-Otaibi", gender: "MALE" as const, fatherId: null, motherId: null, birthOrder: 0 };
@@ -69,15 +79,16 @@ describe("a daughter's family on dotted lines", () => {
     const l = computePosterLayout(throughHer(remarried, [amina.id]), opts);
     const kids = l.nodes.filter((n) => n.parentId === amina.id);
     expect(kids.map((k) => k.member.name).sort()).toEqual(["Hamza", "Rania", "Yusuf"]);
-    expect(kids.find((k) => k.member.name === "Rania")!.subLabel).toBe("daughter of Fahd Al-Otaibi");
-    expect(kids.find((k) => k.member.name === "Yusuf")!.subLabel).toBe("son of Hassan");
-    expect(kids.find((k) => k.member.name === "Hamza")!.subLabel).toBe("son of Hassan");
-    // no single husband on her own label
-    expect(l.nodes.find((n) => n.member.id === amina.id)!.subLabel ?? null).toBeNull();
+    const byName = (name: string) => kids.find((k) => k.member.name === name)!.id;
+    const holder = (label: string) => l.spouses.find((s) => s.label === label)!;
+    expect(holder("Fahd Al-Otaibi").childIds).toEqual([byName("Rania")]);
+    expect(holder("Hassan").childIds.sort()).toEqual([byName("Hamza"), byName("Yusuf")].sort());
+    expect(kids.every((k) => k.subLabel == null)).toBe(true);
     // the two husbands' children side by side, not interleaved
     const order = [...kids].sort((a, b) => a.x - b.x).map((k) => k.member.name);
     expect(Math.abs(order.indexOf("Yusuf") - order.indexOf("Hamza"))).toBe(1);
     expect(l.clarity.issues).toEqual([]);
-    expect(l.branches.filter((b) => b.dotted).length).toBe(7);
+    expect(l.overlaps).toBe(0);
+    expect(l.branches.filter((b) => b.dotted).length).toBe(7 + 2);
   });
 });

@@ -22,6 +22,10 @@
  *     label) or stops (at its child's label) it must not touch an unrelated
  *     line, or it would appear to branch from that line.
  *
+ * A spouse shown on the branch (a cartouche between a partner and the
+ * children they had together) is a stop on the way: partner → spouse →
+ * child counts as the connection from partner to child.
+ *
  * Passing these checks is necessary, not sufficient: renders must still be
  * inspected at print scale.
  */
@@ -66,6 +70,8 @@ export function validateRelationships(layout: PosterLayout, tree: TreeDTO): Clar
   for (const t of layout.trunkLabels) {
     boxes.set(t.member.id, { id: t.member.id, x: t.x, y: t.y, w: t.w, h: t.h, leaf: false });
   }
+  const spouses = new Map((layout.spouses ?? []).map((s) => [s.id, s]));
+  for (const s of spouses.values()) boxes.set(s.id, { id: s.id, x: s.x, y: s.y, w: s.w, h: s.h, leaf: false });
 
   // ── 1. completeness (data → drawing) ───────────────────────────────────
   const edgeKey = (p: string, c: string) => `${p}→${c}`;
@@ -78,11 +84,15 @@ export function validateRelationships(layout: PosterLayout, tree: TreeDTO): Clar
     const parentId = posterParentId(n.member, tree.lineage, through);
     if (!parentId || !boxes.has(parentId)) continue;
     expected++;
-    if (!drawn.has(edgeKey(parentId, n.id))) issues.push({ kind: "missing", edge: [parentId, n.id] });
+    const viaSpouse = [...spouses.values()].some((s) =>
+      s.partnerId === parentId && drawn.has(edgeKey(parentId, s.id)) && drawn.has(edgeKey(s.id, n.id)));
+    if (!drawn.has(edgeKey(parentId, n.id)) && !viaSpouse) issues.push({ kind: "missing", edge: [parentId, n.id] });
   }
   for (const e of layout.edges) {
     const child = byMember.get(e.childId);
-    if (child && posterParentId(child, tree.lineage, through) !== e.parentId) {
+    const from = spouses.get(e.parentId)?.partnerId ?? e.parentId;
+    if (spouses.has(e.childId) ? spouses.get(e.childId)!.partnerId !== e.parentId
+      : child && posterParentId(child, tree.lineage, through) !== from) {
       issues.push({ kind: "missing", edge: [e.parentId, e.childId], detail: "drawn from the wrong parent" });
     }
   }

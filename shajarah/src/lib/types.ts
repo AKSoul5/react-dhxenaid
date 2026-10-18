@@ -47,7 +47,7 @@ export interface PosterTheme {
   nodeShape: "auto" | "leaf" | "circle" | "oval";
   labelMode: "name" | "withFather";
   showYears: boolean;
-  /** A second line naming the mother of each child of a man with children by more than one wife. */
+  /** For a man with children by more than one wife: each wife on his branch, her children growing from her (see LayoutOptions.motherNames). */
   motherNames: boolean;
   /** Ancestors carved into the bark, or stacked as framed badges. */
   trunkStyle: "carved" | "badges";
