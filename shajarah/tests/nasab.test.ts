@@ -91,6 +91,24 @@ describe("applyNasabLines", () => {
     expect(members.find((x) => x.id === maryam.fatherId)?.name).toBe("خالد");
   });
 
+  it("joins every son's line that ends in the family's founder to that one founder", () => {
+    let n = 0;
+    const { members } = applyNasabLines(
+      [], "PATRILINEAL",
+      "عبدالعزيز بن محمد بن عبدالله\nصالح بن عمر بن عبدالله\nفهد بن سعود بن عبدالله\nعلي بن خالد بن عبدالله",
+      () => `p${n++}`,
+    );
+    const roots = members.filter((x) => !x.fatherId);
+    expect(roots.map((x) => x.name)).toEqual(["عبدالله"]);
+    expect(members.filter((x) => x.fatherId === roots[0].id).map((x) => x.name)).toEqual(["محمد", "عمر", "سعود", "خالد"]);
+  });
+
+  it("does not join on the founder's name when two people without a father share it", () => {
+    const tree = [m("r1", "عبدالله"), m("a", "محمد", "r1"), m("r2", "عبدالله"), m("b", "سعد", "r2")];
+    const plan = planNasabImport(tree, "PATRILINEAL", parseNasab("صالح بن عمر بن عبدالله").entries);
+    expect(plan.matched).toEqual([]);
+  });
+
   it("flags a genuinely ambiguous line", () => {
     const tree = [m("r", "علي"), m("a", "محمد", "r"), m("b", "سالم", "a"), m("c", "محمد", "r"), m("d", "سالم", "c")];
     const { results } = applyNasabLines(tree, "PATRILINEAL", "عمر بن سالم بن محمد", () => "x");

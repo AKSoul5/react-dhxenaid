@@ -88,7 +88,9 @@ export interface NasabPlan {
  *  - walking DOWN, children with the next names are reused; the rest of the
  *    chain is created below.
  * The anchor reusing the most members wins. At least two consecutive names
- * must agree, so a lone common name like "محمد" never joins lines by chance.
+ * must agree, so a lone common name like "محمد" never joins lines by chance,
+ * except at the very top: a line ending in the family's founder (the only
+ * member of that name without a father) joins him.
  */
 export function planNasabImport(members: MemberDTO[], lineage: Lineage, entries: NasabEntry[]): NasabPlan {
   const none: NasabPlan = {
@@ -144,6 +146,18 @@ export function planNasabImport(members: MemberDTO[], lineage: Lineage, entries:
         tiedPaths.clear();
         tiedPaths.add(pathKey(cand));
       } else if (score === best.score) tiedPaths.add(pathKey(cand));
+    }
+  }
+  if (best && best.score < 2 && entries.length > 1) {
+    // One exception to the two-name rule: a line whose oldest name is the
+    // family's founder (the one member of that name without a father) joins
+    // him, as when every son's line is pasted ending in the same patriarch
+    // ("صالح بن عمر بن عبدالله", "علي بن خالد بن عبدالله" …).
+    const founders = members.filter((m) => !lineageParentId(m, lineage) && normalizeName(m.name) === keys[0]);
+    if (founders.length === 1) {
+      return {
+        matched: [founders[0]], ancestorsToCreate: [], adoptedRootId: null, descendantsToCreate: entries.slice(1), ambiguous: false,
+      };
     }
   }
   if (!best || (best.score < 2 && entries.length > 1)) return none;

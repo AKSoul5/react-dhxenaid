@@ -56,7 +56,10 @@ first:
 - Matching uses spelling-tolerant names (أ/إ/ا, ة/ه, «عبد الله»/«عبدالله»).
   People already in the tree are reused, and new ones are added below or
   above them. A line can start mid-tree. At least two consecutive names
-  must agree before a line joins, so a lone «محمد» never links strangers.
+  must agree before a line joins, so a lone «محمد» never links strangers,
+  with one exception: a line whose oldest name is the family's founder
+  (the only person of that name without a father) joins him, so every
+  son's line can be pasted ending in the same patriarch.
 - A preview shows how many names are reused and how many are new. It warns
   when a line fits in two places equally well.
 - After an import, **Undo this import** in the member list removes exactly
@@ -835,10 +838,13 @@ the poster size, and `&colors=1` to force lineage colours:
   about evenly; daughters drawn without their children);
 - `kalali-filled`: the real line down to أحمد بن نوفل, with invented
   relatives in the same shape;
+- `abdullah`: a founder, عبدالله, whose sons have very different families,
+  built from pasted nasab lines by the importer itself;
 - `huge`: about 500 people.
 
 Add `&soil=column|spine|banner|pedestal|paragraph` for a foundation style,
-and `&focus=<member id or name>` for a branch poster.
+`&focus=<member id or name>` for a branch poster, and
+`&shape=auto|leaf|circle|oval` for the names' shape.
 
 Without a sample value, `/demo` loads the large demo family.
 

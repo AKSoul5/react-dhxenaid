@@ -4,6 +4,7 @@
 // The large family is generateSampleTree(); the long chain is kalaliTree().
 
 import { computeGenerations } from "../genealogy";
+import { applyNasabLines } from "../nasab";
 import type { Gender, MarriageDTO, MemberDTO, TreeDTO } from "../types";
 
 /** [name, gender, children?, extra?] — a compact way to write a family. */
@@ -189,4 +190,45 @@ export function multiMarriageFamily(): TreeDTO {
     }
   }
   return familyFrom("multi", "ذرية حمد من زوجاته الثلاث", "أبناء غير أشقاء وبنات", members, marriages);
+}
+
+/**
+ * A family pasted as nasab lines (as with the editor's "بن…" import): one
+ * founder, عبدالله, whose sons have very different families: محمد a large
+ * one, سعود and عمر medium ones, خالد sons and daughters. Built by the
+ * importer itself, so it also checks that every line joins the one founder.
+ */
+export const ABDULLAH_NASAB = `عبدالعزيز بن محمد بن عبدالله
+سليمان بن محمد بن عبدالله
+نورة بنت محمد بن عبدالله
+يوسف بن عبدالعزيز بن محمد بن عبدالله
+بدر بن عبدالعزيز بن محمد بن عبدالله
+سارة بنت عبدالعزيز بن محمد بن عبدالله
+ريم بنت عبدالعزيز بن محمد بن عبدالله
+فيصل بن سليمان بن محمد بن عبدالله
+عمر بن سليمان بن محمد بن عبدالله
+هند بنت سليمان بن محمد بن عبدالله
+صالح بن عمر بن عبدالله
+عبدالرحمن بن عمر بن عبدالله
+حمود بن صالح بن عمر بن عبدالله
+خالد بن صالح بن عمر بن عبدالله
+مها بنت صالح بن عمر بن عبدالله
+تركي بن عبدالرحمن بن عمر بن عبدالله
+منصور بن عبدالرحمن بن عمر بن عبدالله
+فهد بن سعود بن عبدالله
+عبدالله بن فهد بن سعود بن عبدالله
+هذال بن فهد بن سعود بن عبدالله
+ناصر بن فهد بن سعود بن عبدالله
+سلطان بن تركي بن سعود بن عبدالله
+عبدالعزيز بن تركي بن سعود بن عبدالله
+مشعل بن منصور بن سعود بن عبدالله
+علي بن خالد بن عبدالله
+حسين بن خالد بن عبدالله
+فاطمة بنت خالد بن عبدالله
+عائشة بنت خالد بن عبدالله`;
+
+export function abdullahFamily(): TreeDTO {
+  let n = 0;
+  const { members } = applyNasabLines([], "PATRILINEAL", ABDULLAH_NASAB, () => `abdullah-${++n}`);
+  return familyFrom("abdullah", "شجرة آل عبدالله", "أسرة تجريبية من نصّ النسب", members);
 }
