@@ -40,6 +40,38 @@ The page at **`/demo`** works without a database. It runs the same editor
 with an in-memory repository. **`/demo?sample=kalali`** loads the Al-Kalali
 lineage (85 generations, آدم → أحمد بن نوفل).
 
+## Desktop app (Windows installer)
+
+`desktop/electron/` packages Shajarah as an ordinary Windows program,
+`Shajarah-Setup-<version>.exe`, with nothing else to install: it brings its
+own PostgreSQL 16 (from `@embedded-postgres/windows-x64`, kept in
+`%APPDATA%\Shajarah\database`) and runs the app in its own window.
+Closing the window stops the app and the database. Uninstalling keeps the
+families; delete `%APPDATA%\Shajarah` to remove them too.
+
+The installer is built by the **Shajarah Windows installer** GitHub Actions
+workflow (`.github/workflows/shajarah-windows-installer.yml`) on every push
+to `shajarah/`: it builds on Windows, installs the result silently, runs
+`Shajarah.exe --smoke-test` (starts the database and the app, saves and
+reads a family) and uploads the installer as the run's
+`Shajarah-Windows-installer` artifact.
+
+To build it yourself:
+
+```bash
+cd shajarah
+NEXT_OUTPUT=standalone npm run build   # self-contained server in .next/standalone
+cd desktop/electron
+npm install
+npm run prepare-app                    # gathers the server and the migrations
+npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.0.exe (build on Windows)
+npm start                              # or run it unpackaged
+```
+
+The app applies `prisma/migrations` itself at start (recording them in
+`_prisma_migrations`, as `prisma migrate deploy` does), so updates that add
+migrations need no extra step. Logs are in `%APPDATA%\Shajarah\logs`.
+
 ## Opening Shajarah like a regular program (Windows)
 
 `desktop/windows/` turns Shajarah into a program with its own icon:

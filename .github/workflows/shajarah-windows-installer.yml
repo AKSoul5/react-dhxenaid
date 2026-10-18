@@ -1,0 +1,74 @@
+# Builds the Shajarah Windows installer on a real Windows machine, installs
+# it silently, starts the installed program in its smoke-test mode (its own
+# database, the app server, saving a family) and uploads the installer.
+name: Shajarah Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/shajarah-family-tree-app-vp01qo]
+    paths:
+      - "shajarah/**"
+      - ".github/workflows/shajarah-windows-installer.yml"
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: shajarah
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            shajarah/package-lock.json
+            shajarah/desktop/electron/package-lock.json
+
+      - name: Build the app (standalone server)
+        env:
+          NEXT_OUTPUT: standalone
+        run: |
+          npm ci
+          npm run build
+
+      - name: Build the installer
+        working-directory: shajarah/desktop/electron
+        run: |
+          npm ci
+          npm run prepare-app
+          npx electron-builder --win nsis --publish never
+          Get-ChildItem dist -Filter *.exe | Format-Table Name, Length
+
+      - name: Install it and run the smoke test
+        working-directory: shajarah/desktop/electron
+        run: |
+          $setup = Get-ChildItem dist -Filter 'Shajarah-Setup-*.exe' | Select-Object -First 1
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Join-Path $env:LOCALAPPDATA 'Programs\Shajarah\Shajarah.exe'
+          if (-not (Test-Path $exe)) { throw "Not installed at $exe" }
+          $p = Start-Process -FilePath $exe -ArgumentList '--smoke-test' -Wait -PassThru
+          $logs = Join-Path $env:APPDATA 'Shajarah\logs'
+          Get-ChildItem $logs | ForEach-Object { "----- $($_.Name)"; Get-Content $_.FullName -Tail 40 }
+          if ($p.ExitCode -ne 0) { throw "Smoke test failed (exit $($p.ExitCode))" }
+          Get-Content (Join-Path $logs 'smoke-test.txt')
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shajarah-Windows-installer
+          path: shajarah/desktop/electron/dist/Shajarah-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Shajarah-logs
+          path: ~/AppData/Roaming/Shajarah/logs
+          if-no-files-found: ignore
