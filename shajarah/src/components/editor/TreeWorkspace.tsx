@@ -12,6 +12,7 @@ import { ExportMenu } from "../poster/ExportMenu";
 import { PosterViewport } from "../poster/PosterViewport";
 import { TreePoster } from "../poster/TreePoster";
 import { MemberForm, emptyDraft, type MemberDraft } from "./MemberForm";
+import { MemberAttachments } from "./MemberAttachments";
 import { NasabImport } from "./NasabImport";
 import { GedcomPanel } from "./GedcomPanel";
 import { importReceipt, type ImportReceipt } from "@/lib/imports";
@@ -20,7 +21,7 @@ import { RelationsPanel } from "./RelationsPanel";
 import { StylePanel } from "./StylePanel";
 import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
 import { PAPER_ORDER, PAPER_SIZES, paperForScale, type PaperSize } from "@/lib/paper";
-import { apiRepository, localRepository, type FamilyRepository } from "./repository";
+import { ConflictError, apiRepository, localRepository, type FamilyRepository } from "./repository";
 
 interface Props {
   initialTree: TreeDTO;
@@ -40,12 +41,14 @@ type Panel =
 export function TreeWorkspace({ initialTree, mode }: Props) {
   const [tree, setTree] = useState(initialTree);
   const repo = useMemo<FamilyRepository>(
-    () => (mode === "api" ? apiRepository(initialTree.id) : localRepository(initialTree)),
+    () => (mode === "api" ? apiRepository(initialTree.id, initialTree.version) : localRepository(initialTree)),
     [mode, initialTree],
   );
   const [panel, setPanel] = useState<Panel>({ kind: "list" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The tree changed elsewhere (another tab): changes are refused until a reload. */
+  const [conflict, setConflict] = useState(false);
   const [query, setQuery] = useState("");
   const svgRef = useRef<SVGSVGElement>(null);
   const frameSrc = useFrameArtwork();
@@ -107,7 +110,8 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
         }
         return next;
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        if (e instanceof ConflictError) setConflict(true);
+        else setError(e instanceof Error ? e.message : String(e));
         return null;
       } finally {
         setBusy(false);
@@ -352,6 +356,15 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
           <ExportMenu key={posterSize} svgRef={svgRef} filename={exportName(tree.name)} defaultPaper={posterSize} />
         </div>
       </header>
+      {conflict && (
+        <div role="alert" className="flex items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900">
+          <span className="flex-1">
+            <b>Another tab made changes to this family.</b> Your last change was not saved, so nothing was overwritten.
+            Reload to see the latest version.
+          </span>
+          <button type="button" className="btn-primary py-1" onClick={() => window.location.reload()}>Reload</button>
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-[380px] shrink-0 flex-col border-e border-parchment-300 bg-white">
@@ -474,6 +487,20 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                       const next = await mutate(() => repo.deleteMember(selected.id), { label: `Delete ${selected.name}` });
                       if (next) setPanel({ kind: "list" });
                     }}
+                    attachments={
+                      <MemberAttachments
+                        tree={tree}
+                        member={selected}
+                        busy={busy}
+                        onUpload={(file) => repo.uploadMedia(file)}
+                        onAddMedia={(m) => mutate(() => repo.createMedia({ ...m, memberId: selected.id }), { label: "Add photo or document" })}
+                        onUpdateMedia={(id, input) => mutate(() => repo.updateMedia(id, input), { label: input.url ? "Upload file" : "Edit caption" })}
+                        onRemoveMedia={(id) => void mutate(() => repo.deleteMedia(id), { label: "Remove photo or document" })}
+                        onCite={(input) => mutate(() => repo.createCitation(input), { label: "Cite source" })}
+                        onRemoveCitation={(id) => void mutate(() => repo.deleteCitation(id), { label: "Remove citation" })}
+                        onCreateSource={(input) => mutate(() => repo.createSource(input), { label: `Add source ${input.title}` })}
+                      />
+                    }
                   />
                 </div>
               </details>
@@ -507,7 +534,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 ) : (
                   <button
                     type="button"
-                    className="btn-outline w-full disabled:opacity-50"
+                    className="btn-outline w-full flex-col disabled:opacity-50"
                     disabled={!selectedHasDescendants}
                     title={selectedHasDescendants ? undefined : "No descendants recorded yet: there is no branch to show"}
                     onClick={() => updateSettings({ focusId: selected.id })}

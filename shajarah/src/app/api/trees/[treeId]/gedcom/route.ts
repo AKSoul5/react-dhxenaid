@@ -7,10 +7,11 @@ type Ctx = { params: { treeId: string } };
 export const dynamic = "force-dynamic";
 
 /** The tree as a GEDCOM 5.5.1 file, for other genealogy software. */
-export async function GET(_req: Request, { params }: Ctx) {
+export async function GET(req: Request, { params }: Ctx) {
   try {
     const tree = await getTree(params.treeId);
-    return new NextResponse(exportGedcom(tree), {
+    // uploaded files are linked by absolute URL, so another program can fetch them
+    return new NextResponse(exportGedcom(tree, { baseUrl: new URL(req.url).origin }), {
       headers: {
         "Content-Type": "text/x-gedcom; charset=utf-8",
         "Content-Disposition": `attachment; filename="shajarah-${tree.id}.ged"`,

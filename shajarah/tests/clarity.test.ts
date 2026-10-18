@@ -19,7 +19,7 @@ const member = (id: string, fatherId: string | null): MemberDTO => ({
 });
 const tree: TreeDTO = {
   id: "t", name: "t", title: null, subtitle: null, lineage: "PATRILINEAL", rootMemberId: "P",
-  crownBaseId: null, trunkStartId: null, soilText: null, settings: null, marriages: [],
+  crownBaseId: null, trunkStartId: null, soilText: null, settings: null, marriages: [], sources: [], citations: [], media: [],
   members: [member("P", null), member("A", "P"), member("B", "P"), member("A1", "A"), member("B1", "B")],
 };
 const node = (id: string, x: number, y: number, parentId: string | null): PosterNode => ({

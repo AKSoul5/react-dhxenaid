@@ -158,7 +158,7 @@ describe("long ancestral chains", () => {
     for (const m of members) m.generation = gens.get(m.id)!;
     const tree: TreeDTO = {
       id: "chain", name: "chain", title: "سلسلة", subtitle: null, lineage: "PATRILINEAL", rootMemberId: "c0",
-      crownBaseId: "c63", trunkStartId: "c3", soilText: null, settings: null, members, marriages: [],
+      crownBaseId: "c63", trunkStartId: "c3", soilText: null, settings: null, members, marriages: [], sources: [], citations: [], media: [],
     };
     const l = layoutOf(tree);
     expect(l.trunkLabels.length).toBe(60);

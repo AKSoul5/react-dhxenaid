@@ -36,7 +36,7 @@ function kalaliTree(): TreeDTO {
   return {
     id: "kalali", name: "الكلالي", title: "شجرة عائلة الكلالي", subtitle: null, lineage: "PATRILINEAL",
     rootMemberId: members[0].id, crownBaseId: ahmed.id, trunkStartId: null, soilText: null,
-    settings: null, members, marriages: [],
+    settings: null, members, marriages: [], sources: [], citations: [], media: [],
   };
 }
 

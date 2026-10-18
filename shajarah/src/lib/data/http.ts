@@ -25,3 +25,13 @@ export async function parseBody<S extends ZodTypeAny>(req: Request, schema: S): 
   });
   return schema.parse(body);
 }
+
+/**
+ * The tree version the client last saw, from the standard If-Match header
+ * (sent by the editor with every change). Absent: no conflict check, for
+ * scripts and older clients.
+ */
+export function ifMatch(req: Request): string | undefined {
+  const v = req.headers.get("if-match")?.trim().replace(/^W\//, "").replace(/^"|"$/g, "");
+  return v || undefined;
+}

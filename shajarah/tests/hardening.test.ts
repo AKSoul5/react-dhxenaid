@@ -35,7 +35,7 @@ function matrilinealFamily(): TreeDTO {
   for (const m of members) m.generation = gens.get(m.id)!;
   return {
     id: "matri", name: "matri", title: "matri", subtitle: null, lineage: "MATRILINEAL", rootMemberId: root.id,
-    crownBaseId: null, trunkStartId: null, soilText: null, settings: { showFemales: false }, members, marriages: [],
+    crownBaseId: null, trunkStartId: null, soilText: null, settings: { showFemales: false }, members, marriages: [], sources: [], citations: [], media: [],
   };
 }
 

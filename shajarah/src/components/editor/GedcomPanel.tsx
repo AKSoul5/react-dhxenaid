@@ -48,7 +48,10 @@ export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props)
       return;
     }
     setStatus({ kind: "reading" });
-    const input = { members: tree.members, marriages: tree.marriages, lineage: tree.lineage, rootMemberId: tree.rootMemberId };
+    const input = {
+      members: tree.members, marriages: tree.marriages, lineage: tree.lineage, rootMemberId: tree.rootMemberId,
+      sources: tree.sources, citations: tree.citations, media: tree.media,
+    };
     const done = (s: Status) => request.current === id && setStatus(s);
     if (typeof Worker === "undefined") {
       // no workers (very old browsers): let the spinner paint, then read here
@@ -74,7 +77,7 @@ export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props)
     w.onerror = (e) => done({ kind: "error", message: e.message || "Could not read the file." });
     const bytes = file.bytes.slice(0); // the copy is moved to the worker
     w.postMessage({ id, bytes, tree: input }, [bytes]);
-  }, [file, tree.members, tree.marriages, tree.lineage, tree.rootMemberId]);
+  }, [file, tree.members, tree.marriages, tree.lineage, tree.rootMemberId, tree.sources, tree.citations, tree.media]);
 
   const choose = async (f: File | undefined) => {
     if (!f) return;
@@ -127,6 +130,19 @@ export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props)
                 <li><b>{p.newMembers}</b> new {p.newMembers === 1 ? "member" : "members"}</li>
                 <li><b>{p.reused}</b> already in this tree (reused, not changed)</li>
                 {p.newMarriages > 0 && <li><b>{p.newMarriages}</b> new {p.newMarriages === 1 ? "marriage" : "marriages"}</li>}
+                {(p.newSources > 0 || p.newCitations > 0 || p.newMedia > 0) && (
+                  <li>
+                    Importing <b>{p.newSources}</b> {p.newSources === 1 ? "source" : "sources"}
+                    {p.reusedSources > 0 && ` (${p.reusedSources} already here)`}, <b>{p.newCitations}</b>{" "}
+                    {p.newCitations === 1 ? "citation" : "citations"} and <b>{p.newMedia}</b> media {p.newMedia === 1 ? "link" : "links"}
+                  </li>
+                )}
+                {p.newMedia > 0 && (
+                  <li className="text-xs text-gray-600">
+                    A GEDCOM file names its photos and documents but does not contain them: upload each file on the
+                    person to show it.
+                  </li>
+                )}
                 {p.relinks > 0 && (
                   <li><b>{p.relinks}</b> {p.relinks === 1 ? "member gets a parent" : "members get parents"} they did not have</li>
                 )}

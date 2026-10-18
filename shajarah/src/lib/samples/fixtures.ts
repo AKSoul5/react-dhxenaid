@@ -46,7 +46,7 @@ function buildTree(
     id, name: title, title, subtitle, lineage: "PATRILINEAL", rootMemberId: members[0].id,
     crownBaseId: null, trunkStartId: null, soilText: null,
     settings: { showFemales: true, seed: 7, theme: {} },
-    members, marriages,
+    members, marriages, sources: [], citations: [], media: [],
   };
 }
 
@@ -117,7 +117,7 @@ function familyFrom(id: string, title: string, subtitle: string, members: Member
     id, name: title, title, subtitle, lineage: "PATRILINEAL", rootMemberId: members[0].id,
     crownBaseId: null, trunkStartId: null, soilText: null,
     settings: { showFemales: true, seed: 7, theme: {} },
-    members, marriages,
+    members, marriages, sources: [], citations: [], media: [],
   };
 }
 

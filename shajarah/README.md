@@ -105,8 +105,27 @@ MacFamilyTree and others.
   - birth order from the file's child order.
 - **Encodings:** UTF-8 and UTF-16, with or without a byte-order mark. Older
   ANSEL files are read with a warning that accented letters may be wrong.
-- **Not imported yet:** sources and media. The preview says how many were
-  skipped.
+- **Sources and media are imported.**
+  - Sources: `SOUR` records (`TITL`, or `ABBR` when there is no title;
+    `AUTH`, `PUBL`, `NOTE`/`TEXT`), and sources written inline in a citation
+    ("1 SOUR Parish register of …").
+  - Citations: on a person or on one of their events (`1 BIRT` / `2 SOUR
+    @S1@` / `3 PAGE p. 12`), with the event from `EVEN` or from the event
+    the citation sits under.
+  - Media: `OBJE` records, inline `OBJE` in 5.5 and 5.5.1 style, and the
+    media of a source.
+  - A marriage has no row of its own, so its citations go to both spouses
+    (as `MARR`) and its media to the husband (or the wife).
+  - A source with the same title and author as one already in the tree
+    (spelling variants allowed) is reused. A citation or media link the tree
+    already has is not repeated, so importing the same file twice creates
+    nothing.
+  - A GEDCOM file names its photos (`photos/ahmad.jpg`, `C:\Family\deed.pdf`)
+    but does not contain them. The link is kept, and the person's panel offers
+    "Upload it" to supply the file.
+  - The preview says "Importing 3 sources, 6 citations and 4 media links".
+    Citations of a source record missing from the file, and media links
+    without a file, are skipped with a warning.
 - **Bad data is reported, not imported:** a link that would make someone
   their own ancestor is left out, and so are two fathers on one child, each
   with a warning.
@@ -161,10 +180,62 @@ from family.ged".
   typing, not the tree.
 - **History lasts for the session.** Reloading the page clears it, and the
   page shows what the server has.
-- **Last write wins:** a restore puts back the tree as this editor last saw
-  it. With the same family open in two tabs, an undo in one tab overwrites
-  changes made in the other. Accounts and sharing will need a version check
-  here.
+- **Two tabs never overwrite each other** (see "Changes from two tabs"
+  below). An undo in a tab that is out of date is refused, and that tab asks
+  you to reload.
+- **Sources, citations and photos are part of the snapshot.** Undoing the
+  removal of a photo brings back the same file. Uploaded files are stored
+  by content and never deleted with their link (see "Photos and documents").
+
+## Changes from two tabs
+
+Every tree has a version: the time of its last change. The editor sends
+the version it last saw with every change, in the standard `If-Match`
+header. On the server, each change runs in one transaction that:
+
+1. locks the tree's row, so concurrent changes wait their turn;
+2. compares versions, and on a mismatch writes nothing and answers `409
+   Conflict` ("This family was changed in another tab…");
+3. otherwise makes the change and moves the version on.
+
+The editor then shows **"Another tab made changes to this family. Your last
+change was not saved, so nothing was overwritten."** with a **Reload**
+button. Optimistic changes (poster settings, an undo) are put back.
+
+The editor sends its own changes one at a time, each with the version the
+previous one returned, so a settings save racing an edit never conflicts
+with itself. Requests without `If-Match` (scripts, `curl`) are not checked.
+This is the groundwork for real collaboration, which can later merge
+instead of refusing.
+
+## Photos, documents and sources
+
+Below a person's details:
+
+- **Photos and documents:** upload JPEG, PNG, GIF, WebP or PDF (up to 5 MB).
+  Images show as thumbnails, with an editable caption and a remove button.
+- **Sources:** each citation shows the source, the page and the event. To
+  cite one, pick a source, the event (birth, death, marriage, burial …) and
+  the page. "＋ New source" opens a small dialog for the title, author,
+  publication and notes.
+
+Each change is saved at once and is one undo step; none of it waits for
+the form's Save.
+
+**Files** are uploaded to `POST /api/media/blob` and stored in the database
+under their SHA-256 (`MediaBlob`). The Media row keeps only the URL
+(`/api/media/blob/<sha256>`). This has three consequences:
+
+- The tree, which travels with every edit and every undo snapshot, carries
+  short URLs, not megabytes of base64.
+- The same photo uploaded twice is stored once. A deleted photo's file stays
+  stored, so undo can bring the photo back.
+- Moving to cloud storage later changes only the URLs.
+
+Files are served with `Cache-Control: immutable`, `nosniff` and a sandboxing
+Content-Security-Policy. The server refuses `data:` and `javascript:` URLs
+in Media rows. In the database-free demo there is no server, so an upload
+is held in the page as a `data:` URL.
 
 ## The three tiers: foundation, trunk, canopy
 
@@ -345,7 +416,8 @@ shajarah/
 │   │   └── api/                 REST routes (see below)
 │   ├── components/
 │   │   ├── editor/              TreeWorkspace, MemberForm, RelationsPanel, MemberPicker, repository,
-│   │   │                        GedcomPanel + gedcom.worker (preview off the main thread)
+│   │   │                        GedcomPanel + gedcom.worker (preview off the main thread),
+│   │   │                        MemberAttachments (photos, documents, sources)
 │   │   └── poster/              TreePoster (SVG), PosterViewport (d3-zoom), ExportMenu
 │   └── lib/
 │       ├── layout/              ← procedural layout engine (pure, framework-free)
@@ -385,6 +457,13 @@ shajarah/
   transaction whenever parentage changes.
 - **Marriage** is a separate table, so a member can have several spouses,
   each with optional dates.
+- **Source** (title, author, publication, notes) belongs to a tree.
+  **Citation** links a source to a person, optionally for one event
+  (`BIRT`, `DEAT`, `MARR` …) and a page.
+- **Media** (url, caption, fileType) belongs to a person or to a source.
+  **MediaBlob** holds uploaded file contents by SHA-256.
+- Citations and media go with their person or source (cascade), and with
+  the tree.
 
 **Why tiers are two pointers, not per-member flags.** A member's tier
 (soil, trunk or canopy) follows from their position relative to
@@ -423,6 +502,17 @@ reconcile partial state.
 | POST | `/api/trees/:treeId/undo-import` | undo one import (`{ memberIds, marriageIds, restore, rootMemberId }`) |
 | GET | `/api/trees/:treeId/gedcom` | the tree as a GEDCOM 5.5.1 file |
 | POST | `/api/trees/:treeId/restore` | put the whole tree back to a snapshot (undo/redo); validated, written as a diff in one transaction |
+| POST | `/api/trees/:treeId/sources` | add a source (`title`, `author`, `publication`, `notes`) |
+| POST | `/api/trees/:treeId/citations` | cite a source for a person (`sourceId`, `memberId`, `eventType`, `page`) |
+| DELETE | `/api/citations/:citationId` | remove a citation |
+| POST | `/api/trees/:treeId/media` | attach a photo or document (`url`, `caption`, `fileType`) to a person or a source |
+| PATCH / DELETE | `/api/media/:mediaId` | change caption or file / remove |
+| POST | `/api/media/blob` | upload a file (raw bytes + `Content-Type`); returns its URL |
+| GET | `/api/media/blob/:sha256` | an uploaded file |
+
+Every change accepts `If-Match: <version>` (the `version` of the tree last
+received). If the tree has changed since, the answer is `409 Conflict` and
+nothing is written.
 
 - Setting a `deathYear` on a member also marks them deceased.
 - `settings: null` resets the poster settings to the defaults.
@@ -612,13 +702,13 @@ Without a sample value, `/demo` loads the large demo family.
 
 In order:
 
-1. **Sources and media** in the data model, so GEDCOM `SOUR`/`OBJE` can be
-   imported instead of counted.
+1. **A sources page** to edit or merge sources, and see everything each
+   one supports. Today sources are created and cited from a person.
 2. **Server-side vector PDF** (headless Chromium `page.pdf()`), with
    CMYK/bleed options, once print shops ask for it. Until then the SVG opens
    in Inkscape.
-3. **Accounts and per-family sharing**, with a version check on restores
-   so two editors cannot overwrite each other's work.
+3. **Accounts and per-family sharing**, building on the version check: live
+   updates between editors instead of "reload".
 
 Also wanted: Hijri dates, editable title/credits/sources panels like the
 reference posters, and drag-to-reorder siblings.

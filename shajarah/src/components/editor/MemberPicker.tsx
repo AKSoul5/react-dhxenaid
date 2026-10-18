@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { nasab } from "@/lib/genealogy";
 import type { Gender, MemberDTO } from "@/lib/types";
 
@@ -20,6 +20,7 @@ export function MemberPicker({ label, members, value, onChange, excludeGender, e
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const selected = members.find((m) => m.id === value) ?? null;
+  const inputId = useId();
 
   const options = useMemo(() => {
     const q = query.trim();
@@ -32,9 +33,10 @@ export function MemberPicker({ label, members, value, onChange, excludeGender, e
 
   return (
     <div className="relative">
-      <label className="mb-1 block text-xs font-medium text-bark-700">{label}</label>
+      <label htmlFor={inputId} className="mb-1 block text-xs font-medium text-bark-700">{label}</label>
       <div className="flex gap-1">
         <input
+          id={inputId}
           className="input flex-1"
           dir="auto"
           value={open ? query : selected ? nasab(members, selected.id, 2) : ""}
@@ -47,7 +49,7 @@ export function MemberPicker({ label, members, value, onChange, excludeGender, e
           onChange={(e) => setQuery(e.target.value)}
         />
         {selected && (
-          <button type="button" className="btn-ghost px-2" onClick={() => onChange(null)} title="Clear">
+          <button type="button" className="btn-ghost px-2" onClick={() => onChange(null)} title={`Clear ${label.toLowerCase()}`} aria-label={`Clear ${label.toLowerCase()}`}>
             ✕
           </button>
         )}

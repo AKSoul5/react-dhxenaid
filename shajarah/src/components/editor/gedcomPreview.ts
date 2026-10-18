@@ -5,7 +5,7 @@
 import { GEDCOM_MAX_CHARS, GEDCOM_MAX_PEOPLE, decodeGedcom, parseGedcom, planGedcomImport } from "@/lib/gedcom";
 import type { TreeDTO } from "@/lib/types";
 
-export type PreviewTree = Pick<TreeDTO, "members" | "marriages" | "lineage" | "rootMemberId">;
+export type PreviewTree = Pick<TreeDTO, "members" | "marriages" | "lineage" | "rootMemberId" | "sources" | "citations" | "media">;
 
 export interface GedcomPreview {
   /** The decoded file, sent to the server on Import. */
@@ -17,6 +17,10 @@ export interface GedcomPreview {
   reused: number;
   newMarriages: number;
   relinks: number;
+  newSources: number;
+  reusedSources: number;
+  newCitations: number;
+  newMedia: number;
   ambiguous: number;
   /** The new start of the trunk, when the import changes it. */
   newRootName: string | null;
@@ -42,7 +46,9 @@ export function previewGedcom(bytes: ArrayBuffer, tree: PreviewTree): GedcomPrev
   return {
     text, source: parsed.source, people: plan.people, families: parsed.families.length,
     newMembers: plan.newMembers.length, reused: plan.reused, newMarriages: plan.newMarriages.length,
-    relinks: plan.relinks.length, ambiguous: plan.ambiguous, newRootName: root?.name ?? null,
+    relinks: plan.relinks.length, ambiguous: plan.ambiguous,
+    newSources: plan.newSources.length, reusedSources: plan.reusedSources,
+    newCitations: plan.newCitations.length, newMedia: plan.newMedia.length, newRootName: root?.name ?? null,
     warnings: [...decodeWarnings, ...plan.warnings], blocked, ms: performance.now() - t0,
   };
 }

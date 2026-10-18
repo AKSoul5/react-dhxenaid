@@ -73,9 +73,50 @@ export const importGedcomSchema = z.object({
 export const undoImportSchema = z.object({
   memberIds: z.array(z.string()).max(50_000),
   marriageIds: z.array(z.string()).max(50_000),
+  sourceIds: z.array(z.string()).max(50_000).default([]),
+  citationIds: z.array(z.string()).max(200_000).default([]),
+  mediaIds: z.array(z.string()).max(200_000).default([]),
   restore: z.array(z.object({ id: z.string(), fatherId: z.string().nullable(), motherId: z.string().nullable() })).max(50_000),
   rootMemberId: z.string().nullable(),
 });
+
+const nullableText = (max: number) => z.string().trim().max(max).nullable();
+
+export const sourceFields = z.object({
+  title: z.string().trim().min(1, "A source needs a title").max(300),
+  author: nullableText(200),
+  publication: nullableText(300),
+  notes: nullableText(2000),
+});
+export const createSourceSchema = sourceFields.partial({ author: true, publication: true, notes: true });
+
+export const citationFields = z.object({
+  /** GEDCOM event tag ("BIRT", "DEAT", "MARR" …), or null for the person in general. */
+  eventType: z.string().trim().toUpperCase().regex(/^[A-Z_]{3,15}$/, "Unknown event").nullable(),
+  page: nullableText(300),
+});
+export const createCitationSchema = citationFields
+  .partial()
+  .extend({ sourceId: z.string(), memberId: z.string() });
+
+/** Any URL or path except a data: URL: uploaded files go to /api/media/blob first. */
+const mediaUrl = z
+  .string()
+  .trim()
+  .min(1)
+  .max(2048)
+  .refine((u) => !/^data:/i.test(u), "Upload the file first; the tree stores its URL")
+  .refine((u) => !/^\s*javascript:/i.test(u), "Not a file URL");
+export const mediaFields = z.object({
+  url: mediaUrl,
+  caption: nullableText(500),
+  fileType: z.string().trim().max(100).nullable(),
+});
+export const createMediaSchema = mediaFields
+  .partial({ caption: true, fileType: true })
+  .extend({ memberId: z.string().nullable().optional(), sourceId: z.string().nullable().optional() })
+  .refine((m) => !!m.memberId || !!m.sourceId, "A photo or document belongs to a person or a source");
+export const updateMediaSchema = mediaFields.partial();
 
 /**
  * A whole tree, as the editor holds it, to put back (undo/redo). Fields are
@@ -121,6 +162,13 @@ export const restoreTreeSchema = z.object({
       }),
     )
     .max(50_000),
+  sources: z.array(z.object({ id: z.string().min(1).max(64) }).merge(sourceFields)).max(50_000),
+  citations: z.array(z.object({ id: z.string().min(1).max(64), sourceId: z.string(), memberId: z.string() }).merge(citationFields)).max(200_000),
+  media: z
+    .array(
+      z.object({ id: z.string().min(1).max(64), memberId: z.string().nullable(), sourceId: z.string().nullable() }).merge(mediaFields),
+    )
+    .max(200_000),
 });
 
 export const memberFieldsSchema = z.object({
@@ -159,3 +207,7 @@ export type ImportNasabInput = z.infer<typeof importNasabSchema>;
 export type ImportGedcomInput = z.infer<typeof importGedcomSchema>;
 export type UndoImportInput = z.infer<typeof undoImportSchema>;
 export type RestoreTreeInput = z.infer<typeof restoreTreeSchema>;
+export type CreateSourceInput = z.infer<typeof createSourceSchema>;
+export type CreateCitationInput = z.infer<typeof createCitationSchema>;
+export type CreateMediaInput = z.infer<typeof createMediaSchema>;
+export type UpdateMediaInput = z.infer<typeof updateMediaSchema>;

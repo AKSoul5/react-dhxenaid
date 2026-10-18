@@ -13,7 +13,7 @@
 
 import { childrenIndex, computeGenerations, lineageParentId } from "./genealogy";
 import { normalizeName, parseNasab, splitLaqab } from "./nasab";
-import type { Gender, MarriageDTO, MemberDTO, TreeDTO } from "./types";
+import type { CitationDTO, Gender, MarriageDTO, MediaDTO, MemberDTO, SourceDTO, TreeDTO } from "./types";
 
 /** Largest file the server accepts (characters of text, about the same in bytes). */
 export const GEDCOM_MAX_CHARS = 20_000_000;
@@ -71,6 +71,34 @@ export interface GedcomPerson {
   fams: string[];
   /** Shajarah's own sibling order (_SHAJARAH_ORDER), when the file came from Shajarah. */
   order: number | null;
+  citations: GedcomCitation[];
+  media: GedcomMedia[];
+}
+
+/** A source record (0 @S1@ SOUR), or one written inline in a citation. */
+export interface GedcomSource {
+  xref: string;
+  title: string;
+  author: string | null;
+  publication: string | null;
+  notes: string | null;
+  media: GedcomMedia[];
+}
+
+/** A citation of a source, on a person or a family, for one event or in general. */
+export interface GedcomCitation {
+  /** The source's xref (an inline source gets a made-up one). */
+  source: string;
+  /** "BIRT", "DEAT", "MARR" …: the EVEN of the citation, or the event it is written under. */
+  eventType: string | null;
+  page: string | null;
+}
+
+/** A multimedia link: the file a program recorded, its format and title. */
+export interface GedcomMedia {
+  file: string;
+  fileType: string | null;
+  caption: string | null;
 }
 
 export interface GedcomFamily {
@@ -81,11 +109,14 @@ export interface GedcomFamily {
   children: string[];
   marriedYear: number | null;
   divorcedYear: number | null;
+  citations: GedcomCitation[];
+  media: GedcomMedia[];
 }
 
 export interface GedcomFile {
   people: GedcomPerson[];
   families: GedcomFamily[];
+  sources: GedcomSource[];
   /** The program that wrote the file, if it says. */
   source: string | null;
   warnings: string[];
@@ -153,6 +184,20 @@ export function gedcomYear(date: string | undefined): number | null {
   return y >= 1 && y <= 3000 ? y : null;
 }
 
+/** MIME type of a GEDCOM FORM ("jpg", "JPEG", "pdf") or of a file name's extension. */
+export function mediaType(form: string | null | undefined, file = ""): string | null {
+  const ext = (form?.trim() || /\.([a-z0-9]+)(?:[?#].*)?$/i.exec(file)?.[1] || "").toLowerCase();
+  const types: Record<string, string> = {
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif", webp: "image/webp", bmp: "image/bmp",
+    tif: "image/tiff", tiff: "image/tiff", svg: "image/svg+xml", pdf: "application/pdf", txt: "text/plain",
+    mp3: "audio/mpeg", wav: "audio/wav", mp4: "video/mp4", mov: "video/quicktime",
+  };
+  return types[ext] ?? null;
+}
+
+/** GEDCOM FORM for a MIME type ("image/jpeg" → "jpeg"). */
+const formOf = (fileType: string | null) => (fileType ? (fileType.split("/")[1] ?? "").replace(/\+.*$/, "") || null : null);
+
 /** "Born 12 JAN 1901, Sanaa": kept in the notes when there is more than a year. */
 function factLine(label: string, ev: GNode | undefined): string | null {
   if (!ev) return null;
@@ -168,13 +213,99 @@ export function parseGedcom(text: string): GedcomFile {
   const records = parseLines(text, warnings);
   if (!records.some((r) => r.tag === "INDI")) {
     if (!records.some((r) => r.tag === "HEAD")) warnings.push("This does not look like a GEDCOM file (no HEAD record).");
-    return { people: [], families: [], source: null, warnings: [...warnings, "No people (INDI records) found."] };
+    return { people: [], families: [], sources: [], source: null, warnings: [...warnings, "No people (INDI records) found."] };
   }
   const head = records.find((r) => r.tag === "HEAD");
   const sour = head && child(head, "SOUR");
   const source = sour ? (child(sour, "NAME")?.value || sour.value || null) : null;
   const noteRecords = new Map(records.filter((r) => r.tag === "NOTE" && r.xref).map((r) => [r.xref!, textOf(r)]));
-  let citations = 0, media = 0, multiParents = 0;
+  const noteText = (n: GNode) => (/^@[^@]+@$/.test(n.value.trim()) ? noteRecords.get(n.value.trim()) ?? "" : textOf(n));
+  let multiParents = 0, missingSources = 0, missingFiles = 0;
+
+  // ── media: OBJE records, inline OBJE, and links to records
+  const objeRecords = new Map(records.filter((r) => r.tag === "OBJE" && r.xref).map((r) => [r.xref!, r]));
+  /** The files of one OBJE (5.5.1 puts FORM and TITL under FILE, 5.5 beside it). */
+  const filesOf = (o: GNode): GedcomMedia[] => {
+    const files = childrenOf(o, "FILE");
+    if (!files.length) missingFiles++;
+    return files
+      .map((f) => {
+        const file = textOf(f).trim();
+        const form = child(f, "FORM")?.value ?? child(o, "FORM")?.value;
+        const titl = child(f, "TITL") ?? child(o, "TITL");
+        return { file, fileType: mediaType(form, file), caption: titl ? textOf(titl).trim() || null : null };
+      })
+      .filter((m) => m.file);
+  };
+  const mediaIn = (r: GNode): GedcomMedia[] => {
+    const out: GedcomMedia[] = [];
+    const visit = (n: GNode, depth: number) => {
+      for (const c of n.children) {
+        if (c.tag === "OBJE") {
+          const ptr = c.value.trim();
+          const rec = /^@[^@]+@$/.test(ptr) ? objeRecords.get(ptr) : c;
+          if (rec) out.push(...filesOf(rec));
+          else missingFiles++;
+        } else if (depth === 0 && c.tag !== "SOUR") visit(c, 1); // OBJE under an event
+      }
+    };
+    visit(r, 0);
+    return out;
+  };
+
+  // ── sources: SOUR records, and inline sources written in a citation
+  const sources = new Map<string, GedcomSource>();
+  for (const r of records.filter((x) => x.tag === "SOUR" && x.xref)) {
+    const titl = child(r, "TITL") ?? child(r, "ABBR");
+    const notes = [...childrenOf(r, "NOTE").map(noteText), ...childrenOf(r, "TEXT").map(textOf)].map((x) => x.trim()).filter(Boolean);
+    sources.set(r.xref!, {
+      xref: r.xref!,
+      title: (titl ? textOf(titl).trim() : "") || "Untitled source",
+      author: child(r, "AUTH") ? textOf(child(r, "AUTH")!).trim() || null : null,
+      publication: child(r, "PUBL") ? textOf(child(r, "PUBL")!).trim() || null : null,
+      notes: notes.length ? notes.join("\n\n").slice(0, NOTES_MAX) : null,
+      media: mediaIn(r),
+    });
+  }
+  const citationOf = (c: GNode, event: string | null): GedcomCitation | null => {
+    const ptr = c.value.trim();
+    let xref: string;
+    if (/^@[^@]+@$/.test(ptr)) {
+      if (!sources.has(ptr)) {
+        missingSources++;
+        return null;
+      }
+      xref = ptr;
+    } else {
+      // "1 SOUR Parish register of …": a source with no record of its own
+      const title = textOf(c).split("\n")[0].trim();
+      if (!title) return null;
+      xref = `inline:${normalizeName(title)}`;
+      if (!sources.has(xref)) {
+        const text = childrenOf(c, "TEXT").map(textOf).join("\n\n").trim();
+        sources.set(xref, { xref, title: title.slice(0, 300), author: null, publication: null, notes: text || null, media: [] });
+      }
+    }
+    const page = child(c, "PAGE") ? textOf(child(c, "PAGE")!).trim() || null : null;
+    const even = child(c, "EVEN")?.value.trim().toUpperCase() || null;
+    return { source: xref, eventType: even ?? event, page };
+  };
+  /** Citations on a record, and on its events (1 BIRT / 2 SOUR @S1@). */
+  const citationsIn = (r: GNode): GedcomCitation[] => {
+    const out: GedcomCitation[] = [];
+    for (const c of r.children) {
+      if (c.tag === "SOUR") {
+        const cit = citationOf(c, null);
+        if (cit) out.push(cit);
+      } else {
+        for (const g of childrenOf(c, "SOUR")) {
+          const cit = citationOf(g, c.tag);
+          if (cit) out.push(cit);
+        }
+      }
+    }
+    return out;
+  };
 
   const people: GedcomPerson[] = [];
   for (const r of records.filter((x) => x.tag === "INDI" && x.xref)) {
@@ -197,10 +328,8 @@ export function parseGedcom(text: string): GedcomFile {
       factLine("Born", birt),
       factLine("Died", deat),
       ...childrenOf(r, "OCCU").map((o) => `Occupation: ${textOf(o)}`),
-      ...childrenOf(r, "NOTE").map((n) => (/^@[^@]+@$/.test(n.value.trim()) ? noteRecords.get(n.value.trim()) ?? "" : textOf(n))),
+      ...childrenOf(r, "NOTE").map(noteText),
     ].map((s) => s?.trim()).filter(Boolean).join("\n\n");
-    citations += countTags(r, "SOUR");
-    media += countTags(r, "OBJE");
     const famc = childrenOf(r, "FAMC").map((f) => f.value.trim());
     if (famc.length > 1) multiParents++;
     people.push({
@@ -215,12 +344,12 @@ export function parseGedcom(text: string): GedcomFile {
       famc,
       fams: childrenOf(r, "FAMS").map((f) => f.value.trim()),
       order: /^\d+$/.test(child(r, ORDER_TAG)?.value.trim() ?? "") ? Number(child(r, ORDER_TAG)!.value) : null,
+      citations: citationsIn(r),
+      media: mediaIn(r),
     });
   }
 
   const families: GedcomFamily[] = records.filter((x) => x.tag === "FAM" && x.xref).map((r) => {
-    citations += countTags(r, "SOUR");
-    media += countTags(r, "OBJE");
     const marr = child(r, "MARR"), div = child(r, "DIV");
     return {
       xref: r.xref!,
@@ -229,6 +358,9 @@ export function parseGedcom(text: string): GedcomFile {
       children: childrenOf(r, "CHIL").map((c) => c.value.trim()),
       marriedYear: gedcomYear(marr && child(marr, "DATE")?.value),
       divorcedYear: gedcomYear(div && child(div, "DATE")?.value),
+      // a citation on the family itself is about the marriage
+      citations: citationsIn(r).map((c) => ({ ...c, eventType: c.eventType ?? "MARR" })),
+      media: mediaIn(r),
     };
   });
 
@@ -257,16 +389,15 @@ export function parseGedcom(text: string): GedcomFile {
   if (multiParents) {
     warnings.push(`${multiParents} ${multiParents === 1 ? "person has" : "people have"} more than one set of parents (e.g. adoption); the first is used.`);
   }
-  const skipped = [
-    citations && `${citations} source citation${citations === 1 ? "" : "s"}`,
-    media && `${media} media link${media === 1 ? "" : "s"}`,
-  ].filter(Boolean);
-  if (skipped.length) warnings.push(`${skipped.join(" and ")} were not imported: Shajarah does not store sources or media yet.`);
-  return { people, families, source, warnings };
-}
-
-function countTags(n: GNode, tag: string): number {
-  return n.children.reduce((k, c) => k + (c.tag === tag ? 1 : 0) + countTags(c, tag), 0);
+  if (missingSources) {
+    warnings.push(`${missingSources} citation${missingSources === 1 ? " refers" : "s refer"} to a source record that is not in the file and ${missingSources === 1 ? "was" : "were"} skipped.`);
+  }
+  if (missingFiles) {
+    warnings.push(
+      `${missingFiles} media link${missingFiles === 1 ? "" : "s"} could not be read (no file name, or a media record missing from the file) and ${missingFiles === 1 ? "was" : "were"} skipped.`,
+    );
+  }
+  return { people, families, sources: [...sources.values()], source, warnings };
 }
 
 // ── 3. Planning the import ───────────────────────────────────────────────
@@ -278,6 +409,13 @@ export interface GedcomPlan {
   newMembers: MemberDTO[];
   /** Marriages to create. */
   newMarriages: MarriageDTO[];
+  /** Sources to create (a source already in the tree, same title and author, is reused). */
+  newSources: SourceDTO[];
+  /** Sources in the file that were already in the tree. */
+  reusedSources: number;
+  /** Citations and media to create (ones already in the tree are not repeated). */
+  newCitations: CitationDTO[];
+  newMedia: MediaDTO[];
   /** Existing members the file gives a parent they did not have. */
   relinks: { id: string; fatherId: string | null; motherId: string | null }[];
   /** People in the file that are already in the tree (not created again). */
@@ -306,7 +444,7 @@ export interface GedcomPlan {
  * that a member without a recorded parent gets the one from the file.
  */
 export function planGedcomImport(
-  tree: Pick<TreeDTO, "members" | "marriages" | "lineage" | "rootMemberId">,
+  tree: Pick<TreeDTO, "members" | "marriages" | "lineage" | "rootMemberId" | "sources" | "citations" | "media">,
   file: GedcomFile,
   newId: () => string,
 ): GedcomPlan {
@@ -350,6 +488,7 @@ export function planGedcomImport(
     byName.set(k, [...(byName.get(k) ?? []), m]);
   }
   const used = new Set<string>();
+  const byIdInTree = new Map(tree.members.map((m) => [m.id, m]));
   const match = new Map<string, MemberDTO | null>();
   let ambiguous = 0;
   const matchOf = (x: string): MemberDTO | null => {
@@ -371,6 +510,32 @@ export function planGedcomImport(
       );
     }
     cands = cands.filter((c) => !used.has(c.id));
+    // at the top of the file's line, a member at the top of the tree's line
+    // is the better match (a grandson of the same name is not the ancestor)
+    if (!lp && cands.length > 1) {
+      const tops = cands.filter((c) => !lineageParentId(c, lineage));
+      if (tops.length) cands = tops;
+    }
+    // Brothers of the same name (half-brothers, often): tell them apart by
+    // their other parent's name, then their children's names, then their
+    // order. Each test only narrows the choice, never empties it.
+    const narrow = (keep: (c: MemberDTO) => boolean) => {
+      if (cands.length < 2) return;
+      const kept = cands.filter(keep);
+      if (kept.length) cands = kept;
+    };
+    const pr = parents.get(x)!;
+    const otherParent = lineage === "MATRILINEAL" ? pr.father : pr.mother;
+    if (otherParent) {
+      const otherKey = normalizeName(people.get(otherParent)!.name);
+      narrow((c) => {
+        const o = lineage === "MATRILINEAL" ? c.fatherId : c.motherId;
+        return !!o && normalizeName(byIdInTree.get(o)?.name ?? "") === otherKey;
+      });
+    }
+    const kidKeys = new Set((fileChildren.get(x) ?? []).map((c) => normalizeName(people.get(c)!.name)));
+    if (kidKeys.size) narrow((c) => (treeChildren.get(c.id) ?? []).some((k) => kidKeys.has(normalizeName(k.name))));
+    if (p.order !== null) narrow((c) => c.birthOrder === p.order);
     let found: MemberDTO | null = null;
     if (cands.length === 1) found = cands[0];
     else if (cands.length > 1) ambiguous++;
@@ -379,6 +544,35 @@ export function planGedcomImport(
     return found;
   };
   for (const p of file.people) matchOf(p.xref);
+  // Second pass, for people who married into the line (no parent in the
+  // line, no children counted in it): an unmatched spouse is the member of
+  // the same name who is already married to their matched spouse, or is
+  // already the other parent of their matched children.
+  const spousesOf = new Map<string, Set<string>>();
+  for (const x of tree.marriages) {
+    spousesOf.set(x.spouseAId, (spousesOf.get(x.spouseAId) ?? new Set()).add(x.spouseBId));
+    spousesOf.set(x.spouseBId, (spousesOf.get(x.spouseBId) ?? new Set()).add(x.spouseAId));
+  }
+  for (const f of file.families) {
+    for (const [x, y] of [[f.husband, f.wife], [f.wife, f.husband]] as const) {
+      if (!x || !people.has(x) || match.get(x)) continue;
+      const key = normalizeName(people.get(x)!.name);
+      const partner = y ? match.get(y) : null;
+      const known = new Set<string>(partner ? spousesOf.get(partner.id) ?? [] : []);
+      for (const c of f.children) {
+        const kid = match.get(c);
+        if (!kid) continue;
+        for (const pid of [kid.fatherId, kid.motherId]) if (pid && pid !== partner?.id) known.add(pid);
+      }
+      const cands = [...known]
+        .map((id) => byIdInTree.get(id))
+        .filter((m): m is MemberDTO => !!m && !used.has(m.id) && normalizeName(m.name) === key);
+      if (cands.length === 1) {
+        match.set(x, cands[0]);
+        used.add(cands[0].id);
+      } else if (cands.length > 1) ambiguous++;
+    }
+  }
 
   // ── members
   const idOf = new Map<string, string>();
@@ -464,6 +658,64 @@ export function planGedcomImport(
     newMarriages.push({ id: newId(), spouseAId: a, spouseBId: b, startYear: f.marriedYear, endYear: f.divorcedYear });
   }
 
+  // ── sources: one with the same title and author as a source in the tree is that source
+  const sourceKey = (title: string, author: string | null) => `${normalizeName(title)}|${normalizeName(author ?? "")}`;
+  const existingSource = new Map(tree.sources.map((x) => [sourceKey(x.title, x.author), x.id]));
+  const sourceId = new Map<string, string>();
+  const newSources: SourceDTO[] = [];
+  let reusedSources = 0;
+  for (const src of file.sources) {
+    const key = sourceKey(src.title, src.author);
+    const found = existingSource.get(key);
+    if (found) {
+      reusedSources++;
+      sourceId.set(src.xref, found);
+      continue;
+    }
+    const id = newId();
+    existingSource.set(key, id); // two records with the same title in one file are one source
+    sourceId.set(src.xref, id);
+    newSources.push({ id, title: src.title, author: src.author, publication: src.publication, notes: src.notes });
+  }
+
+  // ── citations and media, never repeating one already in the tree
+  const citationKey = (c: Pick<CitationDTO, "memberId" | "sourceId" | "eventType" | "page">) =>
+    [c.memberId, c.sourceId, c.eventType ?? "", c.page ?? ""].join("|");
+  const cited = new Set(tree.citations.map(citationKey));
+  const newCitations: CitationDTO[] = [];
+  const cite = (memberId: string, c: GedcomCitation) => {
+    const sid = sourceId.get(c.source);
+    if (!sid) return;
+    const row = { id: "", sourceId: sid, memberId, eventType: c.eventType, page: c.page };
+    if (cited.has(citationKey(row))) return;
+    cited.add(citationKey(row));
+    newCitations.push({ ...row, id: newId() });
+  };
+  const mediaKey = (m: Pick<MediaDTO, "memberId" | "sourceId" | "url">) => [m.memberId ?? "", m.sourceId ?? "", m.url].join("|");
+  const shown = new Set(tree.media.map(mediaKey));
+  const newMedia: MediaDTO[] = [];
+  const attach = (owner: { memberId: string | null; sourceId: string | null }, m: GedcomMedia) => {
+    const row = { id: "", ...owner, url: m.file, caption: m.caption, fileType: m.fileType };
+    if (shown.has(mediaKey(row))) return;
+    shown.add(mediaKey(row));
+    newMedia.push({ ...row, id: newId() });
+  };
+  for (const p of file.people) {
+    const id = idOf.get(p.xref)!;
+    for (const c of p.citations) cite(id, c);
+    for (const m of p.media) attach({ memberId: id, sourceId: null }, m);
+  }
+  for (const f of file.families) {
+    // a marriage record has no row of its own: its sources go to both spouses, its media to the husband (or wife)
+    const spouses = [f.husband, f.wife].filter((x): x is string => !!x && people.has(x)).map((x) => idOf.get(x)!);
+    for (const c of f.citations) for (const id of spouses) cite(id, c);
+    if (spouses.length) for (const m of f.media) attach({ memberId: spouses[0], sourceId: null }, m);
+  }
+  for (const src of file.sources) {
+    const id = sourceId.get(src.xref)!;
+    for (const m of src.media) attach({ memberId: null, sourceId: id }, m);
+  }
+
   // ── generations and the root
   const members = [...all.values()];
   const gens = computeGenerations(members, lineage);
@@ -495,6 +747,10 @@ export function planGedcomImport(
     people: file.people.length,
     newMembers: created.map((m) => all.get(m.id)!),
     newMarriages,
+    newSources,
+    reusedSources,
+    newCitations,
+    newMedia,
     relinks: [...relinked.values()],
     reused: file.people.length - created.length,
     ambiguous,
@@ -506,8 +762,17 @@ export function planGedcomImport(
 
 // ── 4. Export ────────────────────────────────────────────────────────────
 
-/** The tree as a GEDCOM 5.5.1 file (UTF-8, lineage-linked). */
-export function exportGedcom(tree: Pick<TreeDTO, "name" | "members" | "marriages">): string {
+/**
+ * The tree as a GEDCOM 5.5.1 file (UTF-8, lineage-linked), with its sources
+ * (SOUR records, cited with PAGE and the event in EVEN) and media links
+ * (OBJE with FILE, FORM and TITL). `baseUrl` makes uploaded files' URLs
+ * absolute, so another program can fetch them; files held only in the
+ * browser (the demo) cannot be linked and are left out.
+ */
+export function exportGedcom(
+  tree: Pick<TreeDTO, "name" | "members" | "marriages"> & Partial<Pick<TreeDTO, "sources" | "citations" | "media">>,
+  opts: { baseUrl?: string } = {},
+): string {
   const lines: string[] = [];
   const out = (level: number, tag: string, value = "", xref?: string) =>
     lines.push([level, xref, tag, value].filter((v) => v !== undefined && v !== "").join(" "));
@@ -522,6 +787,25 @@ export function exportGedcom(tree: Pick<TreeDTO, "name" | "members" | "marriages
     });
   };
   const ref = new Map(tree.members.map((m, i) => [m.id, `@I${i + 1}@`]));
+  const sources = tree.sources ?? [];
+  const sref = new Map(sources.map((x, i) => [x.id, `@S${i + 1}@`]));
+  const citationsOf = new Map<string, CitationDTO[]>();
+  for (const c of tree.citations ?? []) if (sref.has(c.sourceId)) citationsOf.set(c.memberId, [...(citationsOf.get(c.memberId) ?? []), c]);
+  const mediaOf = new Map<string, MediaDTO[]>();
+  for (const m of tree.media ?? []) {
+    const owner = m.memberId ?? m.sourceId;
+    if (owner && !m.url.startsWith("data:")) mediaOf.set(owner, [...(mediaOf.get(owner) ?? []), m]);
+  }
+  const fileUrl = (url: string) => (opts.baseUrl && url.startsWith("/") ? opts.baseUrl.replace(/\/$/, "") + url : url);
+  const outMedia = (level: number, list: MediaDTO[] | undefined) => {
+    for (const m of list ?? []) {
+      out(level, "OBJE");
+      out(level + 1, "FILE", fileUrl(m.url).replace(/@/g, "@@"));
+      const form = formOf(m.fileType);
+      if (form) out(level + 2, "FORM", form);
+      if (m.caption) outText(level + 1, "TITL", m.caption);
+    }
+  };
 
   // Families: every couple, and every (father, mother) pair with children
   type Fam = { xref: string; husband: string | null; wife: string | null; children: MemberDTO[]; marriage?: MarriageDTO };
@@ -557,6 +841,14 @@ export function exportGedcom(tree: Pick<TreeDTO, "name" | "members" | "marriages
   outText(1, "NOTE", `Family: ${tree.name}`);
   out(0, "SUBM", "", "@U1@");
   out(1, "NAME", "Shajarah");
+  for (const x of sources) {
+    out(0, "SOUR", "", sref.get(x.id));
+    outText(1, "TITL", x.title);
+    if (x.author) outText(1, "AUTH", x.author);
+    if (x.publication) outText(1, "PUBL", x.publication);
+    if (x.notes) outText(1, "NOTE", x.notes);
+    outMedia(1, mediaOf.get(x.id));
+  }
   const famList = [...fams.values()];
   for (const m of tree.members) {
     out(0, "INDI", "", ref.get(m.id));
@@ -573,6 +865,12 @@ export function exportGedcom(tree: Pick<TreeDTO, "name" | "members" | "marriages
       out(2, "DATE", String(m.deathYear));
     } else if (m.isDeceased) out(1, "DEAT", "Y");
     if (m.notes) outText(1, "NOTE", m.notes);
+    for (const c of citationsOf.get(m.id) ?? []) {
+      out(1, "SOUR", sref.get(c.sourceId));
+      if (c.page) outText(2, "PAGE", c.page);
+      if (c.eventType) out(2, "EVEN", c.eventType);
+    }
+    outMedia(1, mediaOf.get(m.id));
     for (const f of famList) if (f.children.includes(m)) out(1, "FAMC", f.xref);
     for (const f of famList) if (f.husband === m.id || f.wife === m.id) out(1, "FAMS", f.xref);
   }

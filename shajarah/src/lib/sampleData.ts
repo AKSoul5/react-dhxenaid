@@ -88,7 +88,7 @@ export function generateSampleTree(seed = 11, targetSize = 320): TreeDTO {
     soilText: null,
     settings: { showFemales: false, seed: 7 },
     members,
-    marriages: [],
+    marriages: [], sources: [], citations: [], media: [],
   };
 }
 

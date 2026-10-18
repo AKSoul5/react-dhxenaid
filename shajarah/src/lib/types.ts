@@ -98,6 +98,45 @@ export interface TreeDTO {
   settings: PosterSettings | null;
   members: MemberDTO[];
   marriages: MarriageDTO[];
+  sources: SourceDTO[];
+  citations: CitationDTO[];
+  media: MediaDTO[];
+  /**
+   * The tree's version on the server (its last change, as an ISO time).
+   * Sent back with every change so a change made from a stale copy (another
+   * tab) is refused instead of silently overwriting. Absent in the demo.
+   */
+  version?: string;
+}
+
+/** Where facts come from: a register, a book, a family document. */
+export interface SourceDTO {
+  id: string;
+  title: string;
+  author: string | null;
+  publication: string | null;
+  notes: string | null;
+}
+
+/** A source cited for a person, optionally for one event and a page. */
+export interface CitationDTO {
+  id: string;
+  sourceId: string;
+  memberId: string;
+  /** GEDCOM event tag: "BIRT", "DEAT", "MARR" …; null for the person in general. */
+  eventType: string | null;
+  page: string | null;
+}
+
+/** A photo or document attached to a person or to a source. */
+export interface MediaDTO {
+  id: string;
+  memberId: string | null;
+  sourceId: string | null;
+  /** /api/media/blob/<sha256> for uploads, a data: URL in the demo, or the path a GEDCOM file recorded. */
+  url: string;
+  caption: string | null;
+  fileType: string | null;
 }
 
 export interface TreeSummary {

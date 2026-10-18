@@ -3,17 +3,21 @@
 // delete-and-reinsert, so ids stay stable and an undo of one edit touches
 // one row.
 
-import type { MarriageDTO, MemberDTO, TreeDTO } from "./types";
+import type { CitationDTO, MarriageDTO, MediaDTO, MemberDTO, SourceDTO, TreeDTO } from "./types";
 
 export type TreeSnapshot = Pick<
   TreeDTO,
-  "name" | "title" | "subtitle" | "lineage" | "rootMemberId" | "crownBaseId" | "trunkStartId" | "soilText" | "settings" | "members" | "marriages"
+  | "name" | "title" | "subtitle" | "lineage" | "rootMemberId" | "crownBaseId" | "trunkStartId" | "soilText" | "settings"
+  | "members" | "marriages" | "sources" | "citations" | "media"
 >;
 
 const MEMBER_FIELDS = [
   "name", "laqab", "gender", "birthYear", "deathYear", "isDeceased", "birthOrder", "notes", "fatherId", "motherId",
 ] as const;
 const MARRIAGE_FIELDS = ["spouseAId", "spouseBId", "startYear", "endYear"] as const;
+const SOURCE_FIELDS = ["title", "author", "publication", "notes"] as const;
+const CITATION_FIELDS = ["sourceId", "memberId", "eventType", "page"] as const;
+const MEDIA_FIELDS = ["memberId", "sourceId", "url", "caption", "fileType"] as const;
 
 /** Why a snapshot cannot be a tree (a reference to nobody, a cycle …), or null. */
 export function snapshotError(s: TreeSnapshot): string | null {
@@ -62,7 +66,58 @@ export function snapshotError(s: TreeSnapshot): string | null {
     if (!byId.has(x.spouseAId) || !byId.has(x.spouseBId)) return "A marriage refers to someone not in the tree.";
     if (x.spouseAId === x.spouseBId) return "A member cannot marry themselves.";
   }
+  const sources = new Set<string>();
+  for (const x of s.sources) {
+    if (sources.has(x.id)) return `Source ${x.id} appears twice.`;
+    sources.add(x.id);
+  }
+  const citations = new Set<string>();
+  for (const c of s.citations) {
+    if (citations.has(c.id)) return `Citation ${c.id} appears twice.`;
+    citations.add(c.id);
+    if (!sources.has(c.sourceId) || !byId.has(c.memberId)) return "A citation refers to a source or person not in the tree.";
+  }
+  const media = new Set<string>();
+  for (const x of s.media) {
+    if (media.has(x.id)) return `Media ${x.id} appears twice.`;
+    media.add(x.id);
+    if (!x.memberId && !x.sourceId) return "A photo or document must belong to a person or a source.";
+    if ((x.memberId && !byId.has(x.memberId)) || (x.sourceId && !sources.has(x.sourceId))) {
+      return "A photo or document refers to a person or source not in the tree.";
+    }
+  }
   return null;
+}
+
+/** Rows to create, update (changed fields only) and delete to turn `current` into `target`. */
+export interface RowDiff<T extends { id: string }> {
+  create: T[];
+  update: { id: string; data: Partial<T> }[];
+  delete: string[];
+}
+
+function diffRows<T extends { id: string }>(current: T[], target: T[], fields: readonly (keyof T)[]): RowDiff<T> {
+  const now = new Map(current.map((x) => [x.id, x]));
+  const want = new Set(target.map((x) => x.id));
+  const update: RowDiff<T>["update"] = [];
+  for (const x of target) {
+    const cur = now.get(x.id);
+    if (!cur) continue;
+    const data: Partial<T> = {};
+    for (const f of fields) if (cur[f] !== x[f]) data[f] = x[f];
+    if (Object.keys(data).length) update.push({ id: x.id, data });
+  }
+  return {
+    create: target.filter((x) => !now.has(x.id)),
+    update,
+    delete: current.filter((x) => !want.has(x.id)).map((x) => x.id),
+  };
+}
+
+function applyRows<T extends { id: string }>(rows: T[], d: RowDiff<T>): T[] {
+  const gone = new Set(d.delete);
+  const updates = new Map(d.update.map((u) => [u.id, u.data]));
+  return [...rows.filter((x) => !gone.has(x.id)).map((x) => ({ ...x, ...updates.get(x.id) })), ...d.create];
 }
 
 export interface RestorePlan {
@@ -71,11 +126,12 @@ export interface RestorePlan {
   /** Existing members whose fields differ (only the changed fields). */
   updateMembers: { id: string; data: Partial<MemberDTO> }[];
   deleteMemberIds: string[];
-  createMarriages: MarriageDTO[];
-  updateMarriages: { id: string; data: Partial<MarriageDTO> }[];
-  deleteMarriageIds: string[];
+  marriages: RowDiff<MarriageDTO>;
+  sources: RowDiff<SourceDTO>;
+  citations: RowDiff<CitationDTO>;
+  media: RowDiff<MediaDTO>;
   /** Tree fields that differ. */
-  tree: Partial<Omit<TreeSnapshot, "members" | "marriages">>;
+  tree: Partial<Omit<TreeSnapshot, "members" | "marriages" | "sources" | "citations" | "media">>;
 }
 
 export function planRestore(current: TreeSnapshot, target: TreeSnapshot): RestorePlan {
@@ -105,17 +161,6 @@ export function planRestore(current: TreeSnapshot, target: TreeSnapshot): Restor
     if (Object.keys(data).length) updateMembers.push({ id: m.id, data });
   }
 
-  const nowMar = new Map(current.marriages.map((x) => [x.id, x]));
-  const wantMar = new Set(target.marriages.map((x) => x.id));
-  const updateMarriages: RestorePlan["updateMarriages"] = [];
-  for (const x of target.marriages) {
-    const cur = nowMar.get(x.id);
-    if (!cur) continue;
-    const data: Partial<MarriageDTO> = {};
-    for (const f of MARRIAGE_FIELDS) if (cur[f] !== x[f]) (data as Record<string, unknown>)[f] = x[f];
-    if (Object.keys(data).length) updateMarriages.push({ id: x.id, data });
-  }
-
   const tree: RestorePlan["tree"] = {};
   for (const f of ["name", "title", "subtitle", "lineage", "rootMemberId", "crownBaseId", "trunkStartId", "soilText"] as const) {
     if (current[f] !== target[f]) (tree as Record<string, unknown>)[f] = target[f];
@@ -126,9 +171,10 @@ export function planRestore(current: TreeSnapshot, target: TreeSnapshot): Restor
     createMembers,
     updateMembers,
     deleteMemberIds: current.members.filter((m) => !want.has(m.id)).map((m) => m.id),
-    createMarriages: target.marriages.filter((x) => !nowMar.has(x.id)),
-    updateMarriages,
-    deleteMarriageIds: current.marriages.filter((x) => !wantMar.has(x.id)).map((x) => x.id),
+    marriages: diffRows(current.marriages, target.marriages, MARRIAGE_FIELDS),
+    sources: diffRows(current.sources, target.sources, SOURCE_FIELDS),
+    citations: diffRows(current.citations, target.citations, CITATION_FIELDS),
+    media: diffRows(current.media, target.media, MEDIA_FIELDS),
     tree,
   };
 }
@@ -141,12 +187,14 @@ export function applyRestore(current: TreeSnapshot, plan: RestorePlan): TreeSnap
     ...current.members.filter((m) => !gone.has(m.id)).map((m) => ({ ...m, ...updates.get(m.id) })),
     ...plan.createMembers,
   ];
-  const goneMar = new Set(plan.deleteMarriageIds);
-  const marUpdates = new Map(plan.updateMarriages.map((u) => [u.id, u.data]));
-  const marriages = [
-    ...current.marriages.filter((x) => !goneMar.has(x.id)).map((x) => ({ ...x, ...marUpdates.get(x.id) })),
-    ...plan.createMarriages,
-  ];
-  return { ...current, ...plan.tree, members, marriages };
+  return {
+    ...current,
+    ...plan.tree,
+    members,
+    marriages: applyRows(current.marriages, plan.marriages),
+    sources: applyRows(current.sources, plan.sources),
+    citations: applyRows(current.citations, plan.citations),
+    media: applyRows(current.media, plan.media),
+  };
 }
 

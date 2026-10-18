@@ -1,11 +1,12 @@
 import { computeGenerations, parentAssignmentError } from "@/lib/genealogy";
-import type { MemberDTO, TreeDTO } from "@/lib/types";
+import type { MediaDTO, MemberDTO, TreeDTO } from "@/lib/types";
 import { applyNasabLines } from "@/lib/nasab";
 import { parseGedcom, planGedcomImport } from "@/lib/gedcom";
 import { undoImportLocally, type ImportReceipt } from "@/lib/imports";
 import { snapshotError } from "@/lib/restore";
 import type {
-  CreateMarriageInput, CreateMemberInput, UpdateMemberInput, UpdateTreeInput,
+  CreateCitationInput, CreateMarriageInput, CreateMediaInput, CreateMemberInput, CreateSourceInput, UpdateMediaInput,
+  UpdateMemberInput, UpdateTreeInput,
 } from "@/lib/validation";
 
 /** Every mutation resolves to the full, updated tree. */
@@ -24,20 +25,58 @@ export interface FamilyRepository {
   undoImport(receipt: ImportReceipt): Promise<TreeDTO>;
   /** Puts the whole tree back to a snapshot (undo/redo). */
   restore(snapshot: TreeDTO): Promise<TreeDTO>;
+  createSource(input: CreateSourceInput): Promise<TreeDTO>;
+  createCitation(input: CreateCitationInput): Promise<TreeDTO>;
+  deleteCitation(id: string): Promise<TreeDTO>;
+  /** Stores a file and returns the URL to attach (does not change the tree). */
+  uploadMedia(file: File): Promise<{ url: string; fileType: string }>;
+  createMedia(input: CreateMediaInput): Promise<TreeDTO>;
+  updateMedia(id: string, input: UpdateMediaInput): Promise<TreeDTO>;
+  deleteMedia(id: string): Promise<TreeDTO>;
 }
 
-async function call(url: string, method: string, body?: unknown): Promise<TreeDTO> {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
-  return data as TreeDTO;
+/** The tree changed on the server since this editor loaded it (another tab, another device). */
+export class ConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConflictError";
+  }
 }
 
-export function apiRepository(treeId: string): FamilyRepository {
+const MEDIA_MAX_BYTES = 5 * 1024 * 1024;
+const MEDIA_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp", "application/pdf"];
+const checkUpload = (file: File) => {
+  if (!MEDIA_TYPES.includes(file.type)) throw new Error("Upload a JPEG, PNG, GIF or WebP image, or a PDF.");
+  if (file.size > MEDIA_MAX_BYTES) throw new Error(`${file.name} is larger than 5 MB.`);
+};
+
+/**
+ * The server-backed repository. Every change carries the tree version this
+ * editor last received (If-Match): if another tab changed the tree since,
+ * the server refuses with 409 and this throws ConflictError. Changes are
+ * sent one at a time, each with the version the previous one returned, so
+ * the editor never conflicts with itself (a settings save racing an edit).
+ */
+export function apiRepository(treeId: string, initialVersion?: string): FamilyRepository {
+  let version = initialVersion;
+  let queue: Promise<unknown> = Promise.resolve();
+  const call = (url: string, method: string, body?: unknown): Promise<TreeDTO> => {
+    const run = async () => {
+      const headers: Record<string, string> = {};
+      if (body) headers["Content-Type"] = "application/json";
+      if (version) headers["If-Match"] = version;
+      const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 409) throw new ConflictError(data.error ?? "This family was changed elsewhere. Reload to see the latest version.");
+      if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      const tree = data as TreeDTO;
+      if (tree.version) version = tree.version;
+      return tree;
+    };
+    const next = queue.then(run, run);
+    queue = next.catch(() => undefined);
+    return next;
+  };
   return {
     createMember: (input) => call(`/api/trees/${treeId}/members`, "POST", input),
     updateMember: (id, input) => call(`/api/members/${id}`, "PATCH", input),
@@ -48,7 +87,20 @@ export function apiRepository(treeId: string): FamilyRepository {
     importNasab: (text) => call(`/api/trees/${treeId}/import-nasab`, "POST", { text }),
     importGedcom: (text) => call(`/api/trees/${treeId}/import-gedcom`, "POST", { text }),
     undoImport: (receipt) => call(`/api/trees/${treeId}/undo-import`, "POST", receipt),
-    restore: ({ id: _id, ...snapshot }) => call(`/api/trees/${treeId}/restore`, "POST", snapshot),
+    restore: ({ id: _id, version: _v, ...snapshot }) => call(`/api/trees/${treeId}/restore`, "POST", snapshot),
+    createSource: (input) => call(`/api/trees/${treeId}/sources`, "POST", input),
+    createCitation: (input) => call(`/api/trees/${treeId}/citations`, "POST", input),
+    deleteCitation: (id) => call(`/api/citations/${id}`, "DELETE"),
+    uploadMedia: async (file) => {
+      checkUpload(file);
+      const res = await fetch("/api/media/blob", { method: "POST", headers: { "Content-Type": file.type }, body: file });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? `Upload failed (${res.status})`);
+      return { url: data.url as string, fileType: data.fileType as string };
+    },
+    createMedia: (input) => call(`/api/trees/${treeId}/media`, "POST", input),
+    updateMedia: (id, input) => call(`/api/media/${id}`, "PATCH", input),
+    deleteMedia: (id) => call(`/api/media/${id}`, "DELETE"),
   };
 }
 
@@ -56,6 +108,7 @@ export function apiRepository(treeId: string): FamilyRepository {
 export function localRepository(initial: TreeDTO): FamilyRepository {
   let tree = structuredClone(initial);
   let seq = 0;
+  const localId = () => `local-${Date.now()}-${seq++}`;
   const commit = (next: TreeDTO) => {
     const gens = computeGenerations(next.members, next.lineage);
     next.members = next.members.map((m) => ({ ...m, generation: gens.get(m.id) ?? 0 }));
@@ -106,6 +159,9 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
             ...m, fatherId: m.fatherId === id ? null : m.fatherId, motherId: m.motherId === id ? null : m.motherId,
           })),
         marriages: tree.marriages.filter((x) => x.spouseAId !== id && x.spouseBId !== id),
+        // their citations and media go with them, as in the database
+        citations: tree.citations.filter((c) => c.memberId !== id),
+        media: tree.media.filter((x) => x.memberId !== id),
       });
     },
     async createMarriage(input) {
@@ -136,12 +192,53 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
       const file = parseGedcom(text);
       if (!file.people.length) throw new Error(file.warnings.at(-1) ?? "No people found in the file.");
       const plan = planGedcomImport(tree, file, () => `local-${Date.now()}-${seq++}`);
-      return commit({ ...tree, members: plan.members, marriages: [...tree.marriages, ...plan.newMarriages], rootMemberId: plan.rootMemberId });
+      return commit({
+        ...tree, members: plan.members, marriages: [...tree.marriages, ...plan.newMarriages], rootMemberId: plan.rootMemberId,
+        sources: [...tree.sources, ...plan.newSources], citations: [...tree.citations, ...plan.newCitations],
+        media: [...tree.media, ...plan.newMedia],
+      });
     },
     async restore(snapshot) {
       const err = snapshotError(snapshot);
       if (err) throw new Error(`Cannot restore: ${err}`);
       return commit(structuredClone({ ...snapshot, id: tree.id }));
+    },
+    async createSource(input) {
+      const source = { id: localId(), title: input.title, author: input.author ?? null, publication: input.publication ?? null, notes: input.notes ?? null };
+      return commit({ ...tree, sources: [...tree.sources, source] });
+    },
+    async createCitation(input) {
+      if (!tree.sources.some((x) => x.id === input.sourceId)) throw new Error("Source is not in this tree.");
+      if (!tree.members.some((m) => m.id === input.memberId)) throw new Error("Member is not in this tree.");
+      const citation = { id: localId(), sourceId: input.sourceId, memberId: input.memberId, eventType: input.eventType ?? null, page: input.page ?? null };
+      return commit({ ...tree, citations: [...tree.citations, citation] });
+    },
+    async deleteCitation(id) {
+      return commit({ ...tree, citations: tree.citations.filter((c) => c.id !== id) });
+    },
+    async uploadMedia(file) {
+      // no server in the demo: the file lives in the page as a data: URL
+      checkUpload(file);
+      const url = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error ?? new Error("Could not read the file"));
+        r.readAsDataURL(file);
+      });
+      return { url, fileType: file.type };
+    },
+    async createMedia(input) {
+      const media: MediaDTO = {
+        id: localId(), memberId: input.memberId ?? null, sourceId: input.sourceId ?? null,
+        url: input.url, caption: input.caption ?? null, fileType: input.fileType ?? null,
+      };
+      return commit({ ...tree, media: [...tree.media, media] });
+    },
+    async updateMedia(id, input) {
+      return commit({ ...tree, media: tree.media.map((x) => (x.id === id ? { ...x, ...input } : x)) });
+    },
+    async deleteMedia(id) {
+      return commit({ ...tree, media: tree.media.filter((x) => x.id !== id) });
     },
     async undoImport(receipt) {
       return commit(undoImportLocally(tree, receipt));

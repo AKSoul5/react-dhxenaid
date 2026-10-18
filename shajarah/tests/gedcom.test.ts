@@ -20,7 +20,7 @@ const ids = () => {
 };
 const emptyTree = (lineage: TreeDTO["lineage"] = "PATRILINEAL"): TreeDTO => ({
   id: "t", name: "t", title: null, subtitle: null, lineage, rootMemberId: null, crownBaseId: null,
-  trunkStartId: null, soilText: null, settings: null, members: [], marriages: [],
+  trunkStartId: null, soilText: null, settings: null, members: [], marriages: [], sources: [], citations: [], media: [],
 });
 const named = (members: MemberDTO[], name: string) => members.filter((m) => m.name === name);
 const one = (members: MemberDTO[], name: string) => {
@@ -148,8 +148,12 @@ describe("reading GEDCOM files", () => {
     expect(william.generation).toBe(1);
   });
 
-  it("says what it did not import", () => {
-    expect(file.warnings.join(" ")).toMatch(/1 source citation and 1 media link were not imported/);
+  it("imports the cited source, and says which media link it could not read", () => {
+    expect(plan.newSources.map((x) => x.title)).toEqual(["Parish register"]);
+    expect(plan.newCitations).toEqual([expect.objectContaining({ memberId: one(m, "John").id, eventType: null, page: null })]);
+    // "1 OBJE @O1@" points to a record the file does not contain
+    expect(plan.newMedia).toEqual([]);
+    expect(file.warnings.join(" ")).toMatch(/1 media link could not be read/);
   });
 
   it("finds the year in the date forms GEDCOM allows", () => {
@@ -374,6 +378,16 @@ describe("GEDCOM export", () => {
     });
   }
 
+  for (const [name, make] of [["several marriages", marriagesFamily], ["three wives", multiMarriageFamily]] as const) {
+    it(`${name}: importing its own export again reuses everyone, wives included`, () => {
+      const tree = make();
+      const plan = planGedcomImport(tree, parseGedcom(exportGedcom(tree)), ids());
+      expect(plan.newMembers.map((m) => m.name)).toEqual([]);
+      expect(plan.newMarriages).toEqual([]);
+      expect(plan.reused).toBe(tree.members.length);
+    });
+  }
+
   it("Al-Kalali: importing its own export again reuses everyone and creates no one", () => {
     const tree = kalaliTree();
     const plan = planGedcomImport(tree, parseGedcom(exportGedcom(tree)), ids());
@@ -439,6 +453,44 @@ describe("undo this import", () => {
     expect(strip(undoImportLocally(after, receipt))).toEqual(strip(before));
   });
 
+  it("GEDCOM with sources and media: undo removes them too, and keeps the tree's own", () => {
+    const t = emptyTree();
+    const r = applyNasabLines([], t.lineage, "خالد بن أحمد بن نوفل", ids());
+    const khalid = one(r.members, "خالد");
+    const before: TreeDTO = {
+      ...t, members: r.members, rootMemberId: r.newRootId,
+      sources: [{ id: "own", title: "Family Bible", author: null, publication: null, notes: null }],
+      citations: [{ id: "own-c", sourceId: "own", memberId: khalid.id, eventType: null, page: "1" }],
+      media: [{ id: "own-m", memberId: khalid.id, sourceId: null, url: "/api/media/blob/x", caption: null, fileType: null }],
+    };
+    const file = parseGedcom([
+      "0 HEAD",
+      "0 @S1@ SOUR", "1 TITL Family Bible", // the tree's own source: reused
+      "0 @S2@ SOUR", "1 TITL Census 1950",
+      "0 @N@ INDI", "1 NAME نوفل", "1 SEX M", "1 FAMS @F1@",
+      "0 @H@ INDI", "1 NAME أحمد", "1 SEX M", "1 FAMC @F1@", "1 SOUR @S2@", "1 OBJE", "2 FILE ahmad.jpg",
+      "1 SOUR @S1@", "2 PAGE 7",
+      "0 @F1@ FAM", "1 HUSB @N@", "1 CHIL @H@",
+      "0 TRLR",
+    ].join("\n"));
+    const plan = planGedcomImport(before, file, ids());
+    expect(plan.reused).toBe(2);
+    expect(plan.reusedSources).toBe(1);
+    const after: TreeDTO = {
+      ...before, members: plan.members, marriages: [...before.marriages, ...plan.newMarriages], rootMemberId: plan.rootMemberId,
+      sources: [...before.sources, ...plan.newSources], citations: [...before.citations, ...plan.newCitations],
+      media: [...before.media, ...plan.newMedia],
+    };
+    const receipt = importReceipt(before, after);
+    expect(receipt.sourceIds).toHaveLength(1);
+    expect(receipt.citationIds).toHaveLength(2);
+    expect(receipt.mediaIds).toHaveLength(1);
+    const undone = undoImportLocally(after, receipt);
+    expect(undone.sources).toEqual(before.sources);
+    expect(undone.citations).toEqual(before.citations);
+    expect(undone.media).toEqual(before.media);
+  });
+
   it("nasab: undo removes the added ancestors and descendants only", () => {
     const t = emptyTree();
     const r = applyNasabLines([], t.lineage, "خالد بن أحمد بن نوفل", ids());
@@ -453,7 +505,7 @@ describe("undo this import", () => {
 
 describe("the import preview (run in a Web Worker in the editor)", () => {
   const bytes = (text: string) => new TextEncoder().encode(text).buffer as ArrayBuffer;
-  const empty = { members: [], marriages: [], lineage: "PATRILINEAL" as const, rootMemberId: null };
+  const empty = { members: [], marriages: [], sources: [], citations: [], media: [], lineage: "PATRILINEAL" as const, rootMemberId: null };
 
   it("summarises what the import will do", () => {
     const p = previewGedcom(bytes(ENGLISH), empty);
@@ -467,5 +519,146 @@ describe("the import preview (run in a Web Worker in the editor)", () => {
     const p = previewGedcom(bytes(lines.join("\n")), empty);
     expect(p.people).toBe(GEDCOM_MAX_PEOPLE + 1);
     expect(p.blocked).toMatch(/accepts up to 20,000/);
+  });
+});
+
+describe("sources, citations and media in GEDCOM", () => {
+  const SOURCED = [
+    "0 HEAD", "1 GEDC", "2 VERS 5.5.1", "1 CHAR UTF-8",
+    "0 @S1@ SOUR", "1 TITL سجل المواليد", "1 AUTH وزارة الداخلية", "1 PUBL صنعاء، 1950", "1 NOTE Microfilm copy.",
+    "1 OBJE", "2 FILE https://example.org/register-cover.jpg", "3 FORM jpg", "2 TITL Cover",
+    "0 @S2@ SOUR", "1 ABBR Family Bible",
+    "0 @O1@ OBJE", "1 FILE photos/ahmad.png", "2 FORM png", "2 TITL أحمد في شبابه",
+    "0 @I1@ INDI", "1 NAME أحمد", "1 SEX M",
+    "1 BIRT", "2 DATE 1901", "2 SOUR @S1@", "3 PAGE ص 12",
+    "1 DEAT", "2 SOUR @S2@",
+    "1 SOUR @S1@", "2 PAGE ص 40", "2 EVEN RESI",
+    "1 SOUR Oral history from his grandson", "2 TEXT Recorded in 1990.",
+    "1 SOUR @S9@",
+    "1 OBJE @O1@",
+    "1 OBJE", "2 FILE C:\\Family\\deed.pdf", "2 FORM pdf", "2 TITL Land deed", // 5.5 style: FORM and TITL beside FILE
+    "1 FAMS @F1@",
+    "0 @I2@ INDI", "1 NAME فاطمة", "1 SEX F", "1 FAMS @F1@",
+    "0 @I3@ INDI", "1 NAME علي", "1 SEX M", "1 FAMC @F1@",
+    "0 @F1@ FAM", "1 HUSB @I1@", "1 WIFE @I2@", "1 CHIL @I3@",
+    "1 MARR", "2 DATE 1925", "2 SOUR @S2@", "3 PAGE Front leaf",
+    "1 OBJE", "2 FILE wedding.jpg", "2 TITL الزفاف",
+    "0 TRLR",
+  ].join("\n");
+  const file = parseGedcom(SOURCED);
+  const empty = emptyTree();
+  const plan = planGedcomImport(empty, file, ids());
+  const ahmad = one(plan.members, "أحمد"), fatima = one(plan.members, "فاطمة");
+  const source = (title: string) => plan.newSources.find((x) => x.title === title)!;
+  const citesOf = (memberId: string) =>
+    plan.newCitations.filter((c) => c.memberId === memberId).map((c) => `${plan.newSources.find((x) => x.id === c.sourceId)!.title}|${c.eventType}|${c.page}`).sort();
+
+  it("reads source records: title (or ABBR), author, publication, notes, and their media", () => {
+    expect(plan.newSources).toHaveLength(3);
+    expect(source("سجل المواليد")).toMatchObject({ author: "وزارة الداخلية", publication: "صنعاء، 1950", notes: "Microfilm copy." });
+    expect(source("Family Bible")).toBeDefined();
+    // an inline source ("1 SOUR <text>") becomes a source of its own, its TEXT kept as notes
+    expect(source("Oral history from his grandson").notes).toBe("Recorded in 1990.");
+    const cover = plan.newMedia.find((x) => x.sourceId === source("سجل المواليد").id)!;
+    expect(cover).toMatchObject({ url: "https://example.org/register-cover.jpg", fileType: "image/jpeg", caption: "Cover", memberId: null });
+  });
+
+  it("reads citations on a person and on their events, with PAGE and EVEN", () => {
+    expect(citesOf(ahmad.id)).toEqual([
+      "Family Bible|DEAT|null",
+      "Family Bible|MARR|Front leaf",
+      "Oral history from his grandson|null|null",
+      "سجل المواليد|BIRT|ص 12",
+      "سجل المواليد|RESI|ص 40",
+    ]);
+    // a citation on the marriage belongs to both spouses
+    expect(citesOf(fatima.id)).toEqual(["Family Bible|MARR|Front leaf"]);
+    expect(file.warnings.join(" ")).toMatch(/1 citation refers to a source record that is not in the file/);
+  });
+
+  it("reads media: OBJE records, inline OBJE in 5.5 and 5.5.1 style, and a marriage's media", () => {
+    const of = (memberId: string) => plan.newMedia.filter((x) => x.memberId === memberId).map((x) => `${x.url}|${x.fileType}|${x.caption}`).sort();
+    expect(of(ahmad.id)).toEqual([
+      "C:\\Family\\deed.pdf|application/pdf|Land deed",
+      "photos/ahmad.png|image/png|أحمد في شبابه",
+      // a marriage has no row of its own: its media go to the husband
+      "wedding.jpg|image/jpeg|الزفاف",
+    ]);
+    expect(of(fatima.id)).toEqual([]);
+  });
+
+  it("the preview says what it will import, instead of what it skips", () => {
+    const p = previewGedcom(new TextEncoder().encode(SOURCED).buffer as ArrayBuffer, empty);
+    expect(p).toMatchObject({ newSources: 3, newCitations: 6, newMedia: 4, reusedSources: 0 });
+    expect(p.warnings.join(" ")).not.toMatch(/not imported/);
+  });
+
+  it("importing the same file again reuses the sources and repeats no citation or media", () => {
+    const after: TreeDTO = {
+      ...empty, members: plan.members, marriages: plan.newMarriages, sources: plan.newSources,
+      citations: plan.newCitations, media: plan.newMedia, rootMemberId: plan.rootMemberId,
+    };
+    const again = planGedcomImport(after, parseGedcom(SOURCED), ids());
+    expect(again.newMembers).toEqual([]);
+    expect(again.newSources).toEqual([]);
+    expect(again.reusedSources).toBe(3);
+    expect(again.newCitations).toEqual([]);
+    expect(again.newMedia).toEqual([]);
+  });
+
+  it("a source already in the tree with the same title and author (spelling variants too) is reused", () => {
+    const tree = { ...emptyTree(), sources: [{ id: "mine", title: "سجل المواليد", author: "وزارة الداخليه", publication: null, notes: null }] };
+    const p = planGedcomImport(tree, file, ids());
+    expect(p.reusedSources).toBe(1);
+    expect(p.newCitations.filter((c) => c.sourceId === "mine")).toHaveLength(2);
+  });
+
+  it("maps file formats to types, from FORM or from the file name", async () => {
+    const { mediaType } = await import("@/lib/gedcom");
+    expect(mediaType("JPEG")).toBe("image/jpeg");
+    expect(mediaType(null, "scan.TIF")).toBe("image/tiff");
+    expect(mediaType(undefined, "https://x.org/a.pdf?dl=1")).toBe("application/pdf");
+    expect(mediaType("xyz", "a")).toBeNull();
+  });
+
+  it("export, then import into an empty tree, keeps every source, citation and media link", () => {
+    const tree = kalaliTree();
+    const [a, b] = tree.members;
+    tree.sources = [
+      { id: "s1", title: "الإكليل", author: "الهمداني", publication: "القاهرة 1368هـ", notes: "الجزء الثاني\nطبعة الأكوع" },
+      { id: "s2", title: "Family papers @ home", author: null, publication: null, notes: null },
+    ];
+    tree.citations = [
+      { id: "c1", sourceId: "s1", memberId: a.id, eventType: null, page: "ص 33" },
+      { id: "c2", sourceId: "s1", memberId: b.id, eventType: "BIRT", page: null },
+      { id: "c3", sourceId: "s2", memberId: b.id, eventType: "MARR", page: "folder 2" },
+    ];
+    tree.media = [
+      { id: "m1", memberId: a.id, sourceId: null, url: "/api/media/blob/abc123", caption: "صورة", fileType: "image/jpeg" },
+      { id: "m2", memberId: null, sourceId: "s1", url: "https://example.org/iklil.pdf", caption: null, fileType: "application/pdf" },
+      { id: "m3", memberId: b.id, sourceId: null, url: "data:image/png;base64,AAAA", caption: "demo only", fileType: "image/png" },
+    ];
+    const text = exportGedcom(tree, { baseUrl: "https://shajarah.example" });
+    expect(text).not.toContain("data:image");
+    const p = planGedcomImport(emptyTree(), parseGedcom(text), ids());
+    expect(p.warnings).toEqual([]);
+    const nameOf = (id: string | null) => p.members.find((m) => m.id === id)?.name ?? null;
+    const titleOf = (id: string | null) => p.newSources.find((x) => x.id === id)?.title ?? null;
+    expect(p.newSources.map(({ id: _id, ...x }) => x).sort((x, y) => x.title.localeCompare(y.title))).toEqual(
+      tree.sources.map(({ id: _id, ...x }) => x).sort((x, y) => x.title.localeCompare(y.title)),
+    );
+    expect(p.newCitations.map((c) => [nameOf(c.memberId), titleOf(c.sourceId), c.eventType, c.page]).sort()).toEqual(
+      [
+        [a.name, "الإكليل", null, "ص 33"],
+        [b.name, "الإكليل", "BIRT", null],
+        [b.name, "Family papers @ home", "MARR", "folder 2"],
+      ].sort(),
+    );
+    expect(p.newMedia.map((x) => [nameOf(x.memberId), titleOf(x.sourceId), x.url, x.caption, x.fileType]).sort()).toEqual(
+      [
+        [a.name, null, "https://shajarah.example/api/media/blob/abc123", "صورة", "image/jpeg"],
+        [null, "الإكليل", "https://example.org/iklil.pdf", null, "application/pdf"],
+      ].sort(),
+    );
   });
 });

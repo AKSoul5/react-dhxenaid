@@ -70,6 +70,9 @@ describe("restoring a snapshot", () => {
     ...s,
     members: [...s.members].map((m) => ({ ...m, generation: 0 })).sort((a, b) => a.id.localeCompare(b.id)),
     marriages: [...s.marriages].sort((a, b) => a.id.localeCompare(b.id)),
+    sources: [...s.sources].sort((a, b) => a.id.localeCompare(b.id)),
+    citations: [...s.citations].sort((a, b) => a.id.localeCompare(b.id)),
+    media: [...s.media].sort((a, b) => a.id.localeCompare(b.id)),
   });
 
   it("undoes and redoes every kind of edit (diff in both directions gives the other tree)", async () => {
@@ -85,6 +88,18 @@ describe("restoring a snapshot", () => {
     states.push(await repo.deleteMember(son.id)); // his children lose their father, his marriages go
     states.push(await repo.updateTree({ crownBaseId: root.id, soilText: "نص", settings: { showFemales: true, seed: 3 } }));
     states.push(await repo.importGedcom(exportGedcom(kalaliTree())));
+    // sources, citations and media
+    let t = await repo.createSource({ title: "سجل الأسرة", author: "العم سالم" });
+    states.push(t);
+    const src = t.sources[0];
+    const someone = t.members.find((m) => m.fatherId)!;
+    states.push((t = await repo.createCitation({ sourceId: src.id, memberId: someone.id, eventType: "BIRT", page: "ص 3" })));
+    states.push((t = await repo.createMedia({ memberId: someone.id, url: "/api/media/blob/" + "a".repeat(64), caption: "صورة", fileType: "image/jpeg" })));
+    states.push((t = await repo.createMedia({ sourceId: src.id, url: "https://example.org/scan.pdf", fileType: "application/pdf" })));
+    states.push((t = await repo.updateMedia(t.media[0].id, { caption: "صورة قديمة" })));
+    states.push((t = await repo.deleteCitation(t.citations[0].id)));
+    states.push((t = await repo.createCitation({ sourceId: src.id, memberId: someone.id, eventType: null, page: null })));
+    states.push(await repo.deleteMember(someone.id)); // their citation and photo go with them
     for (let i = 1; i < states.length; i++) {
       const [a, b] = [snap(states[i - 1]), snap(states[i])];
       expect(norm(applyRestore(b, planRestore(b, a))), `undo step ${i}`).toEqual(norm(a));
@@ -122,5 +137,11 @@ describe("restoring a snapshot", () => {
     expect(snapshotError({ ...s, members: s.members.map((m, i) => (i === 1 ? { ...m, fatherId: "ghost" } : m)) })).toMatch(/not in the tree/);
     const female = s.members.find((m) => m.gender === "FEMALE")!;
     expect(snapshotError({ ...s, members: s.members.map((m, i) => (i === 1 ? { ...m, fatherId: female.id } : m)) })).toMatch(/female/);
+    const src = { id: "s", title: "t", author: null, publication: null, notes: null };
+    const withSource = { ...s, sources: [src] };
+    expect(snapshotError({ ...withSource, citations: [{ id: "c", sourceId: "s", memberId: a.id, eventType: null, page: null }] })).toBeNull();
+    expect(snapshotError({ ...withSource, citations: [{ id: "c", sourceId: "gone", memberId: a.id, eventType: null, page: null }] })).toMatch(/citation/);
+    expect(snapshotError({ ...withSource, media: [{ id: "m", memberId: null, sourceId: null, url: "x", caption: null, fileType: null }] })).toMatch(/belong/);
+    expect(snapshotError({ ...withSource, media: [{ id: "m", memberId: "ghost", sourceId: null, url: "x", caption: null, fileType: null }] })).toMatch(/not in the tree/);
   });
 });
