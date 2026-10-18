@@ -415,6 +415,10 @@ reserved height matches what it draws.
 - **The canopy base:** an ivory oval with a scalloped double gold ring,
   larger than the other names, drawn inside the round space the layout
   keeps for it.
+- **A trunk without ancestors** (the canopy base is the family's founder)
+  still stands at least a tenth of the content height below the canopy
+  base, so the base never sits on the ground. (Measured: more than that
+  costs a dense 350-person family its clarity on A1.)
 - **The trunk's foot:** it starts widening well above the ground and
   spreads gradually into the roots, like the buttressed foot of an old tree.
 - **Daughters:** soft-gold capsules.

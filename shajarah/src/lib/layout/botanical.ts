@@ -331,6 +331,9 @@ const LOWER_SHARE = 0.3;
 const TRUNK_SHARE = 0.2;
 const BRANCH_TRUNK_NAMES = 6;
 
+/** Least height of a trunk without ancestors, below the canopy base, as a share of the content height. */
+const BARE_TRUNK = 0.1;
+
 /** The canopy base's oval, as fractions of its round space's radius (wider than tall). */
 const BASE_OVAL = { w: 1, h: 0.66 };
 
@@ -565,7 +568,9 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const trunkFontFor = (f: number) => Math.max(floorFor(f), f * 0.95);
   const stepFor = (f: number) => trunkFontFor(f) * 1.75;
   const trunkSection = (count: number, f: number) => {
-    if (!count) return f * 3.5;
+    // a bare trunk (no ancestors above the canopy base) still stands tall
+    // enough to carry its canopy: at least BARE_TRUNK of the content height
+    if (!count) return Math.max(f * 3.5, avail * BARE_TRUNK);
     const ft = trunkFontFor(f);
     return ft * 1.4 + (count - 1) * stepFor(f) + ft * 1.5;
   };
@@ -702,7 +707,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const trunkStep = stepFor(f);
   const labelTop = origin.y + baseMedallionR + trunkFont * 1.4;
   const labelBottom = labelTop + Math.max(0, shownTrunk.length - 1) * trunkStep;
-  groundY = shownTrunk.length ? labelBottom + trunkFont * 1.5 : origin.y + baseMedallionR + f * 3.5 + stemExtra;
+  groundY = shownTrunk.length ? labelBottom + trunkFont * 1.5 : origin.y + baseMedallionR + trunkSection(0, f) + stemExtra;
   const badgeW = (n: HNode) => Math.max(textWidth(n.data.member!.name, trunkFont) + trunkFont * 1.7, trunkFont * 3.4);
   const widest = Math.max(0, ...shownTrunk.map(badgeW));
   const medianBadge = shownTrunk.length ? shownTrunk.map(badgeW).sort((a, b) => a - b)[shownTrunk.length >> 1] : 0;

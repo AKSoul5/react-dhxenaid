@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AUTO_LEAF_LIMIT, computePosterLayout } from "@/lib/layout/botanical";
 import { smallFamily } from "@/lib/samples/fixtures";
+import { naturalFamily } from "@/lib/samples/natural";
 import { computeGenerations, parentAssignmentError } from "@/lib/genealogy";
 import { generateSampleTree } from "@/lib/sampleData";
 import type { MemberDTO, TreeDTO } from "@/lib/types";
@@ -46,6 +47,24 @@ describe("botanical layout", () => {
     const few = computePosterLayout(smallFamily(), { nodeShape: "auto" });
     expect(few.nodes.length).toBeLessThanOrEqual(AUTO_LEAF_LIMIT);
     expect(few.nodes.some((n) => n.shape === "leaf")).toBe(true);
+  });
+
+  it("auto shape switches exactly above 50 names", () => {
+    const at = (people: number) => computePosterLayout(naturalFamily(people), { nodeShape: "auto" });
+    const fifty = at(AUTO_LEAF_LIMIT + 1); // the founder and 50 names in his branches
+    const fiftyOne = at(AUTO_LEAF_LIMIT + 2);
+    expect(fifty.nodes.length).toBe(AUTO_LEAF_LIMIT);
+    expect(fifty.nodes.some((n) => n.shape === "leaf")).toBe(true);
+    expect(fiftyOne.nodes.length).toBe(AUTO_LEAF_LIMIT + 1);
+    expect(fiftyOne.nodes.some((n) => n.shape === "leaf")).toBe(false);
+    expect(fiftyOne.nodes.some((n) => n.shape === "oval")).toBe(true);
+  });
+
+  it("a trunk without ancestors still stands at least a tenth of the content height", () => {
+    const l = computePosterLayout(naturalFamily(350), { nodeShape: "auto" });
+    expect(l.trunkLabels).toHaveLength(0);
+    const contentH = l.frame.footerY - l.height * 0.095;
+    expect(l.groundY - (l.origin.y + l.base!.h / 2)).toBeGreaterThanOrEqual(contentH * 0.1 - 1);
   });
 
   it("produces no overlapping name tags", () => {
