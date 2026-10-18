@@ -57,8 +57,10 @@ describe("trunk, lineage panel and side branches", () => {
     const text = layout.soil!.texts.map((t) => t.text).join(" ").replace(/\u00A0/g, " ");
     expect(text).toContain("آدم عليه السلام");
     expect(text).toContain("يريم \uFD3Fذو رعين الأكبر\uFD3E");
-    // generation numbering starts at the crown base
-    expect(layout.generationOffset).toBe(84);
+    // generation numbering starts at the oldest generation drawn: here a side
+    // branch on the trunk (82), two generations above the crown base (84)
+    expect(layout.generationOffset).toBe(82);
+    expect(Math.min(...layout.generationsPresent)).toBe(82);
     // the foundation panel sits below the ground, above the footer
     expect(layout.soil!.box.y).toBeGreaterThan(layout.groundY);
     expect(layout.soil!.box.y + layout.soil!.box.h).toBeLessThan(layout.frame.footerY);

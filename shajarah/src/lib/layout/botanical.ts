@@ -233,7 +233,7 @@ export interface PosterLayout {
   tooDense: boolean;
   /** Set when the poster shows one branch only (see LayoutOptions.focusId). */
   focus: { id: string; label: string } | null;
-  /** Generation of the crown base; legend numbering and colours start here. */
+  /** Oldest generation drawn on the canopy and its side branches; legend numbering and colours start here. */
   generationOffset: number;
   /** Generations present on crown / side-branch tags (for the legend). */
   generationsPresent: number[];
@@ -1522,7 +1522,8 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     surfaceRoots,
     medallions,
     frame: place,
-    generationOffset: base.data.member?.generation ?? 0,
+    // side branches lower on the trunk are older than the canopy base
+    generationOffset: Math.min(base.data.member?.generation ?? 0, ...gens),
     generationsPresent: [...gens].sort((a, b) => a - b),
     legibility,
     overlaps,

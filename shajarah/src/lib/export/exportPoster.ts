@@ -108,57 +108,69 @@ export function pixelSize(paper: PaperSize, dpi: number) {
   return { width: Math.round((w / 25.4) * dpi), height: Math.round((h / 25.4) * dpi) };
 }
 
-let fontsWarm: Promise<void> | null = null;
+// Every face the poster can use: names (Amiri, regular and bold, Arabic and
+// Latin) and headings (Aref Ruqaa, regular and bold).
+const PROBE_FACES = [
+  { family: "Amiri", weight: 400, text: "أبجد" }, { family: "Amiri", weight: 700, text: "أبجد" },
+  { family: "Amiri", weight: 400, text: "Abg" }, { family: "Amiri", weight: 700, text: "Abg" },
+  { family: "Aref Ruqaa", weight: 400, text: "أبجد" }, { family: "Aref Ruqaa", weight: 700, text: "أبجد" },
+];
 
 /**
- * SVG-as-image documents load their embedded web fonts asynchronously, and
- * img.decode() resolves before they are ready — Chrome then paints the text
- * invisibly (font "block" period), so the first export would lose every
- * name. Warm the fonts with a tiny probe image and wait until its text
- * actually paints before rasterising the poster.
+ * The poster markup with a strip of probe text added below the page: each
+ * face once in its web font and once in the plain default font. An SVG drawn
+ * as an image loads its fonts after img.decode() resolves, and until a face
+ * has loaded Chrome paints its text invisibly, which silently dropped names
+ * from exports. The probe shows, in the very image that is exported, when
+ * every face is really in use.
  */
-function warmUpFonts(): Promise<void> {
-  fontsWarm ??= (async () => {
-    const css = await embeddedFontCss();
-    // One sample per embedded face (Amiri Arabic/Latin × regular/bold, Ruqaa), each in
-    // its own quarter of the probe, so every face must have painted.
-    const samples = [
-      { text: "أبجد", weight: 400, family: "Amiri" }, { text: "أبجد", weight: 700, family: "Amiri" },
-      { text: "Abc", weight: 400, family: "Amiri" }, { text: "Abc", weight: 700, family: "Amiri" },
-      { text: "أبجد", weight: 400, family: "Aref Ruqaa" },
-    ];
-    const probe =
-      `<svg xmlns="${SVG_NS}" width="${samples.length * 100}" height="60"><style>${css}</style>` +
-      samples
-        .map((s, i) => `<text x="${i * 100 + 8}" y="42" font-family="${s.family}" font-weight="${s.weight}" font-size="36" fill="#000">${s.text}</text>`)
-        .join("") +
-      `</svg>`;
-    const url = URL.createObjectURL(new Blob([probe], { type: "image/svg+xml;charset=utf-8" }));
-    const canvas = document.createElement("canvas");
-    canvas.width = samples.length * 100;
-    canvas.height = 60;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-    try {
-      for (let attempt = 0; attempt < 80; attempt++) {
-        const img = new Image();
-        img.src = url;
-        await img.decode();
-        ctx.clearRect(0, 0, canvas.width, 60);
-        ctx.drawImage(img, 0, 0);
-        const painted = samples.every((_, i) => {
-          const px = ctx.getImageData(i * 100, 0, 100, 60).data;
-          let ink = 0;
-          for (let k = 3; k < px.length; k += 4) if (px[k] > 128) ink++;
-          return ink > 80;
-        });
-        if (painted) return;
-        await new Promise((r) => setTimeout(r, 50));
-      }
-    } finally {
-      URL.revokeObjectURL(url);
+function withFontProbe(markup: string): { markup: string; w: number; h: number; strip: number } {
+  const m = markup.match(/viewBox="([-\d.]+)[ ,]+([-\d.]+)[ ,]+([\d.]+)[ ,]+([\d.]+)"/);
+  if (!m) throw new Error("The poster has no viewBox.");
+  const [x0, y0, w, h] = m.slice(1).map(Number);
+  const strip = w / 6;
+  const cell = w / PROBE_FACES.length;
+  const fs = cell * 0.22;
+  const probe = PROBE_FACES.map((f, i) => {
+    const x = x0 + (i + 0.5) * cell;
+    const y = y0 + h;
+    return `<text x="${x}" y="${y + strip * 0.35}" text-anchor="middle" font-family="${f.family}" font-weight="${f.weight}" font-size="${fs}" fill="#000">${f.text}</text>` +
+      `<text x="${x}" y="${y + strip * 0.8}" text-anchor="middle" font-family="serif" font-weight="${f.weight}" font-size="${fs}" fill="#000">${f.text}</text>`;
+  }).join("");
+  return {
+    markup: markup
+      .replace(m[0], `viewBox="${x0} ${y0} ${w} ${h + strip}"`)
+      .replace(/(<svg\b[^>]*?)\swidth="[^"]*"/, `$1 width="${w}"`)
+      .replace(/(<svg\b[^>]*?)\sheight="[^"]*"/, `$1 height="${h + strip}"`)
+      .replace(/<\/svg>\s*$/, `<g data-font-probe="">${probe}</g></svg>`),
+    w, h, strip,
+  };
+}
+
+/** Whether every probe face paints in its own font (not invisibly, not as the fallback). */
+function probeReady(img: HTMLImageElement, w: number, h: number, strip: number): boolean {
+  const scale = 1200 / w;
+  const cw = 1200, ch = Math.ceil(strip * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = cw;
+  canvas.height = ch;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, h, w, strip, 0, 0, cw, ch);
+  const cell = cw / PROBE_FACES.length;
+  return PROBE_FACES.every((_, i) => {
+    const x = Math.round(i * cell), wd = Math.floor(cell);
+    const top = ctx.getImageData(x, 0, wd, Math.floor(ch / 2)).data;
+    const bottom = ctx.getImageData(x, Math.floor(ch / 2), wd, Math.floor(ch / 2)).data;
+    let inkTop = 0, inkBottom = 0, differ = 0;
+    for (let k = 3; k < Math.min(top.length, bottom.length); k += 4) {
+      const a = top[k] > 100, b = bottom[k] > 100;
+      if (a) inkTop++;
+      if (b) inkBottom++;
+      if (a !== b) differ++;
     }
-  })();
-  return fontsWarm;
+    // painted (not the invisible block period) and unlike the default font
+    return inkTop > inkBottom * 0.3 && differ > Math.max(inkTop, inkBottom) * 0.3;
+  });
 }
 
 async function rasterise(svg: SVGSVGElement, paper: PaperSize, dpi: number): Promise<HTMLCanvasElement> {
@@ -168,13 +180,19 @@ async function rasterise(svg: SVGSVGElement, paper: PaperSize, dpi: number): Pro
       `${paper} at ${dpi} DPI is ${width}×${height}px, beyond what browsers can rasterise. Choose a lower DPI or use SVG export.`,
     );
   }
-  const [markup] = await Promise.all([serializePoster(svg, paper), warmUpFonts()]);
-  const url = URL.createObjectURL(new Blob([markup], { type: "image/svg+xml;charset=utf-8" }));
+  const probe = withFontProbe(await serializePoster(svg, paper));
+  const url = URL.createObjectURL(new Blob([probe.markup], { type: "image/svg+xml;charset=utf-8" }));
   try {
     const img = new Image();
     img.decoding = "async";
     img.src = url;
     await img.decode();
+    let ready = false;
+    for (let attempt = 0; attempt < 400 && !ready; attempt++) {
+      ready = probeReady(img, probe.w, probe.h, probe.strip);
+      if (!ready) await new Promise((r) => setTimeout(r, 50));
+    }
+    if (!ready) throw new Error("The poster's fonts did not finish loading, so names would be missing. Please try the export again.");
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -182,7 +200,8 @@ async function rasterise(svg: SVGSVGElement, paper: PaperSize, dpi: number): Pro
     if (!ctx) throw new Error("Canvas is not available in this browser.");
     ctx.fillStyle = "#f4ecd8";
     ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(img, 0, 0, width, height);
+    // the page only, without the probe strip below it
+    ctx.drawImage(img, 0, 0, probe.w, probe.h, 0, 0, width, height);
     return canvas;
   } finally {
     URL.revokeObjectURL(url);

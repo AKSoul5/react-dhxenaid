@@ -157,6 +157,7 @@ export function layoutOptionsFor(theme: PosterTheme, paper: PaperSize = "A2") {
     paperWidthMm: PAPER_SIZES[paper].w,
     // inside the frame the header starts below its top rosette
     // (room for basmala, title, subtitle and the divider under them)
-    headerBand: theme.frame ? 0.19 : theme.verse || theme.hadith || theme.bismillah ? 0.13 : 0.105,
+    // the basmala pushes the title down (see TreePoster's Header)
+    headerBand: theme.frame ? (theme.bismillah ? 0.215 : 0.19) : theme.bismillah ? 0.15 : theme.verse || theme.hadith ? 0.13 : 0.105,
   };
 }

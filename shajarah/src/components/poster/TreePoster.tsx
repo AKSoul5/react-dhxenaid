@@ -81,7 +81,7 @@ function makePalette(theme: PosterTheme, layout: PosterLayout): Palette {
     fill: (n) => {
       if (mono) return { fill: "#ffffff", border: "#111111", text: "#111111" };
       const female = n.member.gender === "FEMALE";
-      if (theme.colorBy === "generation" && !n.terminal) {
+      if (theme.colorBy === "generation") {
         const c = generationColor(n.generation - layout.generationOffset);
         return { fill: c.fill, border: shade(c.fill, -0.35), text: c.text };
       }
@@ -524,7 +524,12 @@ function Header({ layout, meta, theme, pal }: { layout: PosterLayout; meta: Post
   const avail = layout.medallions.length ? Math.min(hd.maxTitleWidth, W * 0.44) : hd.maxTitleWidth;
   // Ruqaa runs a little wider than Amiri, which textWidth is tuned for
   const titleFs = meta.title ? Math.min(W * 0.042, avail / ((textWidth(meta.title, 1) || 1) * 1.1)) : 0;
-  const titleY = theme.bismillah || layout.frame.framed ? hd.title : H * 0.052;
+  // Under the basmala, the title keeps clear of its long lower stroke: the
+  // glyph reaches 0.61 em below its baseline and Ruqaa capitals 1.23 em above.
+  const basmalaFs = W * 0.024;
+  const titleY = theme.bismillah
+    ? Math.max(hd.title, hd.basmala + basmalaFs * 0.61 + titleFs * 1.23 + W * 0.012)
+    : layout.frame.framed ? hd.title : H * 0.052;
   const subY = titleY + H * 0.024;
   // a branch poster's "فرع …" line takes the subtitle's place
   const subtitle = layout.focus ? null : meta.subtitle;
@@ -534,7 +539,7 @@ function Header({ layout, meta, theme, pal }: { layout: PosterLayout; meta: Post
     <g>
       {theme.bismillah && (
         // Amiri draws the basmala (U+FDFD) as one wide calligraphic glyph (~11 em)
-        <text x={W / 2} y={hd.basmala} textAnchor="middle" fontSize={W * 0.024} fill={pal.ink}>
+        <text x={W / 2} y={hd.basmala} textAnchor="middle" fontSize={basmalaFs} fill={pal.ink}>
           ﷽
         </text>
       )}
@@ -596,15 +601,17 @@ function Footer({ layout, theme, pal, meta }: { layout: PosterLayout; theme: Pos
   const maleFill = pal.mono ? "#fff" : satin ? "url(#sh-satin-m)" : theme.male;
   const femaleFill = pal.mono ? "#fff" : satin ? "url(#sh-satin-f)" : theme.female;
   const rim = (c: string) => (pal.mono ? "#111" : shade(c, -0.38));
-  items.push({
+  // colouring by generation replaces the son / daughter / father colours
+  const byGender = theme.colorBy !== "generation";
+  if (byGender) items.push({
     label: rtl ? "ابن" : "Son",
     // (the shape actually drawn: "auto" may have chosen either)
     swatch: (x) => layout.nodes.some((n) => n.shape === "leaf")
       ? <path transform={`translate(${x + sw / 2} ${y}) scale(${sw})`} d={leafPath(1, 0.45)} fill={maleFill} stroke={rim(theme.male)} strokeWidth={0.04} />
       : pill(x, maleFill, rim(theme.male)),
   });
-  if (layout.nodes.some((n) => n.member.gender === "FEMALE")) items.push({ label: rtl ? "بنت" : "Daughter", swatch: (x) => pill(x, femaleFill, rim(theme.female)) });
-  items.push({ label: rtl ? "له ذرية" : "Has descendants", swatch: (x) => pill(x, pal.mono ? "#fff" : IVORY, pal.line) });
+  if (byGender && layout.nodes.some((n) => n.member.gender === "FEMALE")) items.push({ label: rtl ? "بنت" : "Daughter", swatch: (x) => pill(x, femaleFill, rim(theme.female)) });
+  if (byGender) items.push({ label: rtl ? "له ذرية" : "Has descendants", swatch: (x) => pill(x, pal.mono ? "#fff" : IVORY, pal.line) });
   if (layout.trunkLabels.length) items.push({ label: rtl ? "سلسلة الآباء" : "Ancestral line", swatch: (x) => pill(x, pal.mono ? "#fff" : IVORY, pal.line) });
   if (theme.branchColors && !pal.mono && new Set(layout.nodes.map((n) => n.lineage).filter((x) => x != null)).size >= 2) {
     items.push({
