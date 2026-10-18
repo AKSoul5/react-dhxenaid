@@ -273,8 +273,8 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // hidden under another name, no ambiguous crossings). Ambiguity means the
   // names are too crowded, so the next attempt gives each one more room.
   const badness = (l: PosterLayout) => l.overlaps * 10 + l.clarity.issues.length;
-  const attempt = (scale: number, final = false) => {
-    const layout = layoutAttempt(tree, opts, scale, final);
+  const attempt = (scale: number, final = false, strict = false) => {
+    const layout = layoutAttempt(tree, opts, scale, final, strict);
     layout.clarity = validateRelationships(layout, tree);
     return layout;
   };
@@ -310,8 +310,23 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       chosen = [...tried.entries()].sort((a, b) => rank(a[1]) - rank(b[1]) || b[0] - a[0])[0][0];
     }
   }
+  // A clean layout can still have lines crossing (at a clear angle, so the
+  // check accepts them): typically many childless brothers and sisters
+  // crowding the first ring push a father off his sector. Strict family
+  // packing (fathers hold their place, every name keeps to its family's
+  // side) is tried then, and kept only when it is clean, as legible and
+  // crosses less. (Not by default: in dense canopies fathers must give way.)
+  let strict = false;
+  const plain = at(chosen);
+  if (isClean(plain) && plain.clarity.clearCrossings > 0) {
+    const alt = attempt(chosen, false, true);
+    if (isClean(alt) && alt.clarity.clearCrossings < plain.clarity.clearCrossings && (alt.legibility.ok || !plain.legibility.ok)) {
+      strict = true;
+      tried.set(-1, alt);
+    }
+  }
   // decorative foliage is only grown for the chosen layout
-  const result = opts.foliage ? attempt(chosen, true) : at(chosen);
+  const result = opts.foliage ? attempt(chosen, true, strict) : strict ? tried.get(-1)! : plain;
   result.tooDense = result.clarity.issues.length > CLARITY_LIMIT;
   return result;
 }
@@ -346,7 +361,7 @@ const MIN_CHILD_SHARE = 0.1;
 export const CLARITY_LIMIT = 5;
 
 
-function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true): PosterLayout {
+function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true, strictFamilies = false): PosterLayout {
   const W = opts.width ?? 2400;
   const H = opts.height ?? Math.round(W * Math.SQRT2);
   const seed = opts.seed ?? tree.settings?.seed ?? 7;
@@ -780,6 +795,44 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     const t = (target - cum[lo]) / (cum[hi] - cum[lo] || 1);
     return thetas[lo] + (thetas[hi] - thetas[lo]) * t;
   };
+  const maxDepth = Math.max(1, base.height);
+  const r0 = baseMedallionR + f * 1.6;
+  // Where each generation's ring lies, as a fraction t of the way from r0
+  // to the canopy's rim: evenly paced, but never closer than a name's
+  // height plus room for the lines between two rings (crownDims sizes the
+  // canopy for that; a retry with smaller names keeps the canopy's size).
+  let meanCrownReach = 0;
+  for (let i = 0; i <= 32; i++) meanCrownReach += (reach(thetaEnd + ((thetaStart - thetaEnd) * i) / 32) * 0.95) / 33;
+  const ringT: number[] = (() => {
+    const gap = (f * 2.6) / Math.max(1, meanCrownReach - r0);
+    const t = [0];
+    for (let d = 1; d <= maxDepth; d++) t.push(Math.max(d / maxDepth, d === 1 ? 0 : t[d - 1] + gap));
+    const top = t[maxDepth];
+    return top > 1 ? t.map((v) => v / top) : t;
+  })();
+  // The angle a sub-branch needs on its most crowded ring: on each ring, the
+  // sum of its names' extents across the ray, over the ring's radius. Inner
+  // rings are short, so a father of many childless children (with daughters
+  // shown, often) needs far more room there than his descendant count says.
+  const ringR = ringT.map((t) => r0 + t * Math.max(1, meanCrownReach - r0));
+  const extentAcross = (n: HNode) => {
+    const a = estArea(n, fl);
+    const d = n.depth - base.depth;
+    const fs = fontFor(d, isMedallion(n, d, "crown"), fl);
+    // a label's mean extent across a ray (its width at the top, its height on the sides)
+    const h = Math.min(Math.sqrt(a), fs * 1.8);
+    return 0.64 * (a / h + h) + fl * 1.2;
+  };
+  const ringNeed = new Map<HNode, Map<number, number>>();
+  const needOf = (n: HNode): Map<number, number> => {
+    let m = ringNeed.get(n);
+    if (m) return m;
+    m = new Map([[n.depth, extentAcross(n) / Math.max(1, ringR[n.depth - base.depth] ?? 1)]]);
+    for (const k of (n.children ?? []) as HNode[]) for (const [d, v] of needOf(k)) m.set(d, (m.get(d) ?? 0) + v);
+    ringNeed.set(n, m);
+    return m;
+  };
+  const angleNeed = (n: HNode) => Math.max(...needOf(n).values());
   const partition = (node: HNode, u0: number, u1: number, d0 = node.depth) => {
     node.u0 = u0;
     node.u1 = u1;
@@ -801,7 +854,14 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     // place, and a floor for each of several would starve their brothers'
     // families. 10%, not more: 15% made dense families tangle.)
     const minWeight = totalWeight * MIN_CHILD_SHARE;
-    const weights = rawWeights.map((w, i) => (kids[i].children?.length ? Math.max(w, minWeight) : w));
+    const balanced = rawWeights.map((w, i) => (kids[i].children?.length ? Math.max(w, minWeight) : w));
+    const balancedTotal = balanced.reduce((a, b) => a + b, 0);
+    // With strict family packing, never less than the room its most crowded
+    // ring needs, or ring packing pushes its names out of its sector and
+    // their lines swing across a neighbouring family.
+    const needs = kids.map(angleNeed);
+    const needTotal = needs.reduce((a, b) => a + b, 0) || 1;
+    const weights = strictFamilies ? balanced.map((w, i) => Math.max(w / balancedTotal, needs[i] / needTotal)) : balanced;
     const newTotal = weights.reduce((a, b) => a + b, 0);
     let a = u0;
     kids.forEach((k, i) => {
@@ -876,21 +936,6 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   };
 
   // ── 4. Crown target positions ────────────────────────────────────────
-  const maxDepth = Math.max(1, base.height);
-  const r0 = baseMedallionR + f * 1.6;
-  // Where each generation's ring lies, as a fraction t of the way from r0
-  // to the canopy's rim: evenly paced, but never closer than a name's
-  // height plus room for the lines between two rings (crownDims sizes the
-  // canopy for that; a retry with smaller names keeps the canopy's size).
-  const ringT: number[] = (() => {
-    let meanReach = 0;
-    for (let i = 0; i <= 32; i++) meanReach += reach(thetaEnd + ((thetaStart - thetaEnd) * i) / 32) * 0.95;
-    const gap = (f * 2.6) / Math.max(1, meanReach / 33 - r0);
-    const t = [0];
-    for (let d = 1; d <= maxDepth; d++) t.push(Math.max(d / maxDepth, d === 1 ? 0 : t[d - 1] + gap));
-    const top = t[maxDepth];
-    return top > 1 ? t.map((v) => v / top) : t;
-  })();
   for (const n of crownNodes) {
     const d = n.depth - base.depth;
     const halfSpan = ((n.u1 ?? 0) - (n.u0 ?? 0)) / 2;
@@ -934,7 +979,21 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       if (list) list.push(n); else rings.set(n.depth, [n]);
     }
     const lo = thetaEnd, hi = thetaStart;
-    for (const [d, ring] of rings) {
+    // With strict family packing, a name also keeps to its side of every
+    // name on an inner ring of another family (by family order: the sector
+    // angle it was given). Order on
+    // each ring alone is not enough: near the trunk the canopy is shallow,
+    // so a name pushed far along an outer ring comes as close to the centre
+    // as an inner one, and its line cuts across the neighbouring family.
+    const familyOrder = new Map(crownLive.map((n) => [n.id, n.ray!]));
+    const placed: { n: LiveNode; half: number }[] = [];
+    const ancestorIds = (n: LiveNode) => {
+      const ids = new Set<string>();
+      for (let p = n.parentId; p; p = byId.get(p)?.parentId ?? null) ids.add(p);
+      return ids;
+    };
+    for (const d of [...rings.keys()].sort((a, b) => a - b)) {
+      const ring = rings.get(d)!;
       ring.sort((a, b) => b.ray! - a.ray!); // anticlockwise from the left
       const radiusAt = (th: number) => r0 + ringT[d] * Math.max(0, reach(th) * 0.95 - r0);
       // angular half-width of a label at angle th (its extent across the ray)
@@ -947,6 +1006,26 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       // resolved by stepping out along the ray, which keeps each line close
       // to its parent's direction; pushing names further along the ring
       // slants lines across their neighbours.)
+      // Strict family packing (a second try, see computePosterLayout): a
+      // crowded ring gives way where it costs nothing. A childless name has
+      // one line, straight back to its father, so it can slide along the
+      // ring; a father moved off his sector would drag his children's lines
+      // across his neighbours' families, so fathers hold their place.
+      const bounds = ring.map((n) => {
+        const own = familyOrder.get(n.id)!;
+        const ancestors = ancestorIds(n);
+        let b0 = lo, b1 = hi;
+        for (const y of placed) {
+          if (ancestors.has(y.n.id)) continue;
+          const margin = half(n, y.n.ray!);
+          if (familyOrder.get(y.n.id)! > own) b1 = Math.min(b1, y.n.ray! - margin);
+          else b0 = Math.max(b0, y.n.ray! + margin);
+        }
+        // no room between them: unbounded (the clarity check judges the result)
+        return b0 <= b1 && strictFamilies ? [b0, b1] : [lo, hi];
+      });
+      const mobility = ring.map((n) => (n.terminal || !strictFamilies ? 1 : 0.12));
+      const pull = ring.map((n) => (n.terminal || !strictFamilies ? 0.02 : 0.15));
       const th = [...target];
       for (let it = 0; it < 200; it++) {
         let moved = false;
@@ -954,17 +1033,18 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
           const need = half(ring[i - 1], th[i - 1]) + half(ring[i], th[i]);
           const gap = th[i - 1] - th[i];
           if (gap < need) {
-            const push = (need - gap) / 2;
-            th[i - 1] += push;
-            th[i] -= push;
+            const share = mobility[i - 1] / (mobility[i - 1] + mobility[i]);
+            th[i - 1] += (need - gap) * share;
+            th[i] -= (need - gap) * (1 - share);
             moved = true;
           }
         }
-        for (let i = 0; i < th.length; i++) th[i] = clamp(th[i] + (target[i] - th[i]) * 0.02, lo, hi);
+        for (let i = 0; i < th.length; i++) th[i] = clamp(th[i] + (target[i] - th[i]) * pull[i], bounds[i][0], bounds[i][1]);
         if (!moved) break;
       }
       ring.forEach((n, i) => {
         n.ray = th[i];
+        placed.push({ n, half: half(n, th[i]) });
         const p = add(origin, scale(dirOf(th[i]), Math.min(radiusAt(th[i]), rMaxOnPage(n, th[i]))));
         n.x = n.tx = p.x;
         n.y = n.ty = p.y;

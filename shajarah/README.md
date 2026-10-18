@@ -91,6 +91,17 @@ migrations need no extra step. Logs are in `%APPDATA%\Shajarah\logs`.
 
 Logs are in `%LOCALAPPDATA%\Shajarah\logs`.
 
+## Project files (.shajarah)
+
+The **Files** button in the editor's sidebar saves the whole family as one
+`.shajarah` file: everyone, the poster settings and tiers, sources,
+citations, and the uploaded photos and documents themselves. **Open a
+project file** on the home page (or in the Files panel) opens one as a new
+family, with new ids, so the same file can be opened any number of times.
+Use it to keep copies of a project, move it to another computer, or send
+it to someone to look at. In the demo, an opened file replaces the demo
+family as one undoable step.
+
 ## Entering a family quickly: paste a nasab
 
 Click **بن…** in the member list and paste one lineage per line, newest name

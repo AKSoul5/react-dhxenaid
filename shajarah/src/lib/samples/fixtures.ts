@@ -262,3 +262,47 @@ export function shaalanFamily(): TreeDTO {
   const { members } = applyNasabLines([], "PATRILINEAL", SHAALAN_NASAB, () => `shaalan-${++n}`);
   return familyFrom("shaalan", "شجرة آل شعلان", "أسرة تجريبية من نصّ النسب", members);
 }
+
+/**
+ * Shaped like a real family that tangled once daughters were shown: a long
+ * trunk, then a canopy base with eleven childless sons and daughters, one
+ * son with one child, one with four, one with a large family (three sons,
+ * nine children each) and one with three. The childless children crowd the
+ * first ring and used to push the fathers off their sectors, so their
+ * lines crossed the neighbouring families'.
+ */
+export function crowdedBaseFamily(): TreeDTO {
+  const members: MemberDTO[] = [];
+  let n = 0;
+  const add = (name: string, gender: Gender, fatherId: string | null, order = 0) => {
+    const m: MemberDTO = {
+      id: `crowded-${++n}`, name, laqab: null, gender, birthYear: null, deathYear: null,
+      isDeceased: false, birthOrder: order, generation: 0, notes: null, fatherId, motherId: null,
+    };
+    members.push(m);
+    return m;
+  };
+  let line = add("عبدكلال", "MALE", null);
+  for (const name of ["الحارث", "عبدالله", "أسعد", "محمد", "يحيى", "زكريا", "أسعد", "محمد", "عبدالله", "إبراهيم", "محمد",
+    "عبدالرحمن", "عبدالله", "أبو بكر", "إسحاق", "أسعد", "أحمد", "شعلان", "عقيل", "فضل", "رجب", "عقيل", "فضل", "عمر",
+    "سالم", "محمد", "عمر", "سالم", "محمد", "علي", "محمد", "مبارك", "سالم"]) line = add(name, "MALE", line.id);
+  const base = add("محمد", "MALE", line.id);
+  let order = 0;
+  for (const name of ["عائشة", "قمر", "بدرية", "حميدة", "رقية"]) add(name, "FEMALE", base.id, order++);
+  for (const name of ["نافع", "عبدالله", "عقيل", "فضل", "سالم", "عوض"]) add(name, "MALE", base.id, order++);
+  const one = add("حامد", "MALE", base.id, order++);
+  add("حيدر", "MALE", one.id);
+  const four = add("ناصر", "MALE", base.id, order++);
+  ["طلال", "تايف", "محمد", "ممدوح"].forEach((name, i) => add(name, "MALE", four.id, i));
+  const large = add("مبارك", "MALE", base.id, order++);
+  const kids = [["سارة", "FEMALE"], ["أحمد", "MALE"], ["حمزة", "MALE"], ["ماجدة", "FEMALE"], ["أسعد", "MALE"],
+    ["عوض", "MALE"], ["الجوهرة", "FEMALE"], ["سيف", "MALE"], ["نافع", "MALE"]] as const;
+  ["سعيد", "خالد", "فهد"].forEach((name, k) => {
+    const son = add(name, "MALE", large.id, k);
+    kids.forEach(([kid, gender], j) => add(kid, gender, son.id, j));
+  });
+  const three = add("عبدالمعين", "MALE", base.id, order++);
+  ["أسعد", "عبدالمعين", "عوض"].forEach((name, i) => add(name, "MALE", three.id, i));
+  const tree = familyFrom("crowded", "شجرة عائلة الكلالي", "أسرة تجريبية", members);
+  return { ...tree, crownBaseId: base.id };
+}
