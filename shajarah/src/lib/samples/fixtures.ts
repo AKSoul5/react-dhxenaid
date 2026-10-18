@@ -232,3 +232,33 @@ export function abdullahFamily(): TreeDTO {
   const { members } = applyNasabLines([], "PATRILINEAL", ABDULLAH_NASAB, () => `abdullah-${++n}`);
   return familyFrom("abdullah", "شجرة آل عبدالله", "أسرة تجريبية من نصّ النسب", members);
 }
+
+/**
+ * A balanced three-branch family pasted as nasab lines: founder شعلان, his
+ * sons أحمد، علي and سالم, and two further generations under each. Built by
+ * the importer itself, like abdullahFamily().
+ */
+export const SHAALAN_NASAB = `أحمد بن شعلان
+علي بن شعلان
+سالم بن شعلان
+عبدالله بن أحمد بن شعلان
+محمد بن أحمد بن شعلان
+حسن بن علي بن شعلان
+مبارك بن سالم بن شعلان
+فهد بن سالم بن شعلان
+عبدالعزيز بن عبدالله بن أحمد بن شعلان
+سعود بن عبدالله بن أحمد بن شعلان
+نورة بنت عبدالله بن أحمد بن شعلان
+فيصل بن محمد بن أحمد بن شعلان
+خالد بن محمد بن أحمد بن شعلان
+يوسف بن حسن بن علي بن شعلان
+عمر بن حسن بن علي بن شعلان
+بدر بن مبارك بن سالم بن شعلان
+تركي بن مبارك بن سالم بن شعلان
+هند بنت مبارك بن سالم بن شعلان`;
+
+export function shaalanFamily(): TreeDTO {
+  let n = 0;
+  const { members } = applyNasabLines([], "PATRILINEAL", SHAALAN_NASAB, () => `shaalan-${++n}`);
+  return familyFrom("shaalan", "شجرة آل شعلان", "أسرة تجريبية من نصّ النسب", members);
+}
