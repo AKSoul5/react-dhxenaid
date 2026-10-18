@@ -281,6 +281,12 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   // the options replace a too-dense poster again whenever the layout changes
   useEffect(() => setShowDense(false), [layout]);
   // a branch poster needs at least one descendant to be a branch
+  // only a name drawn in the canopy (not the trunk or the soil) can be centred
+  const canopyIds = useMemo(
+    () => new Set(layout.base ? lineagePath(tree.members, tree.lineage, layout.base.member.id).descendants : []),
+    [layout.base, tree.members, tree.lineage],
+  );
+  const selectedInCanopy = !!selected && canopyIds.has(selected.id);
   const selectedHasDescendants = useMemo(
     () => !!selected && lineagePath(tree.members, tree.lineage, selected.id).descendants.length > 0,
     [selected, tree.members, tree.lineage],
@@ -536,6 +542,9 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 busy={busy}
                 onSelect={select}
                 onQuickAddChild={quickAddChild}
+                onQuickAddParent={(name, gender) =>
+                  void mutate(() => repo.createMember({ name, gender, parentOfId: selected.id }), { label: `Add ${name} above ${selected.name}` })
+                }
                 onAddSpouse={(sid) => void mutate(() => repo.createMarriage({ spouseAId: selected.id, spouseBId: sid }), { label: "Add marriage" })}
                 onNewSpouse={(name) =>
                   void mutate(
@@ -595,6 +604,21 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 ) : (
                   <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ trunkStartId: selected.id }), { label: "Set the trunk start" })}>
                     🪵 Start the trunk here (older ancestors go in the soil)
+                  </button>
+                )}
+                {tree.settings?.centerBranchId === selected.id ? (
+                  <button type="button" className="btn-outline w-full" onClick={() => updateSettings({ centerBranchId: null })}>
+                    ✓ Centered in canopy — reset
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn-outline w-full disabled:opacity-50"
+                    disabled={!selectedInCanopy}
+                    title={selectedInCanopy ? "Place this branch straight above the trunk, its brothers to either side" : "Only a branch in the canopy can be centred"}
+                    onClick={() => updateSettings({ centerBranchId: selected.id })}
+                  >
+                    🎯 Center this branch in the tree
                   </button>
                 )}
                 {tree.settings?.focusId === selected.id ? (

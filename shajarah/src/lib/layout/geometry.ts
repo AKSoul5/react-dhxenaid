@@ -60,7 +60,8 @@ const f = (n: number) => (Math.round(n * 10) / 10).toString();
  * (rather than stroked paths) give the organic taper of hand-drawn branches
  * and export cleanly to every vector format.
  */
-export function ribbonPath(curve: Cubic, w0: number, w1: number, samples = 14): string {
+/** `ease`: how fast the width falls from w0 (2: gently; higher: mostly in the first stretch). */
+export function ribbonPath(curve: Cubic, w0: number, w1: number, samples = 14, ease = 2): string {
   const left: Vec[] = [];
   const right: Vec[] = [];
   for (let i = 0; i <= samples; i++) {
@@ -68,7 +69,7 @@ export function ribbonPath(curve: Cubic, w0: number, w1: number, samples = 14): 
     const p = cubicPoint(curve, t);
     const n = perp(cubicTangent(curve, t));
     // ease-out taper reads more natural than a linear one
-    const w = (w0 + (w1 - w0) * (1 - (1 - t) * (1 - t))) / 2;
+    const w = (w1 + (w0 - w1) * (1 - t) ** ease) / 2;
     left.push(add(p, scale(n, w)));
     right.push(add(p, scale(n, -w)));
   }

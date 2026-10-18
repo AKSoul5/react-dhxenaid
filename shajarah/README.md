@@ -64,7 +64,7 @@ NEXT_OUTPUT=standalone npm run build   # self-contained server in .next/standalo
 cd desktop/electron
 npm install
 npm run prepare-app                    # gathers the server and the migrations
-npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.2.exe (build on Windows)
+npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.3.exe (build on Windows)
 npm start                              # or run it unpackaged
 ```
 
@@ -329,6 +329,18 @@ Files are served with `Cache-Control: immutable`, `nosniff` and a sandboxing
 Content-Security-Policy. The server refuses `data:` and `javascript:` URLs
 in Media rows. In the database-free demo there is no server, so an upload
 is held in the page as a `data:` URL.
+
+## Growing upward, and centring a branch
+
+- **Add a father above anyone:** select a person and type his father's name
+  under *Parents* (and press Enter). When that person was the poster's
+  root, the root moves up to the new father, so the tree grows upward.
+- **Primary lineage:** under *Poster tiers*, "🎯 Center this branch in the
+  tree" places the selected person's branch straight above the trunk
+  (settings `centerBranchId`), with his brothers to either side in birth
+  order, split where the two sides weigh most alike. It works for any
+  person in the canopy, at any depth: every branch on the way is centred
+  in its father's space.
 
 ## The three tiers: foundation, trunk, canopy
 

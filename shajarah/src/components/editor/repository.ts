@@ -131,8 +131,12 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
     if (err) throw new Error(err);
   };
   return {
-    async createMember({ spouseOfId, ...input }) {
+    async createMember({ spouseOfId, parentOfId, ...input }) {
       check(null, input.fatherId, input.motherId);
+      const child = parentOfId ? tree.members.find((m) => m.id === parentOfId) : undefined;
+      if (parentOfId && !child) throw new Error("That person is not in this tree.");
+      const role = input.gender === "FEMALE" ? ("motherId" as const) : ("fatherId" as const);
+      if (child?.[role]) throw new Error(`${child.name} already has a ${role === "fatherId" ? "father" : "mother"}.`);
       const siblings = tree.members.filter((m) => input.fatherId && m.fatherId === input.fatherId);
       const member: MemberDTO = {
         id: `local-${Date.now()}-${seq++}`, name: input.name, laqab: input.laqab ?? null,
@@ -144,9 +148,15 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
       const marriages = spouseOfId
         ? [...tree.marriages, { id: `mar-${seq++}`, spouseAId: spouseOfId, spouseBId: member.id, startYear: null, endYear: null }]
         : tree.marriages;
+      const onLine = (tree.lineage === "MATRILINEAL") === (role === "motherId");
+      const members = child
+        ? [...tree.members.map((m) => (m.id === child.id ? { ...m, [role]: member.id } : m)), member]
+        : [...tree.members, member];
       return commit({
-        ...tree, members: [...tree.members, member], marriages,
-        rootMemberId: tree.rootMemberId ?? (tree.members.length ? null : member.id),
+        ...tree, members, marriages,
+        rootMemberId: child && onLine && tree.rootMemberId === child.id
+          ? member.id
+          : tree.rootMemberId ?? (tree.members.length ? null : member.id),
       });
     },
     async updateMember(id, input) {

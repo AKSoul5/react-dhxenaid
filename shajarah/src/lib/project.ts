@@ -79,7 +79,11 @@ export function withNewIds(s: TreeSnapshot, newId: () => string): TreeSnapshot {
   };
   const opt = (id: string | null) => (id ? map(id) : null);
   const members: MemberDTO[] = s.members.map((m) => ({ ...m, id: map(m.id), fatherId: opt(m.fatherId), motherId: opt(m.motherId) }));
-  const settings = s.settings?.focusId ? { ...s.settings, focusId: opt(s.settings.focusId) } : s.settings;
+  const settings = s.settings
+    ? { ...s.settings,
+      ...(s.settings.focusId !== undefined ? { focusId: opt(s.settings.focusId ?? null) } : {}),
+      ...(s.settings.centerBranchId !== undefined ? { centerBranchId: opt(s.settings.centerBranchId ?? null) } : {}) }
+    : s.settings;
   return {
     ...s,
     settings,

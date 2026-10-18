@@ -11,6 +11,8 @@ interface Props {
   busy: boolean;
   onSelect: (id: string) => void;
   onQuickAddChild: (name: string, gender: Gender) => void;
+  /** Adds a new father (MALE) or mother (FEMALE) above this member. */
+  onQuickAddParent: (name: string, gender: Gender) => void;
   onAddSpouse: (spouseId: string) => void;
   onNewSpouse: (name: string) => void;
   onRemoveMarriage: (marriageId: string) => void;
@@ -18,8 +20,13 @@ interface Props {
 
 /** Fast relationship entry: type a name, press Enter, and the child is linked. */
 export function RelationsPanel({
-  tree, member, busy, onSelect, onQuickAddChild, onAddSpouse, onNewSpouse, onRemoveMarriage,
+  tree, member, busy, onSelect, onQuickAddChild, onQuickAddParent, onAddSpouse, onNewSpouse, onRemoveMarriage,
 }: Props) {
+  const [parentName, setParentName] = useState("");
+  // the missing parent (the father first)
+  const missing: Gender[] = [...(member.fatherId ? [] : ["MALE" as const]), ...(member.motherId ? [] : ["FEMALE" as const])];
+  const [parentChoice, setParentChoice] = useState<Gender | null>(null);
+  const parentGender = parentChoice && missing.includes(parentChoice) ? parentChoice : missing[0];
   const [childName, setChildName] = useState("");
   const [childGender, setChildGender] = useState<Gender>("MALE");
   const [spouseName, setSpouseName] = useState("");
@@ -38,16 +45,53 @@ export function RelationsPanel({
     setChildName("");
   };
 
+  const submitParent = () => {
+    if (!parentName.trim() || !parentGender) return;
+    onQuickAddParent(parentName.trim(), parentGender);
+    setParentName("");
+  };
+
   return (
     <div className="space-y-4">
-      {parents.length > 0 && (
-        <section>
-          <h4 className="section-title">Parents</h4>
-          <div className="flex flex-wrap gap-1.5">
+      <section>
+        <h4 className="section-title">Parents</h4>
+        {parents.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
             {parents.map((p) => <Chip key={p.id} m={p} onClick={() => onSelect(p.id)} />)}
           </div>
-        </section>
-      )}
+        )}
+        {parentGender && (
+          // grows the tree upward: the new person becomes this one's parent
+          <div className="flex gap-1">
+            <input
+              className="input flex-1 font-naskh text-base"
+              dir="auto"
+              placeholder={`Add ${member.gender === "FEMALE" ? "her" : "his"} ${parentGender === "MALE" ? "father" : "mother"} — type name, press Enter`}
+              value={parentName}
+              onChange={(e) => setParentName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submitParent();
+                }
+              }}
+            />
+            {missing.length > 1 && (
+              <button
+                type="button"
+                className="btn-ghost px-2"
+                title="Toggle father / mother"
+                onClick={() => setParentChoice(parentGender === "MALE" ? "FEMALE" : "MALE")}
+              >
+                {parentGender === "MALE" ? "♂" : "♀"}
+              </button>
+            )}
+            <button type="button" className="btn-primary px-3" disabled={busy || !parentName.trim()} onClick={submitParent}>
+              +
+            </button>
+          </div>
+        )}
+      </section>
 
       <section>
         <h4 className="section-title">Children ({children.length})</h4>

@@ -80,6 +80,8 @@ export interface LayoutOptions {
    * and their descendants (the canopy). Defaults to settings.focusId.
    */
   focusId?: string | null;
+  /** Primary lineage: the branch to centre in the canopy. Defaults to settings.centerBranchId. */
+  centerBranchId?: string | null;
   /** Where the canopy starts. Defaults to tree.crownBaseId, then automatic. */
   crownBaseId?: string | null;
   nodeShape?: NodeShape | "auto";
@@ -353,6 +355,9 @@ const BARE_TRUNK = 0.1;
 
 /** The canopy base's oval, as fractions of its round space's radius (wider than tall). */
 const BASE_OVAL = { w: 1, h: 0.66 };
+
+/** The least share of its father's span the primary lineage's branch takes, in the middle. */
+const CENTER_SHARE = 0.3;
 
 /** The least share of its father's space a child gets (see partition). */
 const MIN_CHILD_SHARE = 0.1;
@@ -863,6 +868,38 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     const needTotal = needs.reduce((a, b) => a + b, 0) || 1;
     const weights = strictFamilies ? balanced.map((w, i) => Math.max(w / balancedTotal, needs[i] / needTotal)) : balanced;
     const newTotal = weights.reduce((a, b) => a + b, 0);
+    // Primary lineage: the child on the way to the centred branch takes the
+    // middle of this span (at least CENTER_SHARE of it). His brothers keep
+    // their birth order on either side, split where the two sides weigh
+    // most alike (the elder ones on one side, the younger on the other),
+    // so neither side is crammed while the other stays empty. Down the
+    // whole way, the centred branch ends up straight above the trunk.
+    const c = kids.findIndex((k) => centerPath.has(k));
+    if (c >= 0) {
+      const mid = (u0 + u1) / 2;
+      const half = ((u1 - u0) * Math.max(CENTER_SHARE, weights[c] / newTotal)) / 2;
+      const others = kids.map((_, i) => i).filter((i) => i !== c);
+      const otherTotal = others.reduce((sum, i) => sum + weights[i], 0);
+      let cut = 0, best = Infinity, acc = 0;
+      for (let k = 0; k <= others.length; k++) {
+        const diff = Math.abs(otherTotal - 2 * acc);
+        if (diff < best) { best = diff; cut = k; }
+        if (k < others.length) acc += weights[others[k]];
+      }
+      const spread = (from: number, to: number, list: number[]) => {
+        const total = list.reduce((sum, i) => sum + weights[i], 0) || 1;
+        let a = from;
+        for (const i of list) {
+          const span = ((to - from) * weights[i]) / total;
+          partition(kids[i], a, a + span, d0);
+          a += span;
+        }
+      };
+      spread(u0, mid - half, others.slice(0, cut));
+      partition(kids[c], mid - half, mid + half, d0);
+      spread(mid + half, u1, others.slice(cut));
+      return;
+    }
     let a = u0;
     kids.forEach((k, i) => {
       const span = ((u1 - u0) * weights[i]) / newTotal;
@@ -870,6 +907,12 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       a += span;
     });
   };
+  // the way from the canopy base to the centred branch (empty when none is
+  // set, or it is not in the canopy)
+  const centerId = opts.centerBranchId !== undefined ? opts.centerBranchId : (tree.settings?.centerBranchId ?? null);
+  const centerNode = centerId ? (base.descendants() as HNode[]).find((n) => n !== base && n.data.member?.id === centerId) : undefined;
+  const centerPath = new Set<HNode>(centerNode ? (centerNode.ancestors() as HNode[]).filter((n) => n !== base && n.depth > base.depth) : []);
+  const centerIds = new Set([...centerPath].map((n) => n.data.member!.id));
   partition(base, 0.015, 0.985);
 
   const nodes: LiveNode[] = [];
@@ -1024,8 +1067,9 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         // no room between them: unbounded (the clarity check judges the result)
         return b0 <= b1 && strictFamilies ? [b0, b1] : [lo, hi];
       });
-      const mobility = ring.map((n) => (n.terminal || !strictFamilies ? 1 : 0.12));
-      const pull = ring.map((n) => (n.terminal || !strictFamilies ? 0.02 : 0.15));
+      // (the primary lineage always holds its place: it is the centre)
+      const mobility = ring.map((n) => (centerIds.has(n.id) ? 0.05 : n.terminal || !strictFamilies ? 1 : 0.12));
+      const pull = ring.map((n) => (centerIds.has(n.id) ? 0.4 : n.terminal || !strictFamilies ? 0.02 : 0.15));
       const th = [...target];
       for (let it = 0; it < 200; it++) {
         let moved = false;
@@ -1071,8 +1115,8 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const edges: Edge[] = [];
   const sample = (c: Cubic, n = 16): Vec[] => Array.from({ length: n + 1 }, (_, i) => cubicPointAt(c, i / n));
   /** A clean tapered branch with a rounded joint where it starts. */
-  const shaded = (curve: Cubic, w0: number, w1: number, samples = 14): Branch => ({
-    d: ribbonPath(curve, w0, w1, samples) + circlePath(curve.p0, w0 / 2),
+  const shaded = (curve: Cubic, w0: number, w1: number, samples = 14, ease = 2): Branch => ({
+    d: ribbonPath(curve, w0, w1, samples, ease) + circlePath(curve.p0, w0 / 2),
     w: w0,
   });
   const stemStart = new Map<string, Vec>();
@@ -1453,6 +1497,13 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     for (const t of [0.25, 0.45, 0.65, 0.85, 1]) seeds.push({ p: cubicPointAt(curve, t), dir: cubicTangent(curve, t) });
   };
 
+  // The main limbs (the canopy base's sons with families of their own) grow
+  // out of the trunk: together they start about as wide as it, then narrow
+  // to their own width over the first stretch, instead of thin twigs
+  // poking out of a broad trunk. (They start at the canopy base's centre,
+  // inside the wood, under its oval.)
+  const mainLimbs = growing.filter((n) => n.region === "crown" && n.depth === 1 && !n.terminal).length;
+  const limbShare = mainLimbs ? clamp(1.05 / mainLimbs, 0.14, 0.4) : 0;
   for (const node of growing) {
     const c = curveOf.get(node.id)!;
     if (node.shape === "leaf") {
@@ -1462,9 +1513,12 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       edges.push({ parentId: parentIdOf(node), childId: node.id, points: sample(c), w0: widthOf(1), w1: tip, lineage: node.lineage ?? null });
     } else {
       const w = widthOf(node.leafCount);
-      const w0 = node.depth === 1 ? w * 1.15 : w;
-      branches.push({ ...shaded(c, w0, w * 0.7), lineage: node.lineage ?? null });
-      edges.push({ parentId: parentIdOf(node), childId: node.id, points: sample(c), w0, w1: w * 0.7, lineage: node.lineage ?? null });
+      const mainLimb = node.region === "crown" && node.depth === 1 && !node.terminal;
+      const w0 = mainLimb ? Math.max(w * 1.15, trunkWidth * limbShare) : node.depth === 1 ? w * 1.15 : w;
+      branches.push({ ...shaded(c, w0, w * 0.7, 14, mainLimb ? 4 : 2), lineage: node.lineage ?? null });
+      // (the line's own width, for the clarity check: a main limb's wide
+      // start lies under the canopy base's oval)
+      edges.push({ parentId: parentIdOf(node), childId: node.id, points: sample(c), w0: node.depth === 1 ? w * 1.15 : w, w1: w * 0.7, lineage: node.lineage ?? null });
     }
     seedFrom(c);
   }
@@ -1584,7 +1638,9 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     // flaring at the top to meet the canopy base, as a trunk divides into
     // its limbs (no wider than the medallion, which covers the top)
     trunkPath: trunkOutline(
-      origin, groundY, trunkWidth, TW, Math.max(trunkWidth, baseOval.rx * 1.6),
+      // (a collar: as wide as the canopy base, a little wider than the
+      // trunk, so the limbs visibly grow out of it)
+      origin, groundY, trunkWidth, TW, Math.max(trunkWidth * 1.3, baseOval.rx * 1.9),
       soil ? soil.trunkSpread : 1, soil?.trunkTaper ?? 0,
     ),
     trunkWidth,

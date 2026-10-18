@@ -153,20 +153,40 @@ export async function deleteTree(treeId: string) {
 }
 
 export async function createMember(treeId: string, input: CreateMemberInput, version?: string): Promise<TreeDTO> {
-  const { spouseOfId, ...fields } = input;
+  const { spouseOfId, parentOfId, ...fields } = input;
   return changeTree(treeId, version, async (tx, tree) => {
     assertParents(tree.members, null, fields.fatherId, fields.motherId);
     if (spouseOfId && !tree.members.some((m) => m.id === spouseOfId)) throw new DomainError("Spouse is not in this tree.");
+    const up = parentOfId ? parentSlot(tree, parentOfId, fields.gender) : null;
     const birthOrder = fields.birthOrder ?? nextBirthOrder(tree.members, fields.fatherId, fields.motherId);
     const member = await tx.member.create({
       data: { ...fields, birthOrder, isDeceased: fields.isDeceased ?? !!fields.deathYear, treeId },
     });
     if (spouseOfId) await tx.marriage.create({ data: { treeId, spouseAId: spouseOfId, spouseBId: member.id } });
+    if (up) {
+      await tx.member.update({ where: { id: up.childId }, data: { [up.role]: member.id } });
+      if (up.newRoot) await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: member.id } });
+    }
     // The first member becomes the tree root by default.
     if (!tree.rootMemberId && tree.members.length === 0) {
       await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: member.id } });
     }
   });
+}
+
+/**
+ * Where a new parent of `childId` goes: the father's place (the mother's,
+ * for a woman), which must be empty. When the child is the tree's root and
+ * the new parent is on the line (the father in a patrilineal tree), the
+ * root moves up to the parent, so the poster grows upward with him.
+ */
+function parentSlot(tree: TreeDTO, childId: string, gender: string | undefined) {
+  const child = tree.members.find((m) => m.id === childId);
+  if (!child) throw new DomainError("That person is not in this tree.");
+  const role = gender === "FEMALE" ? ("motherId" as const) : ("fatherId" as const);
+  if (child[role]) throw new DomainError(`${child.name} already has a ${role === "fatherId" ? "father" : "mother"}.`);
+  const onLine = (tree.lineage === "MATRILINEAL") === (role === "motherId");
+  return { childId, role, newRoot: onLine && tree.rootMemberId === childId };
 }
 
 export async function updateMember(memberId: string, input: UpdateMemberInput, version?: string): Promise<TreeDTO> {

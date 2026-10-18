@@ -54,6 +54,7 @@ export const updateTreeSchema = createTreeSchema.partial().extend({
       showFemales: z.boolean().optional(),
       posterSize: z.enum(["A3", "A2", "A1", "A0", "2A0"]).optional(),
       focusId: z.string().nullable().optional(),
+      centerBranchId: z.string().nullable().optional(),
       seed: z.number().int().optional(),
       theme: themeSchema.optional(),
     })
@@ -193,6 +194,8 @@ export const memberFieldsSchema = z.object({
 export const createMemberSchema = memberFieldsSchema.extend({
   /** Also create a marriage with this existing member. */
   spouseOfId: z.string().nullable().optional(),
+  /** Add the new member as this existing member's father (or mother, for a woman): the tree grows upward. */
+  parentOfId: z.string().nullable().optional(),
 });
 
 export const updateMemberSchema = memberFieldsSchema.partial();
