@@ -88,24 +88,37 @@ describe("soil styles on real lineages", () => {
             expect(overlap, `"${s.texts[i].text}" over "${s.texts[j].text}"`).toBe(false);
           }
         }
-        // every ancestor, in reading order (newest first)
+        // every ancestor, in reading order (newest first); a lineage too long
+        // for its space leaves names out of its middle, marked "…", keeping
+        // the nearest names and the last two
         const read = names.map((t) => t.text).join(" ");
         if (!tree.soilText) {
           const byId = new Map(tree.members.map((m) => [m.id, m]));
-          let at = 0;
           const shown = new Set(l.trunkLabels.map((t) => t.member.id));
           // the soil ancestors are the chain above the lowest trunk badge
+          const ancestors: string[] = [];
           let cur = byId.get(l.trunkLabels[l.trunkLabels.length - 1].member.id);
-          let count = 0;
           while (cur?.fatherId) {
             cur = byId.get(cur.fatherId)!;
-            if (shown.has(cur.id)) continue;
-            const found = read.indexOf(cur.name, at);
-            expect(found, `${cur.name} after position ${at}`).toBeGreaterThanOrEqual(0);
-            at = found + cur.name.length;
+            if (!shown.has(cur.id)) ancestors.push(cur.name);
+          }
+          const cut = read.indexOf("…");
+          const expected = cut < 0 ? ancestors : ancestors.slice(0, ancestors.length - 2);
+          let at = 0, count = 0;
+          for (const name of expected) {
+            const found = read.indexOf(name, at);
+            if (cut >= 0 && (found < 0 || found > cut)) break;
+            expect(found, `${name} after position ${at}`).toBeGreaterThanOrEqual(0);
+            at = found + name.length;
             count++;
           }
-          expect(count).toBe(s.count);
+          if (cut < 0) expect(count).toBe(s.count);
+          else {
+            expect(count).toBeGreaterThan(0);
+            const after = read.slice(cut);
+            expect(after.indexOf(ancestors.at(-2)!)).toBeGreaterThan(0);
+            expect(after.indexOf(ancestors.at(-1)!)).toBeGreaterThan(after.indexOf(ancestors.at(-2)!));
+          }
         } else if (style !== "paragraph" && tree.soilText.includes(" بن ")) {
           // a nasab inscription is set name by name, without repeating the trunk's own first ancestor
           expect(names.some((t) => t.text === "عبد كلال الأصغر")).toBe(false);
@@ -135,7 +148,11 @@ describe("soil styles on real lineages", () => {
     const names = s.texts.filter((t) => t.memberId);
     const sides = names.map((t) => Math.sign(textBox(l, t).x0 + textBox(l, t).x1 - l.width));
     for (let i = 1; i < sides.length; i++) expect(sides[i]).toBe(-sides[i - 1]);
-    const numbers = s.texts.filter((t) => t.annotation).map((t) => Number(t.text.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))));
+    // the generation numbers are held to the legible size, like the names
+    const numberTexts = s.texts.filter((t) => /^[٠-٩0-9]+$/.test(t.text));
+    expect(Math.min(...numberTexts.map((t) => t.fontSize))).toBeGreaterThanOrEqual(s.fontSize - 1e-9);
+    expect(l.legibility.ok).toBe(true);
+    const numbers = numberTexts.map((t) => Number(t.text.replace(/[٠-٩]/g, (d) => String("٠١٢٣٤٥٦٧٨٩".indexOf(d)))));
     expect(numbers.length).toBe(names.length);
     for (let i = 1; i < numbers.length; i++) expect(numbers[i]).toBe(numbers[i - 1] - 1);
   });

@@ -271,7 +271,7 @@ export const TreePoster = memo(
               ))}
           </g>
         )}
-        {showIssues && !layout.clarity.ok && (
+        {showIssues && !layout.clarity.ok && !layout.tooDense && (
           <g data-ui="clarity" fill="none" stroke="#d32f2f" pointerEvents="none">
             {layout.clarity.issues.filter((i) => i.at).map((i, k) => (
               <circle key={k} cx={i.at!.x} cy={i.at!.y} r={W * 0.012} strokeWidth={W * 0.0025} strokeDasharray={`${W * 0.004} ${W * 0.003}`} />

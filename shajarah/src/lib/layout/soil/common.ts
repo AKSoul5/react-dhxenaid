@@ -61,6 +61,35 @@ export function namesOf(ctx: SoilContext): { entries: SoilContext["entries"]; pr
   return { entries: parts.map((label) => ({ id: null, label, generation: null })), prose: null };
 }
 
+/** Marks the names left out of a lineage too long for its space. */
+export const ELLIPSIS = "…";
+
+/**
+ * The lineage with `drop` names (or words, for a custom inscription that
+ * is not a nasab) left out of its middle and shown as "…": the names
+ * nearest the trunk and the last two (e.g. "شيث بن آدم") stay. Names are
+ * never set below the legible size to fit; they are left out instead.
+ */
+export function shortenSoil(ctx: SoilContext, drop: number): SoilContext {
+  if (drop <= 0) return ctx;
+  const names = namesOf(ctx);
+  if (names.prose) {
+    const words = wordsOf(names.prose);
+    const tail = Math.min(4, words.length);
+    const head = Math.max(1, words.length - tail - drop);
+    if (head + tail >= words.length) return ctx;
+    return { ...ctx, text: [...words.slice(0, head), ELLIPSIS, ...words.slice(words.length - tail)].join(" ") };
+  }
+  const all = names.entries;
+  const tail = Math.min(2, all.length);
+  const head = Math.max(1, all.length - tail - drop);
+  if (head + tail >= all.length) return ctx;
+  const entries = [...all.slice(0, head), { id: null, label: ELLIPSIS, generation: null }, ...all.slice(all.length - tail)];
+  // the running text starts from the trunk's first ancestor, as before
+  const first = ctx.trunkName ? [ctx.custom ? ctx.trunkName : ctx.text.split(ctx.joiner)[0]] : [];
+  return { ...ctx, entries, text: [...first, ...entries.map((e) => e.label)].join(ctx.joiner) };
+}
+
 /** "بن X بن Y … بن آدم": the names from `from` on, continuing a chain shown above them (or the prose). */
 export function restAsText(ctx: SoilContext, names: ReturnType<typeof namesOf>, from: number): string {
   if (names.prose) return names.prose;

@@ -52,6 +52,7 @@ import {
 import { validateRelationships, type ClarityReport } from "./clarity";
 import { growFoliage, type Box, type Foliage } from "./foliage";
 import { soilStyle, type SoilContext, type SoilGeometry, type SoilStyleId } from "./soil";
+import { namesOf, shortenSoil, wordsOf } from "./soil/common";
 import { mulberry32 } from "./random";
 
 export type NodeShape = "leaf" | "circle" | "oval";
@@ -213,6 +214,13 @@ export interface PosterLayout {
   overlaps: number;
   /** Relationship-clarity check of the drawn connections (see clarity.ts). */
   clarity: ClarityReport;
+  /**
+   * More than CLARITY_LIMIT ambiguous connections even after setting the
+   * canopy's names smaller: the family is too dense for this paper. The
+   * editor then shows one clear warning (a larger size, or a smaller
+   * branch) instead of circling dozens of places.
+   */
+  tooDense: boolean;
   /** Set when the poster shows one branch only (see LayoutOptions.focusId). */
   focus: { id: string; label: string } | null;
   /** Generation of the crown base; legend numbering and colours start here. */
@@ -277,6 +285,9 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   };
   let chosen = 1;
   const full = at(1);
+  // a crowded canopy first gets its names set a fifth smaller (when that
+  // stays legible), so each has more room
+  if (full.clarity.issues.length > CLARITY_LIMIT) at(0.8);
   if (!isClean(full)) {
     // the smallest scale at which the names are still legible
     const legibleScale = clamp((full.legibility.minTextMm / Math.max(1e-6, full.legibility.smallestTextMm)) * 1.02, 0.35, 1);
@@ -290,9 +301,19 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
   }
   // decorative foliage is only grown for the chosen layout
-  if (opts.foliage) return attempt(chosen, true);
-  return at(chosen);
+  const result = opts.foliage ? attempt(chosen, true) : at(chosen);
+  result.tooDense = result.clarity.issues.length > CLARITY_LIMIT;
+  return result;
 }
+
+/** Most of the content height the foundation may take (a whole-family poster). */
+const SOIL_SHARE = 0.4;
+/** On a branch poster: trunk and foundation together, and the trunk alone. */
+const LOWER_SHARE = 0.4;
+const TRUNK_SHARE = 0.3;
+
+/** Most ambiguous connections a poster may have before it counts as too dense for its paper. */
+export const CLARITY_LIMIT = 5;
 
 
 function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true): PosterLayout {
@@ -363,6 +384,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     legibility: { minTextMm, smallestTextMm: minTextMm, ok: true, scaleNeeded: 1 },
     overlaps: 0,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },
+    tooDense: false,
     focus: null,
     generationOffset: 0, generationsPresent: [], stats,
   };
@@ -535,10 +557,34 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   });
 
   type Plan = { onTrunk: HNode[]; soil: HNode[]; zig: boolean };
+  // The foundation has a height budget. Its names are never set below the
+  // legible size: a lineage too long for its budget leaves names out of
+  // its middle (shown as "…"), keeping the nearest and the last ones.
+  // A branch poster is about the descendants: trunk and foundation together
+  // take at most LOWER_SHARE of the page (the trunk at most TRUNK_SHARE),
+  // leaving the canopy at least 60%.
+  const branchMode = !!focusMember;
+  const soilBudget = (f: number, p: Plan) =>
+    branchMode ? Math.max(f * 6, avail * LOWER_SHARE - trunkSection(p.onTrunk.length, f, p.zig)) : avail * SOIL_SHARE;
+  const soilFor = (f: number, p: Plan): { ctx: SoilContext; height: number } => {
+    const full = soilContextFor(f, p);
+    const budget = soilBudget(f, p);
+    const height = soilDef.height(full);
+    if (height <= budget) return { ctx: full, height };
+    const names = namesOf(full);
+    let lo = 1, hi = Math.max(1, names.prose ? wordsOf(names.prose).length : names.entries.length);
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (soilDef.height(shortenSoil(full, mid)) <= budget) hi = mid; else lo = mid + 1;
+    }
+    const ctx = shortenSoil(full, lo);
+    return { ctx, height: soilDef.height(ctx) };
+  };
   const totalFor = (f: number, p: Plan) => {
+    const trunkH = trunkSection(p.onTrunk.length, f, p.zig);
+    if (branchMode && trunkH > avail * TRUNK_SHARE) return Infinity;
     const useSoil = p.soil.length > 0 || !!customSoil;
-    return 1.8 * crownDims(f).ry + baseRFor(f) + trunkSection(p.onTrunk.length, f, p.zig)
-      + (useSoil ? soilDef.height(soilContextFor(f, p)) : f * 0.8);
+    return 1.8 * crownDims(f).ry + baseRFor(f) + trunkH + (useSoil ? soilFor(f, p).height : f * 0.8);
   };
   const avail = contentBottom - contentTop;
   // Candidate arrangements, most faithful first.
@@ -548,11 +594,18 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     const soil = trunkChain.slice(0, startIdx);
     plans.push({ onTrunk, soil, zig: false });
     if (onTrunk.length >= 6) plans.push({ onTrunk, soil, zig: true });
+    // a trunk too long for its share hands its oldest names to the foundation
+    for (let k = startIdx + 1; k <= trunkChain.length - 4; k++) {
+      plans.push({ onTrunk: trunkChain.slice(k), soil: trunkChain.slice(0, k), zig: false });
+      if (trunkChain.length - k >= 6) plans.push({ onTrunk: trunkChain.slice(k), soil: trunkChain.slice(0, k), zig: true });
+    }
   } else {
     // automatic: the nearest ancestors on the trunk, the rest in the foundation
     const most = Math.min(trunkChain.length, opts.maxTrunkLabels ?? 12);
     for (let k = most; k >= Math.min(most, 4); k--) {
-      plans.push({ onTrunk: trunkChain.slice(trunkChain.length - k), soil: trunkChain.slice(0, trunkChain.length - k), zig: false });
+      const onTrunk = trunkChain.slice(trunkChain.length - k), soil = trunkChain.slice(0, trunkChain.length - k);
+      plans.push({ onTrunk, soil, zig: false });
+      if (k >= 6) plans.push({ onTrunk, soil, zig: true });
     }
   }
   const largestFitting = (p: Plan, lo: number, hi: number) => {
@@ -597,6 +650,13 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // A small family's canopy spreads out (up to twice its size) and its
   // trunk grows taller, rather than floating in empty paper.
   let stemExtra = 0;
+  if (branchMode && slack > 0) {
+    // a branch poster's canopy takes at least 60% of the page
+    const grow = Math.min(slack, Math.max(0, avail * (1 - LOWER_SHARE) - (1.8 * ry + baseRFor(f))) ) / 1.8;
+    rx = Math.min(rxMax, rx * (1 + grow / ry));
+    ry += grow;
+    slack -= grow * 1.8;
+  }
   if (slack > 0) {
     const grow = Math.min((slack * 0.7) / 1.8, ry);
     rx = Math.min(rxMax, rx * (1 + grow / ry));
@@ -1328,7 +1388,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // ── Foundation: the ancient ancestors, in the chosen soil style ───────
   const soil: SoilInscription | null = useSoil
     ? soilDef.layout({
-        ...soilContextFor(f, plan), cx: W / 2, groundY, trunkWidth, W,
+        ...soilFor(f, plan).ctx, cx: W / 2, groundY, trunkWidth, W,
         // the gold thread joining the trunk's ancestors continues from just below the lowest one
         threadFrom: shownTrunk.length ? labelBottom + trunkFont * 0.75 : groundY - f * 0.2,
       })

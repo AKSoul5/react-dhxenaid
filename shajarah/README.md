@@ -310,10 +310,26 @@ automatic choice) decides. Only the drawing changes.
 | Style | Look | Trunk meets it |
 | --- | --- | --- |
 | **Calligraphic column** (default, Refined) | A single centred column of names in Ruqaa on a thin gold thread, with small gold diamonds between names. Size and spacing grow toward the trunk; the oldest names are smallest, never below the legibility floor. No boxes or panels. | The trunk narrows to a point that opens into two fine gold sweeps cradling the nearest name, which is set in the bark's colour, so the column reads as the trunk's base. The thread runs from the trunk's ancestors down through the column. No ground line, no roots. |
-| **Timeline spine** | A spine in the trunk's own colour, with names alternating either side on short gold ticks and each ancestor's generation on a small disc (٤٧, ٤٦ … in Arabic). | The spine starts at the trunk's full width and tapers down, so trunk and spine are one form. |
+| **Timeline spine** | A spine in the trunk's own colour, with names alternating either side on gold ticks and each ancestor's generation on a disc (٤٧, ٤٦ … in Arabic). The numbers are held to the legible minimum like the names, and the ticks reach out into the width the names leave free. | The spine starts at the trunk's full width and tapers down, so trunk and spine are one form. |
 | **Illuminated banner** | A manuscript panel: double gold rule, a border of small lozenges, head- and tailpiece, names stacked with ornamental separators. A long lineage is set in columns, read right to left. | The trunk stands on the panel's head with a few fine roots. |
 | **Stepped pedestal** | Light, finely ruled steps widening downward, each carrying the next group of names ("بن نصر بن سهل بن …"). | The trunk stands on the top step. |
 | **Inscribed panel** | The original: running text in a gold-ruled panel. | A root flare into a mound, with fine roots. |
+
+**Branch posters and very long lineages.** A branch poster is about the
+descendants: the trunk takes at most 30% of the content height (a long
+trunk switches to two staggered columns, then hands its oldest names to
+the foundation), and trunk and foundation together at most 40%, leaving
+the canopy at least 60%. The foundation never sets names below the
+legible minimum to fit: a lineage too long for its share (40% on a whole
+family poster) leaves names out of its middle, marked "…", keeping the
+nearest names and the last two (e.g. "… شيث بن آدم عليه السلام").
+
+**Too dense for the paper.** A poster with more than 5 ambiguous
+connections is retried with the canopy's names a fifth smaller (when that
+stays legible). If it is still above 5, the editor does not circle
+dozens of places: it shows one warning, "This branch is too dense for
+A2. Please use a larger poster size or focus on a smaller sub-branch.",
+with the search for a size where every line is clear.
 
 **Long lineages.** A column of 49 names cannot be legible on A2: it would
 take a third of the poster. So the column and the spine each have a height

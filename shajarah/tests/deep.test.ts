@@ -18,13 +18,19 @@ describe("deep families", () => {
     expect(l.clarity.issues.length).toBeLessThanOrEqual(5);
   });
 
-  it("places generations on rings that move outward", () => {
+  it("places children further out from the canopy base than their parents", () => {
     const l = layoutAt("A2");
     const o = l.origin;
-    const byDepth = new Map<number, number[]>();
-    for (const n of l.nodes) if (n.region === "crown") byDepth.set(n.depth, [...(byDepth.get(n.depth) ?? []), Math.hypot(n.x - o.x, n.y - o.y)]);
-    const median = (v: number[]) => [...v].sort((a, b) => a - b)[v.length >> 1];
-    const depths = [...byDepth.keys()].sort((a, b) => a - b);
-    for (let i = 1; i < depths.length; i++) expect(median(byDepth.get(depths[i])!)).toBeGreaterThan(median(byDepth.get(depths[i - 1])!));
+    const r = new Map(l.nodes.map((n) => [n.id, Math.hypot(n.x - o.x, n.y - o.y)]));
+    let checked = 0, outward = 0;
+    for (const n of l.nodes) {
+      const parent = n.parentId ? r.get(n.parentId) : undefined;
+      if (parent === undefined) continue;
+      checked++;
+      if (r.get(n.id)! > parent) outward++;
+    }
+    expect(checked).toBeGreaterThan(50);
+    // (a few near the base are moved by the separation of the names)
+    expect(outward / checked).toBeGreaterThan(0.9);
   }, 60000);
 });

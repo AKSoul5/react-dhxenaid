@@ -143,7 +143,12 @@ describe("focus mode (one branch on its own poster)", () => {
 });
 
 describe("branch posters keep the person's whole ancestry", () => {
-  /** Ancestors on the poster, newest first: the trunk badges, then the soil inscription. */
+  /**
+   * Ancestors on the poster, newest first: the trunk badges, then the soil
+   * inscription. A lineage too long for the foundation's share of a branch
+   * poster leaves names out of its middle, marked "…", and keeps the last
+   * ones (down to the root).
+   */
   const check = (tree: TreeDTO, id: string, paper: "A2" | "A1" = "A2") => {
     const l = computePosterLayout(tree, { ...layoutOptionsFor(resolveTheme(tree.settings), paper), focusId: id });
     const { ancestors } = lineagePath(tree.members, tree.lineage, id);
@@ -153,13 +158,19 @@ describe("branch posters keep the person's whole ancestry", () => {
     // every ancestor is on the trunk or in the soil, none twice, none dropped
     const trunk = l.trunkLabels.map((t) => t.member.id);
     expect(new Set(trunk).size).toBe(trunk.length);
-    expect(trunk.length + (l.soil?.count ?? 0)).toBe(ancestors.length);
+    const shortened = !!l.soil?.texts.some((t) => t.text.includes("…"));
+    if (!shortened) expect(trunk.length + (l.soil?.count ?? 0)).toBe(ancestors.length);
+    else {
+      expect(trunk.length + l.soil!.count - 1).toBeLessThan(ancestors.length);
+      const root = tree.members.find((m) => m.id === ancestors.at(-1))!;
+      expect(l.soil!.texts.map((t) => t.text).join(" ")).toContain(root.name);
+    }
     // the trunk carries the nearest ancestors, in order (eldest at the bottom)
     expect([...trunk].reverse()).toEqual(ancestors.slice(0, trunk.length));
     return l;
   };
 
-  it("Al-Kalali: a grandchild in the canopy keeps all 80+ ancestors (trunk, then soil)", () => {
+  it("Al-Kalali: a grandchild in the canopy keeps its 80+ ancestors' line, from the trunk down to آدم", () => {
     const tree = kalaliTree();
     const byId = new Map(tree.members.map((m) => [m.id, m]));
     const depthBelowCrown = (id: string): number => {
@@ -169,7 +180,10 @@ describe("branch posters keep the person's whole ancestry", () => {
     };
     const deep = tree.members.filter((m) => depthBelowCrown(m.id) >= 2).sort((a, b) => depthBelowCrown(b.id) - depthBelowCrown(a.id))[0];
     const l = check(tree, deep.id);
-    expect(l.trunkLabels.length + l.soil!.count).toBeGreaterThan(80);
+    // the trunk is held to its share; the foundation keeps the nearest names and the end of the line
+    expect(l.trunkLabels.length).toBeGreaterThan(10);
+    expect(l.soil!.texts.map((t) => t.text).join(" ")).toContain("آدم");
+    expect(l.legibility.ok).toBe(true);
   });
 
   it("large family: a grandchild in the middle of the canopy", () => {

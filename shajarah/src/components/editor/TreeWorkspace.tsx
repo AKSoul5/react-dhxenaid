@@ -632,6 +632,8 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             {!layout.clarity.ok && (
               <ClarityNotice
                 issues={layout.clarity.issues.length}
+                tooDense={layout.tooDense}
+                branch={!!layout.focus}
                 paper={posterSize}
                 fallbacks={fallbacks}
                 findSize={() => {
@@ -743,9 +745,12 @@ function LegibilityNotice({
  * spots are circled on the poster; a larger poster usually resolves them.
  */
 function ClarityNotice({
-  issues, paper, fallbacks, findSize, onChoose,
+  issues, tooDense, branch, paper, fallbacks, findSize, onChoose,
 }: {
   issues: number;
+  /** Too many to circle usefully: one prominent warning instead. */
+  tooDense: boolean;
+  branch: boolean;
   paper: PaperSize;
   fallbacks: Fallbacks;
   findSize: () => PaperSize | null;
@@ -754,12 +759,35 @@ function ClarityNotice({
   const [state, setState] = useState<"idle" | "searching" | PaperSize | "none">("idle");
   useEffect(() => setState("idle"), [issues, paper]);
   return (
-    <div className="absolute end-4 top-4 z-10 max-w-sm rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900 shadow">
-      <p className="font-semibold">Some connections are ambiguous on {paper}</p>
-      <p className="mt-1">
-        {issues} place{issues === 1 ? "" : "s"} (circled) where a line passes under another name, crosses
-        too shallowly or runs into another line, so a reader could misread who descends from whom.
-      </p>
+    <div
+      role={tooDense ? "alert" : undefined}
+      className={
+        tooDense
+          ? "absolute start-1/2 top-1/3 z-20 w-[min(36rem,calc(100%-2rem))] -translate-x-1/2 rounded-xl border-2 border-red-400 bg-red-50/95 px-6 py-5 text-sm text-red-900 shadow-xl"
+          : "absolute end-4 top-4 z-10 max-w-sm rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900 shadow"
+      }
+    >
+      {tooDense ? (
+        <>
+          <p className="text-xl font-bold">
+            This {branch ? "branch" : "family"} is too dense for {paper}.
+          </p>
+          <p className="mt-2 text-base">
+            Please use a larger poster size or focus on a smaller sub-branch.
+          </p>
+          <p className="mt-2 text-xs text-red-800">
+            {issues} connections could be misread at this size, even with the names set smaller.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="font-semibold">Some connections are ambiguous on {paper}</p>
+          <p className="mt-1">
+            {issues} place{issues === 1 ? "" : "s"} (circled) where a line passes under another name, crosses
+            too shallowly or runs into another line, so a reader could misread who descends from whom.
+          </p>
+        </>
+      )}
       {state === "idle" && (
         <button
           type="button"

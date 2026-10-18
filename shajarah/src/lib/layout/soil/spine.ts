@@ -21,16 +21,16 @@ interface Row {
   generation: number | null;
 }
 
-/** The disc carrying the generation number. */
-const discR = (fs: number) => fs * 0.55;
-/** Room from the spine's centre line to a name: disc, tick, a little air. */
-const reachFor = (fs: number) => discR(fs) + fs * 1.0 + fs * 0.3;
+/** The generation numbers: as legible as the names (never below the floor). */
+const numFont = (ctx: SoilContext, fs: number) => Math.max(ctx.floor, fs * 0.72);
+/** The disc carrying the generation number: room for two or three digits. */
+const discR = (ctx: SoilContext, fs: number) => numFont(ctx, fs) * 0.95;
 
 function measure(ctx: SoilContext) {
   const names = namesOf(ctx);
   const { entries } = names;
-  const fsTop = clamp(ctx.f * 0.95, ctx.floor, ctx.maxFont * 0.72);
-  const fsBottom = Math.max(ctx.floor, fsTop * 0.88);
+  const fsTop = clamp(ctx.f * 1.15, ctx.floor, ctx.maxFont * 0.85);
+  const fsBottom = Math.max(ctx.floor, fsTop * 0.9);
   // the side the reading starts from first: right in Arabic
   const first: 1 | -1 = ctx.rtl ? 1 : -1;
   const rowsFor = (k: number): Row[] => {
@@ -38,11 +38,12 @@ function measure(ctx: SoilContext) {
     let y = gapBelowGround(ctx);
     for (let i = 0; i < k; i++) {
       const t = k > 1 ? i / (k - 1) : 0;
-      const room = ctx.maxWidth / 2 - reachFor(fsTop);
+      // a name wider than the half-page beside the spine is set smaller (never below the floor)
+      const room = ctx.maxWidth / 2 - discR(ctx, fsTop) - fsTop * 1.1;
       const fit = room / Math.max(1e-6, ctx.textWidth(entries[i].label, 1));
       const fs = Math.max(ctx.floor, Math.min(fsTop + (fsBottom - fsTop) * t, fit));
-      // names alternate sides, so consecutive rows can be close
-      y += i === 0 ? fs * 0.8 : ((rows[i - 1].fs + fs) / 2) * 1.12;
+      // names alternate sides; the number discs on the spine must not touch
+      y += i === 0 ? Math.max(fs * 0.8, discR(ctx, fs)) : Math.max(((rows[i - 1].fs + fs) / 2) * 1.12, (discR(ctx, rows[i - 1].fs) + discR(ctx, fs)) * 1.12);
       rows.push({ label: entries[i].label, fs, y, side: (i % 2 === 0 ? first : -first) as 1 | -1, memberId: entries[i].id, generation: entries[i].generation });
     }
     return rows;
@@ -55,7 +56,14 @@ function measure(ctx: SoilContext) {
   const rows = rowsFor(k);
   const headBottom = bottomOf(rows);
   const rest = inscriptionFor(ctx, restAsText(ctx, names, k));
-  return { rows, headBottom, rest, height: headBottom + (rest?.height ?? 0), fsTop };
+  // The tick from the spine to the names takes a share of the width the
+  // widest name leaves free beside the spine, so names sit out in the page
+  // rather than crowding the spine.
+  const free = Math.min(
+    ...rows.map((r) => ctx.maxWidth / 2 - discR(ctx, r.fs) - ctx.textWidth(r.label, r.fs) - r.fs * 0.3),
+  );
+  const tick = clamp(free * 0.35, fsTop * 0.8, fsTop * 3);
+  return { rows, headBottom, rest, height: headBottom + (rest?.height ?? 0), fsTop, tick };
 }
 
 /** Arabic-Indic digits in Arabic. */
@@ -99,9 +107,9 @@ export const spine: SoilStyleDef = {
     const boxes = [{ x: p.cx - wStart, y: G, w: wStart * 2, h: m.headBottom }];
     for (const r of m.rows) {
       const y = G + r.y;
-      const disc = discR(r.fs);
+      const disc = discR(p, r.fs);
       const from = Math.max(halfWidth(y), disc);
-      const tickEnd = p.cx + r.side * (from + r.fs * 1.0);
+      const tickEnd = p.cx + r.side * (from + m.tick);
       ticks.push(`M${fx(p.cx + r.side * from)} ${fx(y)}H${fx(tickEnd)}`);
       shapes.push({ d: dot(tickEnd, y, r.fs * 0.08), fill: "gold" });
       // the name's near edge at the tick: which anchor that is depends on the script direction
@@ -116,8 +124,8 @@ export const spine: SoilStyleDef = {
       if (r.generation !== null) {
         shapes.push({ d: dot(p.cx, y, disc), fill: "ivory", stroke: "gold", strokeWidth: p.f * 0.04 });
         texts.push({
-          x: p.cx, y: y + r.fs * 0.2, text: numeral(r.generation, p.rtl), fontSize: r.fs * 0.6, anchor: "middle", ink: "muted", font: "naskh",
-          annotation: true,
+          x: p.cx, y: y + numFont(p, r.fs) * 0.33, text: numeral(r.generation, p.rtl), fontSize: numFont(p, r.fs), anchor: "middle", ink: "muted",
+          font: "naskh", weight: 700,
         });
       }
     }
