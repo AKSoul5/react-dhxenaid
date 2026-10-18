@@ -48,6 +48,8 @@ export interface PosterTheme {
   showYears: boolean;
   /** Ancestors carved into the bark, or stacked as framed badges. */
   trunkStyle: "carved" | "badges";
+  /** How the ancient lineage below the trunk (the foundation) is drawn: see src/lib/layout/soil. */
+  soilStyle: "column" | "spine" | "banner" | "pedestal" | "paragraph";
   /** Decorative twigs and leaves (only with roundel / oval names). */
   foliage: boolean;
   /** Rim colour of name roundels. */

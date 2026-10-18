@@ -51,6 +51,7 @@ import {
 } from "./geometry";
 import { validateRelationships, type ClarityReport } from "./clarity";
 import { growFoliage, type Box, type Foliage } from "./foliage";
+import { soilStyle, type SoilContext, type SoilGeometry, type SoilStyleId } from "./soil";
 import { mulberry32 } from "./random";
 
 export type NodeShape = "leaf" | "circle" | "oval";
@@ -73,6 +74,8 @@ export interface LayoutOptions {
   nodeShape?: NodeShape;
   labelMode?: LabelMode;
   showYears?: boolean;
+  /** How the foundation (the ancestors below the trunk) is drawn. Default: the inscribed panel. */
+  soilStyle?: SoilStyleId;
   /** Where the trunk starts; older ancestors go into the soil. Defaults to tree.trunkStartId. */
   trunkStartId?: string | null;
   /** In automatic mode: ancestors on the trunk before the rest move into the soil. */
@@ -163,21 +166,8 @@ export interface TrunkLabel {
   fontSize: number;
 }
 
-/** Ancient ancestors inscribed in the foundation panel below the trunk. */
-export interface SoilInscription {
-  /** The ground line the trunk stands on (an open path, stroked). */
-  ground: string;
-  /** Fine roots from the trunk base down to the panel. */
-  roots: string[];
-  /** One baseline per line of text (render with <textPath>). */
-  lines: { path: string; text: string }[];
-  fontSize: number;
-  /** Bounds of the panel that carries the text. */
-  box: { x: number; y: number; w: number; h: number };
-  /** Ancestors inscribed (0 when a custom soil text is used). */
-  count: number;
-  custom: boolean;
-}
+/** The foundation below the trunk, as laid out by its soil style (see ./soil). */
+export type SoilInscription = SoilGeometry;
 
 export interface PosterLayout {
   width: number;
@@ -519,23 +509,30 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     const ft = trunkFontFor(f);
     return ft * 1.4 + (count - 1) * stepFor(f, zig) + ft * 1.5;
   };
-  // Foundation: the ancestors older than the trunk, as a paragraph.
+  // Foundation: the ancestors older than the trunk, drawn by the chosen
+  // soil style. The style measures itself, so the whole poster is sized
+  // with the foundation it will actually have.
   const joiner = rtl ? " بن " : " son of ";
   const soilW = Math.min(W * 0.78, W - 2 * margin);
+  const soilDef = soilStyle(opts.soilStyle);
   const soilTextFor = (onTrunk: HNode[], soil: HNode[]) =>
     customSoil ?? [onTrunk[0], ...[...soil].reverse()].filter(Boolean).map((n) => withLaqab(n.data.member!, rtl)).join(joiner);
-  const soilFontFor = (f: number) => Math.max(floorFor(f), Math.min(f * 0.85, maxFont * 0.75));
-  const soilLinesFor = (text: string, fs: number) => wrapWords(text.split(" "), soilW - fs * 3, fs);
-  const soilHeight = (text: string, f: number) => {
-    const fs = soilFontFor(f);
-    return f * 0.9 + soilLinesFor(text, fs).length * fs * 1.65 + fs * 1.5;
-  };
+  const soilContextFor = (f: number, p: { onTrunk: HNode[]; soil: HNode[] }): SoilContext => ({
+    // nearest the trunk first, the oldest last
+    entries: [...p.soil].reverse().map((n) => ({
+      id: n.data.member!.id, label: withLaqab(n.data.member!, rtl), generation: n.data.member!.generation + 1,
+    })),
+    text: soilTextFor(p.onTrunk, p.soil),
+    custom: !!customSoil,
+    trunkName: p.onTrunk[0]?.data.member?.name ?? null,
+    rtl, joiner, f, floor: floorFor(f), maxFont, maxWidth: soilW, avail, textWidth,
+  });
 
   type Plan = { onTrunk: HNode[]; soil: HNode[]; zig: boolean };
   const totalFor = (f: number, p: Plan) => {
     const useSoil = p.soil.length > 0 || !!customSoil;
     return 1.8 * crownDims(f).ry + baseRFor(f) + trunkSection(p.onTrunk.length, f, p.zig)
-      + (useSoil ? soilHeight(soilTextFor(p.onTrunk, p.soil), f) : f * 0.8);
+      + (useSoil ? soilDef.height(soilContextFor(f, p)) : f * 0.8);
   };
   const avail = contentBottom - contentTop;
   // Candidate arrangements, most faithful first.
@@ -1309,39 +1306,14 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     };
   }
 
-  // ── Foundation: ancient ancestors as a paragraph below the trunk ─────
-  let soil: SoilInscription | null = null;
-  if (useSoil) {
-    const text = soilTextFor(shownTrunk, ancient);
-    const fs = soilFontFor(f);
-    const lines = soilLinesFor(text, fs);
-    const lh = fs * 1.65;
-    const cx = W / 2;
-    const x0 = cx - soilW / 2, x1 = cx + soilW / 2;
-    const boxTop = groundY + f * 0.9;
-    const box = { x: x0, y: boxTop, w: soilW, h: lines.length * lh + fs * 1.5 };
-    const fx = (n: number) => n.toFixed(1);
-    const linePaths = lines.map((line, k) => {
-      const y = boxTop + fs * 1.55 + k * lh;
-      return { path: `M${fx(x0 + fs)} ${fx(y)}L${fx(x1 - fs)} ${fx(y)}`, text: line };
-    });
-    // a fine ground line, and a few roots reaching down to the panel
-    const gw = clamp(trunkWidth * 1.4, soilW * 0.22, soilW * 0.32);
-    const ground = `M${fx(cx - gw)} ${fx(groundY + f * 0.15)}Q${fx(cx)} ${fx(groundY - f * 0.25)} ${fx(cx + gw)} ${fx(groundY + f * 0.15)}`;
-    const roots: string[] = [];
-    for (let i = 0; i < 6; i++) {
-      const side = i % 2 === 0 ? 1 : -1;
-      const k = Math.floor(i / 2);
-      const start: Vec = { x: cx + side * trunkWidth * (0.15 + 0.12 * k), y: groundY };
-      const end: Vec = { x: cx + side * (trunkWidth * 0.7 + gw * (0.2 + 0.28 * k)), y: boxTop - f * 0.05 };
-      const curve: Cubic = {
-        p0: start, c1: add(start, { x: 0, y: (end.y - start.y) * 0.6 }),
-        c2: add(end, { x: -side * (end.x - start.x) * 0.5, y: -f * 0.1 }), p1: end,
-      };
-      roots.push(ribbonPath(curve, trunkWidth * (0.12 - 0.025 * k), 1.2, 12));
-    }
-    soil = { ground, roots, lines: linePaths, fontSize: fs, box, count: customSoil ? 0 : ancient.length, custom: !!customSoil };
-  }
+  // ── Foundation: the ancient ancestors, in the chosen soil style ───────
+  const soil: SoilInscription | null = useSoil
+    ? soilDef.layout({
+        ...soilContextFor(f, plan), cx: W / 2, groundY, trunkWidth, W,
+        // the gold thread joining the trunk's ancestors continues from just below the lowest one
+        threadFrom: shownTrunk.length ? labelBottom + trunkFont * 0.75 : groundY - f * 0.2,
+      })
+    : null;
 
   const gens = new Set<number>();
   for (const n of growing) if (n.shape !== "medallion") gens.add(n.generation);
@@ -1367,7 +1339,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     ...empty,
     // geometry may have switched to the tall-base variant
     crown, origin, groundY,
-    trunkPath: trunkOutline(origin, groundY, trunkWidth, TW, TW, soil ? 0.55 : 1),
+    trunkPath: trunkOutline(origin, groundY, trunkWidth, TW, TW, soil ? soil.trunkSpread : 1, soil?.trunkTaper ?? 0),
     trunkWidth,
     rtl,
     trunkLabels,
@@ -1433,32 +1405,34 @@ function fixedObstacle(m: MemberDTO, x: number, y: number, w: number, h: number)
 /** Name with laqab; Arabic uses ornate brackets ﴿…﴾, which never mirror. */
 function withLaqab(m: MemberDTO, rtl: boolean): string {
   if (!m.laqab) return m.name;
-  if (HONORIFICS.test(m.laqab.trim())) return `${m.name} ${m.laqab}`;
+  // an honorific stays with the name: no-break spaces, so text wrapping never parts them
+  if (HONORIFICS.test(m.laqab.trim())) return `${m.name}\u00A0${m.laqab.trim().replace(/ +/g, "\u00A0")}`;
   return rtl ? `${m.name} \uFD3F${m.laqab}\uFD3E` : `${m.name} (${m.laqab})`;
-}
-
-/** Greedy word wrap using the label width estimator. */
-function wrapWords(words: string[], width: number, fs: number): string[] {
-  const lines: string[] = [];
-  let cur = "";
-  for (const word of words) {
-    const next = cur ? `${cur} ${word}` : word;
-    if (cur && textWidth(next, fs) > width) {
-      lines.push(cur);
-      cur = word;
-    } else cur = next;
-  }
-  if (cur) lines.push(cur);
-  return lines;
 }
 
 /**
  * Trunk silhouette: narrow under the crown (topW), swelling to its full
  * width w where the medallions sit, then flaring into roots at the ground.
  */
-function trunkOutline(o: Vec, groundY: number, w: number, flareW = w, topW = w, spread = 1): string {
+function trunkOutline(o: Vec, groundY: number, w: number, flareW = w, topW = w, spread = 1, taper = 0): string {
   const h = groundY - o.y;
   const f = (n: number) => n.toFixed(1);
+  if (taper > 0) {
+    // no flare: below the ground line the trunk narrows to a fine point
+    const tip = Math.max(w * 0.015, 0.5);
+    const L = (dx: number) => f(o.x - dx), R = (dx: number) => f(o.x + dx);
+    return [
+      `M${L(topW * 0.62)} ${f(o.y - topW * 0.15)}`,
+      `C${L(topW * 0.52)} ${f(o.y + h * 0.08)} ${L(w * 0.5)} ${f(o.y + h * 0.1)} ${L(w * 0.5)} ${f(o.y + h * 0.28)}`,
+      `C${L(w * 0.5)} ${f(o.y + h * 0.62)} ${L(w * 0.52)} ${f(groundY - taper * 0.3)} ${L(w * 0.46)} ${f(groundY)}`,
+      `C${L(w * 0.36)} ${f(groundY + taper * 0.35)} ${L(tip * 4)} ${f(groundY + taper * 0.75)} ${L(tip)} ${f(groundY + taper)}`,
+      `L${R(tip)} ${f(groundY + taper)}`,
+      `C${R(tip * 4)} ${f(groundY + taper * 0.75)} ${R(w * 0.36)} ${f(groundY + taper * 0.35)} ${R(w * 0.46)} ${f(groundY)}`,
+      `C${R(w * 0.52)} ${f(groundY - taper * 0.3)} ${R(w * 0.5)} ${f(o.y + h * 0.62)} ${R(w * 0.5)} ${f(o.y + h * 0.28)}`,
+      `C${R(w * 0.5)} ${f(o.y + h * 0.1)} ${R(topW * 0.52)} ${f(o.y + h * 0.08)} ${R(topW * 0.62)} ${f(o.y - topW * 0.15)}`,
+      `Q${f(o.x)} ${f(o.y - topW * 0.7)} ${L(topW * 0.62)} ${f(o.y - topW * 0.15)}Z`,
+    ].join("");
+  }
   // root flare: widens with the base trunk, only partly with a zigzag trunk;
   // `spread` < 1 keeps it inside a soil mound
   const fl = (flareW + (w - flareW) * 0.35) * spread;

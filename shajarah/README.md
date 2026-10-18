@@ -272,7 +272,7 @@ on any member's panel:
 
 | Tier | Who | Drawn as | Set with |
 | --- | --- | --- | --- |
-| **Foundation** (soil) | ancestors older than the trunk start (e.g. آدم … نصر) | the lineage as running text in a gold-ruled panel below the trunk, reached by fine roots | 🪵 **Start the trunk here** → `FamilyTree.trunkStartId` |
+| **Foundation** (soil) | ancestors older than the trunk start (e.g. آدم … نصر) | one of five soil styles (below) | 🪵 **Start the trunk here** → `FamilyTree.trunkStartId` |
 | **Trunk** | trunk start … the canopy's father (e.g. عبد كلال الأصغر … سالم) | ivory badges up the trunk, eldest at the bottom, joined by a gold thread | — |
 | **Canopy** | the canopy base and all descendants | Bézier branches, leaves and capsules | 🌳 **Start the canopy here** → `FamilyTree.crownBaseId` |
 
@@ -300,6 +300,58 @@ on any member's panel:
 - **Several marriages:** half-siblings are kept together, grouped by mother
   in the order the mothers first appear, with birth order kept within each
   group.
+
+## Foundation styles
+
+**Style → Foundation** chooses how the ancient lineage below the trunk is
+drawn. Which ancestors go there is unchanged: the trunk start (or the
+automatic choice) decides. Only the drawing changes.
+
+| Style | Look | Trunk meets it |
+| --- | --- | --- |
+| **Calligraphic column** (default, Refined) | Names in Ruqaa, one under another, on a thin gold thread with small beads between them. The nearest names are largest and most widely spaced; the oldest are smallest and closest, never below the legibility floor. | The trunk narrows to a point below its last ancestor, and its gold thread runs on into the column. No ground line, no roots. |
+| **Timeline spine** | A spine in the trunk's own colour, with names alternating either side on short gold ticks and each ancestor's generation on a small disc (٤٧, ٤٦ … in Arabic). | The spine starts at the trunk's full width and tapers down, so trunk and spine are one form. |
+| **Illuminated banner** | A manuscript panel: double gold rule, a border of small lozenges, head- and tailpiece, names stacked with ornamental separators. A long lineage is set in columns, read right to left. | The trunk stands on the panel's head with a few fine roots. |
+| **Stepped pedestal** | Steps widening downward, each carrying the next group of names ("بن نصر بن سهل بن …"). | The trunk stands on the top step. |
+| **Inscribed panel** | The original: running text in a gold-ruled panel. | A root flare into a mound, with fine roots. |
+
+**Long lineages.** A column of 49 names cannot be legible on A2: it would
+take a third of the poster. So the column and the spine each have a height
+budget (24% of the content area). Names that don't fit continue as an
+inscribed plaque at its foot, starting "بن …" so it reads straight on, down
+to "بن آدم عليه السلام". The banner sets more columns instead. Every
+ancestor appears once, in reading order (tested).
+
+**Sizing.** Each style measures itself, and the poster is sized with that
+height, so the legibility check covers the foundation like everything else.
+The foundation always sits between the ground line and the footer.
+
+**Custom inscriptions** (`soilText`) work with every style. A nasab
+("X بن Y بن …") is set name by name; a first name that is the trunk's own
+first ancestor is not repeated. Any other text is inscribed as written.
+
+**Editing.** In the editor, a name in the column, spine or banner opens that
+ancestor. An honorific stays with its name when text wraps ("آدم عليه
+السلام" is never split), and no line ends with a single word left alone.
+
+**Adding a style.** A style is one file in `src/lib/layout/soil/`
+implementing `SoilStyleDef`:
+
+```ts
+interface SoilStyleDef {
+  id: SoilStyleId; label: string; description: string;
+  height(ctx: SoilContext): number;          // space below the ground line (sizes the poster)
+  layout(ctx: SoilPlacement): SoilGeometry;  // shapes + texts with colour roles
+}
+```
+
+Then add one line to the registry in `soil/index.ts` and one value to the
+`soilStyle` enum in `validation.ts`. The renderer draws any style's shapes
+(in order) and texts (in reading order), mapping colour roles (`ink`,
+`gold`, `trunk`, `ivory` …) to the palette and to black in the print-mono
+style. It needs no change, and export works the same. `tests/soil.test.ts`
+checks every registered style on real lineages, and checks that its
+reserved height matches what it draws.
 
 ## Design and the optional Canva frame
 
@@ -452,6 +504,7 @@ shajarah/
 │       │   ├── botanical.ts     hierarchy → trunk/crown → positions → branches/leaves
 │       │   ├── clarity.ts       relationship-clarity validator
 │       │   ├── branches.ts      branch posters: options, smallest clear size, ranking
+│       │   ├── soil/            foundation styles: types, registry, column, spine, banner, pedestal, paragraph
 │       │   ├── geometry.ts      Bézier + tapered "ribbon" outlines
 │       │   ├── palette.ts       generation colours (ألوان الأجيال)
 │       │   └── random.ts        seeded PRNG

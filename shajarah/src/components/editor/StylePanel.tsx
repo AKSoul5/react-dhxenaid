@@ -1,5 +1,6 @@
 "use client";
 
+import { SOIL_STYLES, SOIL_STYLE_ORDER } from "@/lib/layout/soil";
 import { useState } from "react";
 import { THEME_PRESETS } from "@/lib/theme";
 import type { PosterTheme, ThemePreset } from "@/lib/types";
@@ -102,6 +103,14 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange, frameA
               <select className="input w-36" value={theme.trunkStyle} onChange={(e) => onChange({ trunkStyle: e.target.value as PosterTheme["trunkStyle"] })}>
                 <option value="carved">Carved in bark</option>
                 <option value="badges">Framed badges</option>
+              </select>
+            </label>
+            <label className="flex items-center justify-between text-sm" title="How the ancient lineage below the trunk is drawn">
+              Foundation
+              <select className="input w-36" value={theme.soilStyle} onChange={(e) => onChange({ soilStyle: e.target.value as PosterTheme["soilStyle"] })}>
+                {SOIL_STYLE_ORDER.map((id) => (
+                  <option key={id} value={id} title={SOIL_STYLES[id].description}>{SOIL_STYLES[id].label}</option>
+                ))}
               </select>
             </label>
             <label className="flex items-center justify-between text-sm">

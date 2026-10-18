@@ -1,3 +1,4 @@
+import { SOIL_STYLES, type SoilStyleId } from "@/lib/layout/soil";
 import { TreeWorkspace } from "@/components/editor/TreeWorkspace";
 import { generateSampleTree } from "@/lib/sampleData";
 import { kalaliTree } from "@/lib/samples/kalali";
@@ -19,10 +20,11 @@ export const metadata = { title: "Demo — Shajarah" };
  * Fully working editor backed by an in-memory repository (no database).
  * /demo?sample=kalali loads the Al-Kalali lineage (آدم → أحمد بن نوفل);
  * small, marriages, names, dense, multi and huge load the validation families.
- * &colors=1 turns on lineage colours and &poster=A1 sets the poster size, so
+ * &colors=1 turns on lineage colours, &poster=A1 sets the poster size and
+ * &soil=column|spine|banner|pedestal|paragraph the foundation style, so
  * variants can be compared on identical data.
  */
-export default function DemoPage({ searchParams }: { searchParams: { sample?: string; colors?: string; poster?: string } }) {
+export default function DemoPage({ searchParams }: { searchParams: { sample?: string; colors?: string; poster?: string; soil?: string } }) {
   const make = SAMPLES[searchParams.sample as keyof typeof SAMPLES];
   const base = make ? make() : generateSampleTree();
   const posterSize = ["A3", "A2", "A1", "A0", "2A0"].includes(searchParams.poster ?? "")
@@ -33,7 +35,11 @@ export default function DemoPage({ searchParams }: { searchParams: { sample?: st
     settings: {
       ...base.settings,
       ...(posterSize ? { posterSize } : {}),
-      theme: { ...base.settings?.theme, ...(searchParams.colors === "1" ? { branchColors: true } : {}) },
+      theme: {
+        ...base.settings?.theme,
+        ...(searchParams.colors === "1" ? { branchColors: true } : {}),
+        ...(searchParams.soil && searchParams.soil in SOIL_STYLES ? { soilStyle: searchParams.soil as SoilStyleId } : {}),
+      },
     },
   };
   return <TreeWorkspace key={tree.id} initialTree={tree} mode="local" />;

@@ -54,7 +54,7 @@ describe("trunk, lineage panel and side branches", () => {
     expect(layout.trunkZigzag).toBe(false);
     expect(layout.soil).not.toBeNull();
     expect(layout.soil!.count + layout.trunkLabels.length + 1).toBe(85);
-    const text = layout.soil!.lines.map((l) => l.text).join(" ");
+    const text = layout.soil!.texts.map((t) => t.text).join(" ").replace(/\u00A0/g, " ");
     expect(text).toContain("آدم عليه السلام");
     expect(text).toContain("يريم \uFD3Fذو رعين الأكبر\uFD3E");
     // generation numbering starts at the crown base
@@ -121,7 +121,7 @@ describe("three tiers with an explicit trunk start (Al-Kalali)", () => {
     if (layout.trunkZigzag) expect(mm(layout.trunkLabels[0].fontSize)).toBeGreaterThan(5);
     // reading order: one step up per ancestor, eldest at the bottom
     for (let i = 1; i < layout.trunkLabels.length; i++) expect(layout.trunkLabels[i].y).toBeLessThan(layout.trunkLabels[i - 1].y);
-    const text = layout.soil!.lines.map((l) => l.text).join(" ");
+    const text = layout.soil!.texts.map((t) => t.text).join(" ").replace(/\u00A0/g, " ");
     expect(text.startsWith("عبد كلال الأصغر بن نصر")).toBe(true);
     expect(text.endsWith("آدم عليه السلام")).toBe(true);
     expect(layout.soil!.count).toBe(47);
@@ -139,6 +139,6 @@ describe("three tiers with an explicit trunk start (Al-Kalali)", () => {
   it("uses a custom soil inscription when provided", () => {
     const layout = computePosterLayout({ ...tree, soilText: "نسب منقول من المشجرة الأصلية" });
     expect(layout.soil!.custom).toBe(true);
-    expect(layout.soil!.lines.map((l) => l.text).join(" ")).toBe("نسب منقول من المشجرة الأصلية");
+    expect(layout.soil!.texts.map((t) => t.text).join(" ")).toBe("نسب منقول من المشجرة الأصلية");
   });
 });

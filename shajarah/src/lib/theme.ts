@@ -9,7 +9,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "refined", colorBy: "gender",
     male: "#c9cbc7", female: "#dcbc6a", ancestor: "#b08a2e", branch: "#6e5538",
     background: "parchment", metallic: true, nodeRim: "#8d8f8a",
-    nodeShape: "leaf", femaleCapsule: true, branchColors: true, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "leaf", femaleCapsule: true, branchColors: true, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "column",
     foliage: false, bismillah: true, verse: false, hadith: false, frame: false,
   },
   luxe: {
@@ -17,7 +17,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "luxe", colorBy: "gender",
     male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#5b4128",
     background: "parchment", metallic: true, nodeRim: "#6f6f6f",
-    nodeShape: "leaf", femaleCapsule: true, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "leaf", femaleCapsule: true, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "banner",
     foliage: false, ...ORNAMENTS,
   },
   heritage: {
@@ -25,7 +25,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "heritage", colorBy: "gender",
     male: "#fbf3dc", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: true, nodeRim: "#b8892f",
-    nodeShape: "circle", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "circle", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "banner",
     foliage: true, ...ORNAMENTS,
   },
   "silver-gold": {
@@ -33,7 +33,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "silver-gold", colorBy: "gender",
     male: "#c0c0c0", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: true, nodeRim: "#6f6f6f",
-    nodeShape: "oval", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "oval", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "column",
     foliage: true, ...ORNAMENTS,
   },
   classic: {
@@ -41,7 +41,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "classic", colorBy: "generation",
     male: "#3f8434", female: "#d9708a", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false, nodeRim: "#2f4a1a",
-    nodeShape: "leaf", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "carved",
+    nodeShape: "leaf", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "carved", soilStyle: "paragraph",
     foliage: true, ...ORNAMENTS,
   },
   emerald: {
@@ -49,7 +49,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "emerald", colorBy: "gender",
     male: "#1f7a4d", female: "#d4af37", ancestor: "#d4af37", branch: "#4a2e1a",
     background: "parchment", metallic: false, nodeRim: "#0f3d26",
-    nodeShape: "leaf", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "leaf", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "spine",
     foliage: true, ...ORNAMENTS,
   },
   mono: {
@@ -57,7 +57,7 @@ export const THEME_PRESETS: Record<ThemePreset, PosterTheme & { label: string }>
     preset: "mono", colorBy: "gender",
     male: "#ffffff", female: "#e6e6e6", ancestor: "#111111", branch: "#1a1a1a",
     background: "white", metallic: false, nodeRim: "#111111",
-    nodeShape: "circle", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges",
+    nodeShape: "circle", femaleCapsule: false, branchColors: false, labelMode: "name", showYears: false, trunkStyle: "badges", soilStyle: "paragraph",
     foliage: false, bismillah: true, verse: false, hadith: false, frame: false,
   },
 };
@@ -152,6 +152,7 @@ export function layoutOptionsFor(theme: PosterTheme, paper: PaperSize = "A2") {
     foliage: theme.foliage,
     cornerMedallions: theme.verse || theme.hadith,
     framed: theme.frame,
+    soilStyle: theme.soilStyle,
     femaleCapsule: theme.femaleCapsule,
     paperWidthMm: PAPER_SIZES[paper].w,
     // inside the frame the header starts below its top rosette

@@ -2,6 +2,7 @@
 
 import { forwardRef, memo, type ReactNode } from "react";
 import type { PosterLayout, PosterNode } from "@/lib/layout/botanical";
+import type { SoilInk } from "@/lib/layout/soil";
 import { textWidth } from "@/lib/layout/botanical";
 import { LEAF_TONES, generationColor, generationLabel } from "@/lib/layout/palette";
 import { hashString } from "@/lib/layout/random";
@@ -191,7 +192,7 @@ export const TreePoster = memo(
         {/* Ground and roots */}
         {layout.soil ? (
           <g>
-            <path d={layout.soil.ground} fill="none" stroke={bark} strokeWidth={W * 0.0012} strokeLinecap="round" opacity={0.7} />
+            {layout.soil.ground && <path d={layout.soil.ground} fill="none" stroke={bark} strokeWidth={W * 0.0012} strokeLinecap="round" opacity={0.7} />}
             <g fill={bark} opacity={0.75}>{layout.soil.roots.map((d, i) => <path key={i} d={d} />)}</g>
           </g>
         ) : (
@@ -251,7 +252,7 @@ export const TreePoster = memo(
         {layout.base && <Medallion node={layout.base} pal={pal} onClick={click(layout.base.id)} strong />}
 
         {/* Foundation: the ancient lineage */}
-        {layout.soil && <Foundation layout={layout} pal={pal} />}
+        {layout.soil && <Foundation layout={layout} pal={pal} bark={bark} click={click} />}
 
         <Footer layout={layout} theme={theme} pal={pal} meta={meta} />
 
@@ -463,26 +464,52 @@ function PersonNode({
   );
 }
 
-/** Panel below the trunk carrying the ancient lineage as running text. */
-function Foundation({ layout, pal }: { layout: PosterLayout; pal: Palette }) {
+/**
+ * The foundation, whatever its soil style: the style laid out shapes (in
+ * drawing order) and texts (in reading order) with colour roles, and this
+ * draws them. A new style needs no change here.
+ */
+function Foundation({ layout, pal, bark, click }: {
+  layout: PosterLayout;
+  pal: Palette;
+  bark: string;
+  click: (id: string) => object;
+}) {
   const soil = layout.soil!;
-  const { width: W, rtl } = layout;
-  const b = soil.box;
-  const inset = W * 0.005;
+  const colour = (ink: SoilInk | undefined): string | undefined => {
+    if (!ink) return undefined;
+    if (pal.mono) return ink === "ivory" ? "#ffffff" : ink === "trunk" ? "#ffffff" : "#111111";
+    return { ink: pal.ink, gold: GOLD, goldLight: "#d9b45a", muted: "#6b4a22", bark, trunk: "url(#sh-trunk)", ivory: IVORY, line: pal.line }[ink];
+  };
   return (
-    <g>
-      <defs>
-        {soil.lines.map((l, i) => <path key={i} id={`sh-soil-${i}`} d={l.path} />)}
-      </defs>
-      <rect x={b.x} y={b.y} width={b.w} height={b.h} rx={W * 0.006} fill={pal.mono ? "#fff" : IVORY} fillOpacity={0.9} stroke={pal.line} strokeWidth={W * 0.0016} />
-      <rect x={b.x + inset} y={b.y + inset} width={b.w - 2 * inset} height={b.h - 2 * inset} rx={W * 0.004} fill="none" stroke={pal.line} strokeWidth={W * 0.0006} />
-      <text fontSize={soil.fontSize} fill={pal.ink} direction={rtl ? "rtl" : "ltr"}>
-        {soil.lines.map((l, i) => (
-          <textPath key={i} href={`#sh-soil-${i}`} startOffset="50%" textAnchor="middle">
-            {l.text}
-          </textPath>
-        ))}
-      </text>
+    <g data-soil={soil.style}>
+      {soil.shapes.map((s, i) => (
+        <path
+          key={i}
+          d={s.d}
+          fill={colour(s.fill) ?? "none"}
+          fillOpacity={s.opacity}
+          stroke={colour(s.stroke) ?? (pal.mono && s.fill === "trunk" ? "#111111" : undefined)}
+          strokeWidth={s.strokeWidth ?? (pal.mono && s.fill === "trunk" ? layout.width * 0.0012 : undefined)}
+          strokeLinecap="round"
+        />
+      ))}
+      {soil.texts.map((t, i) => (
+        <text
+          key={i}
+          x={t.x.toFixed(1)}
+          y={t.y.toFixed(1)}
+          fontSize={t.fontSize.toFixed(2)}
+          textAnchor={t.anchor}
+          fill={colour(t.ink)}
+          fontFamily={t.font === "ruqaa" ? RUQAA : undefined}
+          fontWeight={t.weight}
+          direction={layout.rtl ? "rtl" : "ltr"}
+          {...(t.memberId ? click(t.memberId) : {})}
+        >
+          {t.text}
+        </text>
+      ))}
     </g>
   );
 }
