@@ -618,7 +618,11 @@ seed always produce the same poster.
    fractions.
    - For a name size *f* the engine estimates what each part needs:
      - **Canopy:** the summed area of its name tags times a packing
-       factor, as an egg-shaped crown as wide as the page allows.
+       factor, as an egg-shaped crown as wide as the page allows. It is
+       also at least deep enough for every generation's ring to stand a
+       name's height plus room for the lines (3.6·f) beyond the previous
+       one, so a deep, narrow family (many generations of a few people)
+       gets the radial room it needs rather than crowded rings.
      - **Trunk:** one row per ancestor.
      - **Foundation:** the wrapped lines of its text.
    - It picks the largest *f* (up to a cap) at which everything fits

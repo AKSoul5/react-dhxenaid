@@ -488,10 +488,16 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const ASPECT = 0.82;
   const EGG = 3.3; // area of the egg / (rx·ry)
   const rxMax = W / 2 - margin;
+  // Generations are drawn on rings, so a deep family also needs radial
+  // room: every ring a clear gap from the next, a name's height plus space
+  // for the lines between them, however few names the family has.
+  const RING_GAP = 3.6;
   const crownDims = (f: number) => {
     const A = Math.max(crownNodes.reduce((sum, n) => sum + estArea(n, f), 0) * PACK, (f * 14) ** 2);
-    const rx = Math.min(rxMax, Math.sqrt(A / (EGG * ASPECT)));
-    return { rx, ry: A / (EGG * rx) };
+    const depthNeed = baseRFor(f) + f * 1.6 + Math.max(0, base.height - 1) * f * RING_GAP;
+    // the rings' reach from the crown base: ~0.76·rx to the sides, ~1.7·ry upward
+    const rx = Math.min(rxMax, Math.max(Math.sqrt(A / (EGG * ASPECT)), depthNeed / 0.76));
+    return { rx, ry: Math.max(A / (EGG * rx), depthNeed / 1.7) };
   };
   const baseText = base.data.member ? labelOf(base.data.member) : { label: "", subLabel: null };
   const baseRFor = (f: number) => {
@@ -759,6 +765,19 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // ── 4. Crown target positions ────────────────────────────────────────
   const maxDepth = Math.max(1, base.height);
   const r0 = baseMedallionR + f * 1.6;
+  // Where each generation's ring lies, as a fraction t of the way from r0
+  // to the canopy's rim: evenly paced, but never closer than a name's
+  // height plus room for the lines between two rings (crownDims sizes the
+  // canopy for that; a retry with smaller names keeps the canopy's size).
+  const ringT: number[] = (() => {
+    let meanReach = 0;
+    for (let i = 0; i <= 32; i++) meanReach += reach(thetaEnd + ((thetaStart - thetaEnd) * i) / 32) * 0.95;
+    const gap = (f * 2.6) / Math.max(1, meanReach / 33 - r0);
+    const t = [0];
+    for (let d = 1; d <= maxDepth; d++) t.push(Math.max(d / maxDepth, d === 1 ? 0 : t[d - 1] + gap));
+    const top = t[maxDepth];
+    return top > 1 ? t.map((v) => v / top) : t;
+  })();
   for (const n of crownNodes) {
     const d = n.depth - base.depth;
     const halfSpan = ((n.u1 ?? 0) - (n.u0 ?? 0)) / 2;
@@ -769,7 +788,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     // Strictly by generation (rings): siblings share a ring and all their
     // descendants lie further out in their own sector, so no line ever has
     // to pass a sibling's place on its way out.
-    const t = d / maxDepth;
+    const t = ringT[d];
     const R = reach(theta) * 0.95;
     const p = add(origin, scale(dirOf(theta), r0 + t * Math.max(0, R - r0)));
     const parent = byId.get(n.parent?.data.member?.id ?? "");
@@ -804,7 +823,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     const lo = thetaEnd, hi = thetaStart;
     for (const [d, ring] of rings) {
       ring.sort((a, b) => b.ray! - a.ray!); // anticlockwise from the left
-      const radiusAt = (th: number) => r0 + (d / maxDepth) * Math.max(0, reach(th) * 0.95 - r0);
+      const radiusAt = (th: number) => r0 + ringT[d] * Math.max(0, reach(th) * 0.95 - r0);
       // angular half-width of a label at angle th (its extent across the ray)
       const half = (n: LiveNode, th: number) =>
         // (+ a corridor so neighbouring lines stay clearly apart)
