@@ -1,7 +1,8 @@
 // GEDCOM 5.5.1 import and export: the file formats other genealogy software
 // writes, matching against an existing tree, and round trips.
 import { describe, expect, it } from "vitest";
-import { decodeGedcom, exportGedcom, gedcomYear, parseGedcom, planGedcomImport } from "@/lib/gedcom";
+import { previewGedcom } from "@/components/editor/gedcomPreview";
+import { GEDCOM_MAX_PEOPLE, decodeGedcom, exportGedcom, gedcomYear, parseGedcom, planGedcomImport } from "@/lib/gedcom";
 import { lineageParentId } from "@/lib/genealogy";
 import { importReceipt, undoImportLocally } from "@/lib/imports";
 import { applyNasabLines } from "@/lib/nasab";
@@ -447,5 +448,24 @@ describe("undo this import", () => {
     const receipt = importReceipt(before, after);
     expect(receipt.memberIds).toHaveLength(2);
     expect(strip(undoImportLocally(after, receipt))).toEqual(strip(before));
+  });
+});
+
+describe("the import preview (run in a Web Worker in the editor)", () => {
+  const bytes = (text: string) => new TextEncoder().encode(text).buffer as ArrayBuffer;
+  const empty = { members: [], marriages: [], lineage: "PATRILINEAL" as const, rootMemberId: null };
+
+  it("summarises what the import will do", () => {
+    const p = previewGedcom(bytes(ENGLISH), empty);
+    expect(p).toMatchObject({ people: 6, families: 2, newMembers: 6, reused: 0, newMarriages: 2, blocked: null, source: "Gramps" });
+    expect(p.text.startsWith("0 HEAD")).toBe(true);
+  });
+
+  it(`blocks a file with more than ${GEDCOM_MAX_PEOPLE.toLocaleString("en")} people before anything is sent`, () => {
+    const lines = ["0 HEAD"];
+    for (let i = 0; i <= GEDCOM_MAX_PEOPLE; i++) lines.push(`0 @I${i}@ INDI`, `1 NAME P${i}`);
+    const p = previewGedcom(bytes(lines.join("\n")), empty);
+    expect(p.people).toBe(GEDCOM_MAX_PEOPLE + 1);
+    expect(p.blocked).toMatch(/accepts up to 20,000/);
   });
 });

@@ -15,6 +15,7 @@ import { MemberForm, emptyDraft, type MemberDraft } from "./MemberForm";
 import { NasabImport } from "./NasabImport";
 import { GedcomPanel } from "./GedcomPanel";
 import { importReceipt, type ImportReceipt } from "@/lib/imports";
+import { emptyHistory, forget, record, redo, undo, type History } from "@/lib/history";
 import { RelationsPanel } from "./RelationsPanel";
 import { StylePanel } from "./StylePanel";
 import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
@@ -25,6 +26,9 @@ interface Props {
   initialTree: TreeDTO;
   mode: "api" | "local";
 }
+
+/** Poster settings are saved this long after the last change (one save while dragging a slider). */
+const SETTINGS_SAVE_MS = 400;
 
 type Panel =
   | { kind: "list" }
@@ -61,24 +65,57 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     [deferredTree, showFemales, seed, theme, posterSize],
   );
 
+  // ── Undo/redo: snapshots of the whole tree (src/lib/history.ts). The
+  // refs hold the latest values for callbacks that outlive a render.
+  const treeRef = useRef(tree);
+  treeRef.current = tree;
+  const [history, setHistory] = useState<History>(emptyHistory);
+  const historyRef = useRef(history);
+  const commitHistory = useCallback((h: History) => {
+    historyRef.current = h;
+    setHistory(h);
+  }, []);
+  const busyRef = useRef(false);
+
   // The last bulk import, while it can still be undone exactly: any later
   // change to the people in the tree ends that (poster settings do not).
-  const [lastImport, setLastImport] = useState<{ receipt: ImportReceipt; label: string } | null>(null);
-  const mutate = useCallback(async (fn: () => Promise<TreeDTO>, opts: { keepImport?: boolean } = {}) => {
-    setBusy(true);
-    setError(null);
-    if (!opts.keepImport) setLastImport(null);
-    try {
-      const next = await fn();
-      setTree(next);
-      return next;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }, []);
+  const [lastImport, setLastImport] = useState<{ receipt: ImportReceipt; label: string; stepId: number } | null>(null);
+  const lastStepId = useRef(0);
+  /**
+   * Runs one edit. Every edit returns the full tree; on success the tree as
+   * it was before goes onto the undo stack (one step per edit, so a form
+   * saved once is one step however much was typed).
+   */
+  const mutate = useCallback(
+    async (
+      fn: () => Promise<TreeDTO>,
+      opts: { label?: string; keepImport?: boolean; record?: boolean; before?: TreeDTO } = {},
+    ) => {
+      const before = opts.before ?? treeRef.current;
+      setBusy(true);
+      busyRef.current = true;
+      setError(null);
+      if (!opts.keepImport) setLastImport(null);
+      try {
+        const next = await fn();
+        setTree(next);
+        treeRef.current = next;
+        if (opts.record !== false) {
+          const r = record(historyRef.current, before, opts.label ?? "Edit");
+          commitHistory(r.history);
+          lastStepId.current = r.id;
+        }
+        return next;
+      } catch (e) {
+        setError(e instanceof Error ? e.message : String(e));
+        return null;
+      } finally {
+        setBusy(false);
+        busyRef.current = false;
+      }
+    },
+    [commitHistory],
+  );
 
   const selectedId = panel.kind === "edit" ? panel.id : null;
   const selected = tree.members.find((m) => m.id === selectedId) ?? null;
@@ -94,7 +131,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
 
   const saveNew = async (input: CreateMemberInput) => {
     const before = new Set(tree.members.map((m) => m.id));
-    const next = await mutate(() => repo.createMember(input));
+    const next = await mutate(() => repo.createMember(input), { label: `Add ${input.name}` });
     const created = next?.members.find((m) => !before.has(m.id));
     if (created) setPanel({ kind: "edit", id: created.id });
   };
@@ -109,18 +146,99 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
         ? marriages[0].spouseAId === selected.id ? marriages[0].spouseBId : marriages[0].spouseAId
         : null;
     const otherKey = parentKey === "fatherId" ? "motherId" : "fatherId";
-    void mutate(() => repo.createMember({ name, gender, [parentKey]: selected.id, [otherKey]: spouseId }));
+    void mutate(() => repo.createMember({ name, gender, [parentKey]: selected.id, [otherKey]: spouseId }), { label: `Add ${name}` });
   };
 
+  // Poster settings change on screen at once and are saved shortly after
+  // the last change: dragging a colour picker is one save and one undo step.
+  const pendingSettings = useRef<{ timer: ReturnType<typeof setTimeout>; saved: TreeDTO["settings"]; stepId: number } | null>(null);
   const updateSettings = (patch: Partial<NonNullable<TreeDTO["settings"]>>) => {
-    const previous = tree.settings;
-    const settings = { ...tree.settings, showFemales, seed, ...patch };
-    setTree((t) => ({ ...t, settings })); // optimistic
-    void mutate(() => repo.updateTree({ settings }), { keepImport: true }).then((saved) => {
-      // not saved: put the poster back as it was (the error is shown)
-      if (!saved) setTree((t) => (t.settings === settings ? { ...t, settings: previous } : t));
-    });
+    const base = treeRef.current;
+    const settings = {
+      ...base.settings, showFemales: base.settings?.showFemales ?? false, seed: base.settings?.seed ?? 7, ...patch,
+    };
+    const r = record(historyRef.current, base, "Change poster settings", { key: "settings" });
+    commitHistory(r.history);
+    const next = { ...base, settings };
+    treeRef.current = next;
+    setTree(next); // optimistic
+    const pending = pendingSettings.current;
+    if (pending) clearTimeout(pending.timer);
+    const saved = pending ? pending.saved : base.settings;
+    const timer = setTimeout(() => {
+      pendingSettings.current = null;
+      const toSave = treeRef.current.settings;
+      void mutate(
+        async () => ({ ...(await repo.updateTree({ settings: toSave })), settings: treeRef.current.settings }),
+        { keepImport: true, record: false },
+      ).then((ok) => {
+        if (ok) return;
+        // not saved: put the poster back as it was saved (the error is shown)
+        const cur = treeRef.current;
+        if (cur.settings === toSave) {
+          treeRef.current = { ...cur, settings: saved };
+          setTree(treeRef.current);
+          commitHistory(forget(historyRef.current, r.id));
+        }
+      });
+    }, SETTINGS_SAVE_MS);
+    pendingSettings.current = { timer, saved, stepId: r.id };
   };
+
+  /** Undo or redo one step: show it at once, then make the server match. */
+  const travel = useCallback(
+    async (dir: "undo" | "redo") => {
+      if (busyRef.current) return;
+      const pending = pendingSettings.current;
+      if (pending) {
+        // the snapshot sets the settings anyway: no separate save
+        clearTimeout(pending.timer);
+        pendingSettings.current = null;
+      }
+      const current = treeRef.current;
+      const prev = historyRef.current;
+      const step = dir === "undo" ? undo(prev, current) : redo(prev, current);
+      if (!step) return;
+      commitHistory(step.history);
+      treeRef.current = step.tree;
+      setTree(step.tree);
+      const saved = await mutate(() => repo.restore(step.tree), { record: false, keepImport: true });
+      if (!saved) {
+        // the server refused: back to where we were, history included
+        commitHistory(prev);
+        treeRef.current = current;
+        setTree(current);
+      }
+    },
+    [commitHistory, mutate, repo],
+  );
+  const travelRef = useRef(travel);
+  travelRef.current = travel;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      // inside a text field the browser's own undo edits the text
+      const el = e.target as HTMLElement | null;
+      if (el?.closest("textarea, [contenteditable=''], [contenteditable='true']")) return;
+      if (el instanceof HTMLInputElement && !["checkbox", "radio", "button", "submit", "range", "color", "file"].includes(el.type)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) {
+        e.preventDefault();
+        void travelRef.current("undo");
+      } else if ((k === "z" && e.shiftKey) || (k === "y" && !e.shiftKey)) {
+        e.preventDefault();
+        void travelRef.current("redo");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  // the selected person may not exist in the tree an undo went back to
+  useEffect(() => {
+    if (panel.kind === "edit" && !tree.members.some((m) => m.id === panel.id)) setPanel({ kind: "list" });
+  }, [panel, tree.members]);
+  const nextUndo = history.undo.at(-1);
+  const nextRedo = history.redo.at(-1);
 
   // What to offer when no single poster size is enough for the whole family
   // (inside a branch poster: its sub-branches, so a branch can be narrowed again)
@@ -140,15 +258,24 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
 
   /** Runs a bulk import, remembering exactly what it added so it can be undone. */
   const runImport = async (fn: () => Promise<TreeDTO>, source: string) => {
-    const before = tree;
-    const next = await mutate(fn);
+    const before = treeRef.current;
+    const next = await mutate(fn, { label: `Import from ${source}` });
     if (!next) return;
     const receipt = importReceipt(before, next);
     const n = receipt.memberIds.length;
     if (n || receipt.marriageIds.length || receipt.restore.length) {
-      setLastImport({ receipt, label: `Imported ${n} ${n === 1 ? "person" : "people"} from ${source}.` });
+      setLastImport({ receipt, label: `Imported ${n} ${n === 1 ? "person" : "people"} from ${source}.`, stepId: lastStepId.current });
     }
     setPanel({ kind: "list" });
+  };
+  // The banner is a shortcut: while the import is the last step, it is the
+  // global undo (so redo brings it back); after poster-settings changes on
+  // top of it, it removes exactly what the import added (one new step).
+  const importUndoable = !!lastImport && history.undo.some((e) => e.id === lastImport.stepId);
+  const undoLastImport = () => {
+    if (!lastImport) return;
+    if (history.undo.at(-1)?.id === lastImport.stepId) void travel("undo");
+    else void mutate(() => repo.undoImport(lastImport.receipt), { label: "Undo import" });
   };
 
   const filtered = useMemo(() => {
@@ -180,6 +307,28 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             <input type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />
             Trace lineage
           </label>
+          <div className="flex items-center" role="group" aria-label="Undo and redo">
+            <button
+              type="button"
+              className="btn-ghost px-2 text-lg leading-none disabled:opacity-30"
+              aria-label={nextUndo ? `Undo: ${nextUndo.label}` : "Undo"}
+              title={nextUndo ? `Undo: ${nextUndo.label} (Ctrl/⌘+Z)` : "Nothing to undo"}
+              disabled={!nextUndo || busy}
+              onClick={() => void travel("undo")}
+            >
+              ↶
+            </button>
+            <button
+              type="button"
+              className="btn-ghost px-2 text-lg leading-none disabled:opacity-30"
+              aria-label={nextRedo ? `Redo: ${nextRedo.label}` : "Redo"}
+              title={nextRedo ? `Redo: ${nextRedo.label} (Ctrl/⌘+Shift+Z)` : "Nothing to redo"}
+              disabled={!nextRedo || busy}
+              onClick={() => void travel("redo")}
+            >
+              ↷
+            </button>
+          </div>
           {theme.foliage && (
             <button type="button" className="btn-ghost" title="Grow the decorative foliage anew" onClick={() => updateSettings({ seed: seed + 1 })}>
               ↻ Re-grow foliage
@@ -189,7 +338,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             theme={theme}
             onChange={(patch) => updateSettings({ theme: { ...theme, ...patch } })}
             soilText={tree.soilText}
-            onSoilTextChange={(soilText) => void mutate(() => repo.updateTree({ soilText }))}
+            onSoilTextChange={(soilText) => void mutate(() => repo.updateTree({ soilText }), { label: "Edit the soil inscription" })}
             frameAvailable={frameSrc !== null}
           />
           <label className="flex items-center gap-2 text-sm" title="The printed size the poster is designed for">
@@ -226,14 +375,14 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                   GEDCOM
                 </button>
               </div>
-              {lastImport && (
+              {lastImport && importUndoable && (
                 <div className="flex items-center gap-2 border-b border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" role="status">
                   <span className="flex-1">{lastImport.label}</span>
                   <button
                     type="button"
                     className="btn-outline whitespace-nowrap py-0.5 text-xs"
                     disabled={busy}
-                    onClick={() => void mutate(() => repo.undoImport(lastImport.receipt))}
+                    onClick={undoLastImport}
                   >
                     Undo this import
                   </button>
@@ -304,13 +453,14 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 busy={busy}
                 onSelect={select}
                 onQuickAddChild={quickAddChild}
-                onAddSpouse={(sid) => void mutate(() => repo.createMarriage({ spouseAId: selected.id, spouseBId: sid }))}
+                onAddSpouse={(sid) => void mutate(() => repo.createMarriage({ spouseAId: selected.id, spouseBId: sid }), { label: "Add marriage" })}
                 onNewSpouse={(name) =>
-                  void mutate(() =>
-                    repo.createMember({ name, gender: selected.gender === "FEMALE" ? "MALE" : "FEMALE", spouseOfId: selected.id }),
+                  void mutate(
+                    () => repo.createMember({ name, gender: selected.gender === "FEMALE" ? "MALE" : "FEMALE", spouseOfId: selected.id }),
+                    { label: `Add spouse ${name}` },
                   )
                 }
-                onRemoveMarriage={(id) => void mutate(() => repo.deleteMarriage(id))}
+                onRemoveMarriage={(id) => void mutate(() => repo.deleteMarriage(id), { label: "Remove marriage" })}
               />
               <details className="rounded-md border border-parchment-200 p-3" open>
                 <summary className="cursor-pointer text-sm font-semibold text-bark-700">Details</summary>
@@ -319,9 +469,9 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                     tree={tree}
                     member={selected}
                     busy={busy}
-                    onSave={(input) => void mutate(() => repo.updateMember(selected.id, input))}
+                    onSave={(input) => void mutate(() => repo.updateMember(selected.id, input), { label: `Edit ${selected.name}` })}
                     onDelete={async () => {
-                      const next = await mutate(() => repo.deleteMember(selected.id));
+                      const next = await mutate(() => repo.deleteMember(selected.id), { label: `Delete ${selected.name}` });
                       if (next) setPanel({ kind: "list" });
                     }}
                   />
@@ -333,20 +483,20 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                   Soil (ancient lineage) → trunk (medallions) → canopy (branches).
                 </p>
                 {tree.crownBaseId === selected.id ? (
-                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ crownBaseId: null }))}>
+                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ crownBaseId: null }), { label: "Reset the canopy start" })}>
                     ✓ Canopy starts here — reset to automatic
                   </button>
                 ) : (
-                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ crownBaseId: selected.id }))}>
+                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ crownBaseId: selected.id }), { label: "Set the canopy start" })}>
                     🌳 Start the canopy here
                   </button>
                 )}
                 {tree.trunkStartId === selected.id ? (
-                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ trunkStartId: null }))}>
+                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ trunkStartId: null }), { label: "Reset the trunk start" })}>
                     ✓ Trunk starts here — reset to automatic
                   </button>
                 ) : (
-                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ trunkStartId: selected.id }))}>
+                  <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ trunkStartId: selected.id }), { label: "Set the trunk start" })}>
                     🪵 Start the trunk here (older ancestors go in the soil)
                   </button>
                 )}
@@ -368,7 +518,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 )}
               </div>
               {tree.rootMemberId !== selected.id && !selected.fatherId && !selected.motherId && (
-                <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ rootMemberId: selected.id }))}>
+                <button type="button" className="btn-outline w-full" onClick={() => void mutate(() => repo.updateTree({ rootMemberId: selected.id }), { label: "Set the root" })}>
                   Make this the root of the trunk
                 </button>
               )}

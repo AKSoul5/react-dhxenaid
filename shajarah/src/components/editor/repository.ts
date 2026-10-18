@@ -3,6 +3,7 @@ import type { MemberDTO, TreeDTO } from "@/lib/types";
 import { applyNasabLines } from "@/lib/nasab";
 import { parseGedcom, planGedcomImport } from "@/lib/gedcom";
 import { undoImportLocally, type ImportReceipt } from "@/lib/imports";
+import { snapshotError } from "@/lib/restore";
 import type {
   CreateMarriageInput, CreateMemberInput, UpdateMemberInput, UpdateTreeInput,
 } from "@/lib/validation";
@@ -21,6 +22,8 @@ export interface FamilyRepository {
   importGedcom(text: string): Promise<TreeDTO>;
   /** Removes what one import added (see importReceipt). */
   undoImport(receipt: ImportReceipt): Promise<TreeDTO>;
+  /** Puts the whole tree back to a snapshot (undo/redo). */
+  restore(snapshot: TreeDTO): Promise<TreeDTO>;
 }
 
 async function call(url: string, method: string, body?: unknown): Promise<TreeDTO> {
@@ -45,6 +48,7 @@ export function apiRepository(treeId: string): FamilyRepository {
     importNasab: (text) => call(`/api/trees/${treeId}/import-nasab`, "POST", { text }),
     importGedcom: (text) => call(`/api/trees/${treeId}/import-gedcom`, "POST", { text }),
     undoImport: (receipt) => call(`/api/trees/${treeId}/undo-import`, "POST", receipt),
+    restore: ({ id: _id, ...snapshot }) => call(`/api/trees/${treeId}/restore`, "POST", snapshot),
   };
 }
 
@@ -133,6 +137,11 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
       if (!file.people.length) throw new Error(file.warnings.at(-1) ?? "No people found in the file.");
       const plan = planGedcomImport(tree, file, () => `local-${Date.now()}-${seq++}`);
       return commit({ ...tree, members: plan.members, marriages: [...tree.marriages, ...plan.newMarriages], rootMemberId: plan.rootMemberId });
+    },
+    async restore(snapshot) {
+      const err = snapshotError(snapshot);
+      if (err) throw new Error(`Cannot restore: ${err}`);
+      return commit(structuredClone({ ...snapshot, id: tree.id }));
     },
     async undoImport(receipt) {
       return commit(undoImportLocally(tree, receipt));

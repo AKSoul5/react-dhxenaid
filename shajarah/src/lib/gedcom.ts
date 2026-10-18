@@ -15,6 +15,11 @@ import { childrenIndex, computeGenerations, lineageParentId } from "./genealogy"
 import { normalizeName, parseNasab, splitLaqab } from "./nasab";
 import type { Gender, MarriageDTO, MemberDTO, TreeDTO } from "./types";
 
+/** Largest file the server accepts (characters of text, about the same in bytes). */
+export const GEDCOM_MAX_CHARS = 20_000_000;
+/** Most people one import may create. */
+export const GEDCOM_MAX_PEOPLE = 20_000;
+
 // ── 1. Decoding ──────────────────────────────────────────────────────────
 
 /** Text of a GEDCOM file, honouring a byte-order mark; warns where characters may be wrong. */

@@ -4,10 +4,11 @@ import { computeGenerations, parentAssignmentError } from "../genealogy";
 import type { MemberDTO, PosterSettings, TreeDTO, TreeSummary } from "../types";
 import { randomUUID } from "node:crypto";
 import { parseNasab, planNasabImport, splitNasabLines } from "../nasab";
-import { parseGedcom, planGedcomImport } from "../gedcom";
+import { GEDCOM_MAX_PEOPLE, parseGedcom, planGedcomImport } from "../gedcom";
+import { planRestore, snapshotError } from "../restore";
 import type {
-  CreateMarriageInput, CreateMemberInput, CreateTreeInput, ImportGedcomInput, ImportNasabInput, UndoImportInput,
-  UpdateMemberInput, UpdateTreeInput,
+  CreateMarriageInput, CreateMemberInput, CreateTreeInput, ImportGedcomInput, ImportNasabInput, RestoreTreeInput,
+  UndoImportInput, UpdateMemberInput, UpdateTreeInput,
 } from "../validation";
 import { prisma } from "./prisma";
 
@@ -217,7 +218,9 @@ export async function importNasab(treeId: string, input: ImportNasabInput): Prom
 export async function importGedcom(treeId: string, input: ImportGedcomInput): Promise<TreeDTO> {
   const file = parseGedcom(input.text);
   if (!file.people.length) throw new DomainError(file.warnings.at(-1) ?? "No people found in the file.");
-  if (file.people.length > MAX_IMPORT) throw new DomainError(`The file has ${file.people.length} people; the limit is ${MAX_IMPORT}.`);
+  if (file.people.length > GEDCOM_MAX_PEOPLE) {
+    throw new DomainError(`The file has ${file.people.length} people; the limit is ${GEDCOM_MAX_PEOPLE}.`);
+  }
   await prisma.$transaction(async (tx) => {
     const tree = await getTreeWith(tx, treeId);
     const plan = planGedcomImport(tree, file, () => randomUUID());
@@ -257,8 +260,6 @@ export async function importGedcom(treeId: string, input: ImportGedcomInput): Pr
   return refreshGenerations(treeId);
 }
 
-const MAX_IMPORT = 20_000;
-
 /**
  * Undoes one bulk import: deletes the members and marriages it created and
  * gives the members it relinked their parents back. Only touches this tree.
@@ -277,6 +278,65 @@ export async function undoImport(treeId: string, input: UndoImportInput): Promis
     // children of removed people lose that parent (SetNull), as they had no such parent before
     await tx.member.deleteMany({ where: { treeId, id: { in: [...gone] } } });
     await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: keep(input.rootMemberId) } });
+  }, { timeout: 120_000 });
+  return refreshGenerations(treeId);
+}
+
+/**
+ * Puts the tree back to a snapshot the editor held (undo/redo), as a diff in
+ * one transaction: only rows that differ are written, and ids stay the same,
+ * so undoing one edit touches one row and redoing an import re-creates the
+ * same people. Refused if the snapshot is not a valid tree.
+ */
+export async function restoreTree(treeId: string, input: RestoreTreeInput): Promise<TreeDTO> {
+  const err = snapshotError(input);
+  if (err) throw new DomainError(`Cannot restore: ${err}`);
+  await prisma.$transaction(async (tx) => {
+    const current = await getTreeWith(tx, treeId);
+    // A restored member id that lives in ANOTHER tree would be moved here: refuse.
+    const foreign = await tx.member.findFirst({
+      where: { id: { in: input.members.map((m) => m.id) }, NOT: { treeId } },
+      select: { id: true },
+    });
+    if (foreign) throw new DomainError("Cannot restore: the snapshot refers to people of another tree.");
+    const plan = planRestore({ ...current, settings: current.settings as PosterSettings | null }, input);
+    // 1. tier pointers off members that are about to go (they are @unique)
+    await tx.familyTree.update({ where: { id: treeId }, data: { rootMemberId: null, crownBaseId: null, trunkStartId: null } });
+    // 2. marriages that are gone
+    if (plan.deleteMarriageIds.length) await tx.marriage.deleteMany({ where: { treeId, id: { in: plan.deleteMarriageIds } } });
+    // 3. new people, parents first, one statement per generation
+    const levels: (typeof plan.createMembers)[] = [];
+    const level = new Map<string, number>();
+    for (const m of plan.createMembers) {
+      const l = Math.max(-1, ...[m.fatherId, m.motherId].map((p) => (p && level.has(p) ? level.get(p)! : -1))) + 1;
+      level.set(m.id, l);
+      (levels[l] ??= []).push(m);
+    }
+    for (const batch of levels) {
+      if (!batch?.length) continue;
+      await tx.member.createMany({
+        data: batch.map(({ id, name, laqab, gender, birthYear, deathYear, isDeceased, birthOrder, generation, notes, fatherId, motherId }) => ({
+          id, treeId, name, laqab, gender, birthYear, deathYear, isDeceased, birthOrder, generation, notes, fatherId, motherId,
+        })),
+      });
+    }
+    // 4. changed people (their new parents exist now), then the ones that are gone
+    for (const u of plan.updateMembers) await tx.member.update({ where: { id: u.id }, data: u.data });
+    if (plan.deleteMemberIds.length) await tx.member.deleteMany({ where: { treeId, id: { in: plan.deleteMemberIds } } });
+    // 5. marriages, and the tree's own fields
+    if (plan.createMarriages.length) await tx.marriage.createMany({ data: plan.createMarriages.map((x) => ({ ...x, treeId })) });
+    for (const u of plan.updateMarriages) await tx.marriage.update({ where: { id: u.id }, data: u.data });
+    const { settings, ...fields } = plan.tree;
+    await tx.familyTree.update({
+      where: { id: treeId },
+      data: {
+        ...fields,
+        rootMemberId: input.rootMemberId,
+        crownBaseId: input.crownBaseId,
+        trunkStartId: input.trunkStartId,
+        ...(settings !== undefined ? { settings: settings === null ? Prisma.JsonNull : (settings as Prisma.InputJsonValue) } : {}),
+      },
+    });
   }, { timeout: 120_000 });
   return refreshGenerations(treeId);
 }

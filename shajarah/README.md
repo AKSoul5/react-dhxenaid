@@ -73,6 +73,14 @@ MacFamilyTree and others.
   are already in the tree, the new marriages, members who gain a parent, the
   new start of the trunk, and anything that could not be imported. Nothing is
   saved until you press Import.
+- **The preview never freezes the editor.** Reading and matching run in a
+  Web Worker; done on the page, they took 0.7 s for 19,000 people and 7.4 s
+  for 150,000. With the worker, the page never waited more than 33 ms
+  between frames while it read the 150,000-person file. A spinner shows
+  while it works, and choosing another file abandons the one being read.
+- **Limits:** one import takes up to 20 MB of text and 20,000 people. The
+  preview says so and disables Import, before anything is sent. A file over
+  40 MB is refused at once, without being read.
 - **Matching** reuses the nasab importer's spelling-tolerant names. A person
   in the file is someone already in the tree when their names agree and their
   line agrees: their matched parent has exactly one child of that name, or, at
@@ -105,12 +113,14 @@ MacFamilyTree and others.
 - **Import is one transaction.** People are inserted parents-first, one
   statement per generation (about 0.2 s for 320 people), and the result is
   the full tree.
-- **Undo this import** removes exactly what the import added, in one
-  transaction: its members and marriages, and any parent links it filled in.
-  It also restores the previous root. The receipt is the difference between
-  the tree before and after the import, so the same button works for nasab
-  imports. It is offered until the next change to the family; changing
-  poster settings does not count.
+- **An import is one undo step:** Ctrl/⌘+Z removes all of it, and redo brings
+  it back. The **Undo this import** banner is a shortcut to the same step.
+  If poster settings were changed after the import, the banner instead
+  removes exactly what the import added, in one transaction: its members and
+  marriages, any parent links it filled in, and the root it changed. That
+  receipt is the difference between the tree before and after the import,
+  so the banner also works for nasab imports. It is offered until the next
+  change to the family.
 - **Export:** "Download GEDCOM" (or `GET /api/trees/:treeId/gedcom`) writes a
   UTF-8 GEDCOM 5.5.1 file, which any genealogy program opens. Sibling order
   across several marriages, which GEDCOM's per-family child lists cannot
@@ -119,6 +129,42 @@ MacFamilyTree and others.
   Exporting a family and importing it into an empty tree reproduces every
   person, link, marriage and sibling order (tested on all sample families).
   Importing it into the same tree reuses everyone and creates no one.
+
+## Undo and redo
+
+**↶ / ↷** in the header, or **Ctrl/⌘+Z** and **Ctrl/⌘+Shift+Z** (or
+**Ctrl+Y**). The tooltip names the step: "Undo: Delete John", "Redo: Import
+from family.ged".
+
+- **Snapshots, not inverse operations.** Every edit already returns the whole
+  tree, so the editor keeps the tree as it was before each edit, up to 50
+  steps (`src/lib/history.ts`). There is no per-edit "undo" code to get
+  wrong.
+- **One step per edit.** Typing in the member form is one step when you
+  press Save. Poster settings (style, sizes, "Show daughters") change on
+  screen at once. They are saved 400 ms after the last change, and changes
+  within 1.5 s of each other are one step: dragging a colour picker is one
+  save and one undo. A GEDCOM or nasab import is one step.
+- **The server always matches.** Undo shows the snapshot immediately and
+  sends it to `POST /api/trees/:treeId/restore`.
+  - The server checks the snapshot is a valid tree: no missing parent, no
+    cycle, no person from another tree.
+  - It writes only the difference, in one transaction (`src/lib/restore.ts`):
+    rows that changed are updated, removed ones deleted, and missing ones
+    re-created with the same ids, parents first.
+  - So undoing a deletion brings back the same person, with their children's
+    links and their marriages. Undoing one name change writes one row.
+  - Undoing a 19,000-person import takes about 4 s.
+  - If the server refuses, the editor goes back to where it was, history
+    included.
+- **Text fields keep their own undo.** In a text field, Ctrl/⌘+Z undoes your
+  typing, not the tree.
+- **History lasts for the session.** Reloading the page clears it, and the
+  page shows what the server has.
+- **Last write wins:** a restore puts back the tree as this editor last saw
+  it. With the same family open in two tabs, an undo in one tab overwrites
+  changes made in the other. Accounts and sharing will need a version check
+  here.
 
 ## The three tiers: foundation, trunk, canopy
 
@@ -298,7 +344,8 @@ shajarah/
 │   │   ├── demo/                editor backed by memory (no DB)
 │   │   └── api/                 REST routes (see below)
 │   ├── components/
-│   │   ├── editor/              TreeWorkspace, MemberForm, RelationsPanel, MemberPicker, repository
+│   │   ├── editor/              TreeWorkspace, MemberForm, RelationsPanel, MemberPicker, repository,
+│   │   │                        GedcomPanel + gedcom.worker (preview off the main thread)
 │   │   └── poster/              TreePoster (SVG), PosterViewport (d3-zoom), ExportMenu
 │   └── lib/
 │       ├── layout/              ← procedural layout engine (pure, framework-free)
@@ -314,6 +361,8 @@ shajarah/
 │       ├── nasab.ts             nasab parser + matcher for "X بن Y" import
 │       ├── gedcom.ts            GEDCOM 5.5.1 decode, parse, import plan, export
 │       ├── imports.ts           what an import changed, for "Undo this import"
+│       ├── history.ts           undo/redo snapshots (50 steps, coalescing)
+│       ├── restore.ts           snapshot validation and restore-as-a-diff
 │       ├── theme.ts             style presets and colour helpers
 │       ├── samples/kalali.ts    the Al-Kalali lineage
 │       ├── validation.ts        zod schemas shared by API and UI
@@ -373,6 +422,7 @@ reconcile partial state.
 | POST | `/api/trees/:treeId/import-gedcom` | import a GEDCOM file's text (`{ text }`) in one transaction |
 | POST | `/api/trees/:treeId/undo-import` | undo one import (`{ memberIds, marriageIds, restore, rootMemberId }`) |
 | GET | `/api/trees/:treeId/gedcom` | the tree as a GEDCOM 5.5.1 file |
+| POST | `/api/trees/:treeId/restore` | put the whole tree back to a snapshot (undo/redo); validated, written as a diff in one transaction |
 
 - Setting a `deathYear` on a member also marks them deceased.
 - `settings: null` resets the poster settings to the defaults.
@@ -562,13 +612,13 @@ Without a sample value, `/demo` loads the large demo family.
 
 In order:
 
-1. **Undo/redo** for every edit. Bulk imports already undo as one step.
-2. **Sources and media** in the data model, so GEDCOM `SOUR`/`OBJE` can be
+1. **Sources and media** in the data model, so GEDCOM `SOUR`/`OBJE` can be
    imported instead of counted.
-3. **Server-side vector PDF** (headless Chromium `page.pdf()`), with
+2. **Server-side vector PDF** (headless Chromium `page.pdf()`), with
    CMYK/bleed options, once print shops ask for it. Until then the SVG opens
    in Inkscape.
-4. **Accounts and per-family sharing.**
+3. **Accounts and per-family sharing**, with a version check on restores
+   so two editors cannot overwrite each other's work.
 
 Also wanted: Hijri dates, editable title/credits/sources panels like the
 reference posters, and drag-to-reorder siblings.

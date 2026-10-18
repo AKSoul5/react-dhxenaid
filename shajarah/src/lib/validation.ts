@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { GEDCOM_MAX_CHARS } from "./gedcom";
 
 const year = z.number().int().min(-5000).max(3000).nullable().optional();
 /** Optional text; empty strings are stored as NULL. */
@@ -66,7 +67,7 @@ export const importNasabSchema = z.object({
 
 export const importGedcomSchema = z.object({
   /** The text of a GEDCOM 5.5.1 file (decoded in the browser). */
-  text: z.string().min(1, "The file is empty").max(20_000_000, "The file is too large (over 20 MB)"),
+  text: z.string().min(1, "The file is empty").max(GEDCOM_MAX_CHARS, "The file is too large (over 20 MB)"),
 });
 
 export const undoImportSchema = z.object({
@@ -74,6 +75,52 @@ export const undoImportSchema = z.object({
   marriageIds: z.array(z.string()).max(50_000),
   restore: z.array(z.object({ id: z.string(), fatherId: z.string().nullable(), motherId: z.string().nullable() })).max(50_000),
   rootMemberId: z.string().nullable(),
+});
+
+/**
+ * A whole tree, as the editor holds it, to put back (undo/redo). Fields are
+ * checked like the single-member routes; the tree as a whole (references,
+ * cycles) by snapshotError.
+ */
+export const restoreTreeSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  title: z.string().max(200).nullable(),
+  subtitle: z.string().max(300).nullable(),
+  lineage: z.enum(["PATRILINEAL", "MATRILINEAL"]),
+  rootMemberId: z.string().nullable(),
+  crownBaseId: z.string().nullable(),
+  trunkStartId: z.string().nullable(),
+  soilText: z.string().max(5000).nullable(),
+  settings: updateTreeSchema.shape.settings.unwrap(),
+  members: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        name: z.string().trim().min(1).max(120),
+        laqab: z.string().max(120).nullable(),
+        gender: z.enum(["MALE", "FEMALE", "UNKNOWN"]),
+        birthYear: z.number().int().min(-5000).max(3000).nullable(),
+        deathYear: z.number().int().min(-5000).max(3000).nullable(),
+        isDeceased: z.boolean(),
+        birthOrder: z.number().int().min(0).max(100_000),
+        generation: z.number().int(),
+        notes: z.string().max(2000).nullable(),
+        fatherId: z.string().nullable(),
+        motherId: z.string().nullable(),
+      }),
+    )
+    .max(50_000),
+  marriages: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        spouseAId: z.string(),
+        spouseBId: z.string(),
+        startYear: z.number().int().min(-5000).max(3000).nullable(),
+        endYear: z.number().int().min(-5000).max(3000).nullable(),
+      }),
+    )
+    .max(50_000),
 });
 
 export const memberFieldsSchema = z.object({
@@ -111,3 +158,4 @@ export type CreateMarriageInput = z.infer<typeof createMarriageSchema>;
 export type ImportNasabInput = z.infer<typeof importNasabSchema>;
 export type ImportGedcomInput = z.infer<typeof importGedcomSchema>;
 export type UndoImportInput = z.infer<typeof undoImportSchema>;
+export type RestoreTreeInput = z.infer<typeof restoreTreeSchema>;

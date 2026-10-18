@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { decodeGedcom, exportGedcom, parseGedcom, planGedcomImport } from "@/lib/gedcom";
+import { useEffect, useRef, useState } from "react";
+import { GEDCOM_MAX_CHARS, exportGedcom } from "@/lib/gedcom";
 import type { TreeDTO } from "@/lib/types";
+import { previewGedcom, type GedcomPreview } from "./gedcomPreview";
 
 interface Props {
   tree: TreeDTO;
@@ -13,34 +14,73 @@ interface Props {
   onCancel: () => void;
 }
 
+type Status =
+  | { kind: "idle" }
+  | { kind: "reading" }
+  | { kind: "ready"; preview: GedcomPreview }
+  | { kind: "error"; message: string };
+
+/** Above this many bytes no encoding can fit the server's limit: refused before reading. */
+const REFUSE_BYTES = GEDCOM_MAX_CHARS * 2;
+
+const formatSize = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
 /**
- * GEDCOM in and out. The file is read and matched in the browser first,
- * with the same planner the server uses, so the preview shows exactly what
- * the import will do before anything is saved.
+ * GEDCOM in and out. The file is read and matched against the tree with the
+ * same planner the server uses, so the preview shows exactly what the import
+ * will do before anything is saved. That work runs in a Web Worker: a large
+ * file never freezes the editor, and choosing another file cancels it.
  */
 export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props) {
-  const [file, setFile] = useState<{ name: string; size: number; text: string; warnings: string[] } | null>(null);
-  const [readError, setReadError] = useState<string | null>(null);
+  const [file, setFile] = useState<{ name: string; size: number; bytes: ArrayBuffer } | null>(null);
+  const [status, setStatus] = useState<Status>({ kind: "idle" });
+  const worker = useRef<Worker | null>(null);
+  const request = useRef(0);
 
-  const preview = useMemo(() => {
-    if (!file) return null;
-    const parsed = parseGedcom(file.text);
-    let n = 0;
-    const plan = planGedcomImport(tree, parsed, () => `preview-${n++}`);
-    const root = plan.rootMemberId !== tree.rootMemberId ? plan.members.find((m) => m.id === plan.rootMemberId) : undefined;
-    return { parsed, plan, root, warnings: [...file.warnings, ...plan.warnings] };
-  }, [file, tree]);
+  useEffect(() => () => worker.current?.terminate(), []);
+
+  useEffect(() => {
+    if (!file) return;
+    const id = ++request.current;
+    if (file.size > REFUSE_BYTES) {
+      setStatus({ kind: "error", message: `This file is ${formatSize(file.size)}; one import accepts up to 20 MB of text.` });
+      return;
+    }
+    setStatus({ kind: "reading" });
+    const input = { members: tree.members, marriages: tree.marriages, lineage: tree.lineage, rootMemberId: tree.rootMemberId };
+    const done = (s: Status) => request.current === id && setStatus(s);
+    if (typeof Worker === "undefined") {
+      // no workers (very old browsers): let the spinner paint, then read here
+      const t = setTimeout(() => {
+        try {
+          done({ kind: "ready", preview: previewGedcom(file.bytes, input) });
+        } catch (e) {
+          done({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+        }
+      }, 30);
+      return () => clearTimeout(t);
+    }
+    // a file still being read is abandoned, not waited for
+    worker.current?.terminate();
+    const w = new Worker(new URL("./gedcom.worker.ts", import.meta.url));
+    worker.current = w;
+    w.onmessage = (e: MessageEvent<{ id: number; ok: boolean; preview?: GedcomPreview; error?: string }>) => {
+      if (e.data.id !== id) return;
+      done(e.data.ok ? { kind: "ready", preview: e.data.preview! } : { kind: "error", message: e.data.error ?? "Could not read the file." });
+      w.terminate();
+      if (worker.current === w) worker.current = null;
+    };
+    w.onerror = (e) => done({ kind: "error", message: e.message || "Could not read the file." });
+    const bytes = file.bytes.slice(0); // the copy is moved to the worker
+    w.postMessage({ id, bytes, tree: input }, [bytes]);
+  }, [file, tree.members, tree.marriages, tree.lineage, tree.rootMemberId]);
 
   const choose = async (f: File | undefined) => {
-    setReadError(null);
     if (!f) return;
-    try {
-      const { text, warnings } = decodeGedcom(new Uint8Array(await f.arrayBuffer()));
-      setFile({ name: f.name, size: f.size, text, warnings });
-    } catch (e) {
-      setFile(null);
-      setReadError(e instanceof Error ? e.message : String(e));
-    }
+    setStatus({ kind: "reading" });
+    // a file too large to import is not even read into memory
+    setFile({ name: f.name, size: f.size, bytes: f.size > REFUSE_BYTES ? new ArrayBuffer(0) : await f.arrayBuffer() });
   };
 
   const download = () => {
@@ -50,7 +90,7 @@ export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props)
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  const p = preview?.plan;
+  const p = status.kind === "ready" ? status.preview : null;
   return (
     <div className="flex-1 space-y-4 overflow-auto p-4 text-sm">
       <section className="space-y-3">
@@ -67,35 +107,42 @@ export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props)
           className="block w-full text-xs file:me-3 file:rounded-md file:border file:border-parchment-300 file:bg-parchment-50 file:px-3 file:py-1.5"
           onChange={(e) => void choose(e.target.files?.[0])}
         />
-        {readError && <p className="text-red-700">Could not read the file: {readError}</p>}
+        {status.kind === "reading" && (
+          <p className="flex items-center gap-2 text-gray-600" role="status">
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-bark-300 border-t-bark-700" aria-hidden />
+            Reading {file ? `${file.name} (${formatSize(file.size)})` : "the file"} and matching it against this tree…
+          </p>
+        )}
+        {status.kind === "error" && <p className="text-red-700">Could not import this file: {status.message}</p>}
 
-        {preview && p && (
+        {p && file && (
           <div className="space-y-2 rounded-md border border-parchment-200 bg-parchment-50 p-3" data-testid="gedcom-preview">
             <p className="text-xs text-gray-500">
-              {file!.name} · {Math.max(1, Math.round(file!.size / 1024))} KB
-              {preview.parsed.source && ` · from ${preview.parsed.source}`} · {p.people} people, {preview.parsed.families.length} families
+              {file.name} · {formatSize(file.size)}
+              {p.source && ` · from ${p.source}`} · {p.people.toLocaleString("en")} people, {p.families.toLocaleString("en")} families
             </p>
-            {p.people > 0 && (
+            {p.blocked && <p className="font-semibold text-red-700">{p.blocked} Split it, or export one branch from your genealogy program.</p>}
+            {p.people > 0 && !p.blocked && (
               <ul className="space-y-0.5">
-                <li><b>{p.newMembers.length}</b> new {p.newMembers.length === 1 ? "member" : "members"}</li>
+                <li><b>{p.newMembers}</b> new {p.newMembers === 1 ? "member" : "members"}</li>
                 <li><b>{p.reused}</b> already in this tree (reused, not changed)</li>
-                {p.newMarriages.length > 0 && <li><b>{p.newMarriages.length}</b> new {p.newMarriages.length === 1 ? "marriage" : "marriages"}</li>}
-                {p.relinks.length > 0 && (
-                  <li><b>{p.relinks.length}</b> {p.relinks.length === 1 ? "member gets a parent" : "members get parents"} they did not have</li>
+                {p.newMarriages > 0 && <li><b>{p.newMarriages}</b> new {p.newMarriages === 1 ? "marriage" : "marriages"}</li>}
+                {p.relinks > 0 && (
+                  <li><b>{p.relinks}</b> {p.relinks === 1 ? "member gets a parent" : "members get parents"} they did not have</li>
                 )}
                 {p.ambiguous > 0 && (
                   <li className="text-amber-800">
                     <b>{p.ambiguous}</b> matched more than one person here, so {p.ambiguous === 1 ? "was" : "were"} added as new: check for duplicates
                   </li>
                 )}
-                {preview.root && (
-                  <li>The trunk will start at <b dir="auto">{preview.root.name}</b></li>
+                {p.newRootName && (
+                  <li>The trunk will start at <b dir="auto">{p.newRootName}</b></li>
                 )}
               </ul>
             )}
-            {preview.warnings.length > 0 && (
+            {p.warnings.length > 0 && (
               <ul className="list-disc space-y-0.5 ps-4 text-xs text-amber-800">
-                {preview.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                {p.warnings.map((w, i) => <li key={i}>{w}</li>)}
               </ul>
             )}
           </div>
@@ -104,10 +151,10 @@ export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props)
           <button
             type="button"
             className="btn-primary"
-            disabled={busy || !file || !p || p.people === 0}
-            onClick={() => file && onImport(file.text, file.name)}
+            disabled={busy || !p || !file || p.people === 0 || !!p.blocked}
+            onClick={() => p && file && onImport(p.text, file.name)}
           >
-            {busy ? "Importing…" : p ? `Import ${p.newMembers.length} ${p.newMembers.length === 1 ? "person" : "people"}` : "Import"}
+            {busy ? "Importing…" : p && !p.blocked ? `Import ${p.newMembers} ${p.newMembers === 1 ? "person" : "people"}` : "Import"}
           </button>
           <button type="button" className="btn-ghost" onClick={onCancel}>Cancel</button>
         </div>
