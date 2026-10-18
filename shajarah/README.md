@@ -64,7 +64,7 @@ NEXT_OUTPUT=standalone npm run build   # self-contained server in .next/standalo
 cd desktop/electron
 npm install
 npm run prepare-app                    # gathers the server and the migrations
-npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.1.exe (build on Windows)
+npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.2.exe (build on Windows)
 npm start                              # or run it unpackaged
 ```
 
