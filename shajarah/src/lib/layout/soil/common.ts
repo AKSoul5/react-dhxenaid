@@ -168,3 +168,40 @@ export function unionBox(boxes: { x: number; y: number; w: number; h: number }[]
   const x1 = Math.max(...boxes.map((b) => b.x + b.w)), y1 = Math.max(...boxes.map((b) => b.y + b.h));
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
+
+// ── The inscription: the oldest names, unframed, under a style's column ──
+
+export interface Inscription {
+  fs: number;
+  lines: string[];
+  /** Including the ornament above it and the finial below. */
+  height: number;
+}
+
+/** Measures `text` as a few balanced centred lines, at most `maxWidth` wide (no frame). */
+export function inscriptionFor(ctx: SoilContext, text: string, maxWidth = ctx.maxWidth * 0.5): Inscription | null {
+  if (!text) return null;
+  const fs = runningFont(ctx);
+  const natural = ctx.textWidth(text, fs);
+  const width = clamp(Math.sqrt(natural * fs * 12), Math.min(maxWidth, fs * 10), maxWidth);
+  const lines = wrapWords(ctx, text, width, fs);
+  return { fs, lines, height: fs * 2.2 + lines.length * fs * 1.7 + fs * 1.3 };
+}
+
+/**
+ * Draws a measured inscription with its top at `top`: a small ornament (a
+ * lozenge between two dots), the lines centred on the axis, and a lozenge
+ * finial under them. Light, open, no panel.
+ */
+export function drawInscription(p: SoilPlacement, ins: Inscription, top: number): { shapes: SoilShape[]; texts: SoilText[]; box: { x: number; y: number; w: number; h: number } } {
+  const { fs, lines } = ins;
+  const shapes: SoilShape[] = [{ d: separatorMark(p.cx, top + fs * 0.9, fs * 0.9), fill: "gold" }];
+  const first = top + fs * 2.2 + fs * 0.95;
+  const texts: SoilText[] = lines.map((line, k) => ({
+    x: p.cx, y: first + k * fs * 1.7, text: line, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh",
+  }));
+  const end = first + (lines.length - 1) * fs * 1.7 + fs * 0.45;
+  shapes.push({ d: lozenge(p.cx, end + fs * 0.6, fs * 0.16, fs * 0.26), fill: "gold" });
+  const w = Math.max(fs * 2, ...lines.map((l) => p.textWidth(l, fs)));
+  return { shapes, texts, box: { x: p.cx - w / 2, y: top, w, h: ins.height } };
+}

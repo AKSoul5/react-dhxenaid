@@ -45,15 +45,15 @@ export const pedestal: SoilStyleDef = {
     m.lines.forEach((line, k) => {
       const w = m.widths[k];
       const y = G + k * m.stepH;
-      shapes.push({ d: rectPath(p.cx - w / 2, y, w, m.stepH, m.fs * 0.12), fill: "ivory", stroke: "gold", strokeWidth: p.W * 0.0012, opacity: 0.95 });
+      shapes.push({ d: rectPath(p.cx - w / 2, y, w, m.stepH, m.fs * 0.12), fill: "ivory", stroke: "gold", strokeWidth: p.W * 0.0006, opacity: 0.55 });
       // a fine highlight along each step's top edge
       shapes.push({ d: `M${fx(p.cx - w / 2 + m.fs * 0.35)} ${fx(y + m.fs * 0.28)}H${fx(p.cx + w / 2 - m.fs * 0.35)}`, stroke: "goldLight", strokeWidth: p.W * 0.0005 });
       texts.push({ x: p.cx, y: y + m.stepH * 0.64, text: line, fontSize: m.fs, anchor: "middle", ink: "ink", font: "naskh" });
     });
-    // the plinth under the widest step
+    // a fine double rule under the widest step, in place of a heavy plinth
     const last = m.widths[m.widths.length - 1] ?? p.maxWidth;
     const yb = G + m.lines.length * m.stepH;
-    shapes.push({ d: rectPath(p.cx - last / 2 - m.fs * 0.3, yb, last + m.fs * 0.6, m.fs * 0.5, m.fs * 0.1), fill: "gold", opacity: 0.85 });
+    shapes.push({ d: `M${fx(p.cx - last / 2 - m.fs * 0.3)} ${fx(yb + m.fs * 0.15)}H${fx(p.cx + last / 2 + m.fs * 0.3)}M${fx(p.cx - last / 2)} ${fx(yb + m.fs * 0.38)}H${fx(p.cx + last / 2)}`, stroke: "gold", strokeWidth: p.W * 0.0006 });
     const widest = Math.max(...m.widths, last + m.fs * 0.6);
     return {
       style: "pedestal",

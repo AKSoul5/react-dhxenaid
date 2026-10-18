@@ -5,7 +5,7 @@
 // trunk, so trunk and spine read as one form.
 
 import {
-  clamp, dot, drawPlaque, fitCount, fx, gapBelowGround, lozenge, namesOf, plaqueFor, restAsText, smallestName, unionBox,
+  clamp, dot, drawInscription, fitCount, fx, gapBelowGround, inscriptionFor, lozenge, namesOf, restAsText, smallestName, unionBox,
 } from "./common";
 import type { SoilContext, SoilPlacement, SoilShape, SoilStyleDef, SoilText } from "./types";
 
@@ -54,8 +54,8 @@ function measure(ctx: SoilContext) {
   const k = fitCount(entries.length, ctx.avail * SPINE_SHARE, (n) => bottomOf(rowsFor(n)));
   const rows = rowsFor(k);
   const headBottom = bottomOf(rows);
-  const plaque = plaqueFor(ctx, restAsText(ctx, names, k));
-  return { rows, headBottom, plaque, height: headBottom + (plaque?.height ?? 0), fsTop };
+  const rest = inscriptionFor(ctx, restAsText(ctx, names, k));
+  return { rows, headBottom, rest, height: headBottom + (rest?.height ?? 0), fsTop };
 }
 
 /** Arabic-Indic digits in Arabic. */
@@ -72,7 +72,7 @@ export const spine: SoilStyleDef = {
     const shapes: SoilShape[] = [];
     const texts: SoilText[] = [];
     const yTop = G - p.f * 0.4; // starts inside the trunk's foot
-    const yEnd = G + m.headBottom - (m.plaque ? 0 : (m.rows.at(-1)?.fs ?? p.f) * 0.4);
+    const yEnd = G + m.headBottom - (m.rest ? 0 : (m.rows.at(-1)?.fs ?? p.f) * 0.4);
     // as wide as the trunk where it leaves it: trunk and spine are one form
     const wStart = p.trunkWidth * 0.5;
     const wEnd = p.f * 0.07;
@@ -93,7 +93,7 @@ export const spine: SoilStyleDef = {
     shapes.push({ d: `M${right.join("L")}L${left.join("L")}Z`, fill: "trunk" });
     // a gold line down its middle, as on the trunk
     shapes.push({ d: `M${fx(p.cx)} ${fx(p.threadFrom)}V${fx(yEnd)}`, stroke: "goldLight", strokeWidth: p.f * 0.07 });
-    if (!m.plaque) shapes.push({ d: lozenge(p.cx, yEnd + p.f * 0.15, p.f * 0.22, p.f * 0.34), fill: "gold" });
+    if (!m.rest) shapes.push({ d: lozenge(p.cx, yEnd + p.f * 0.15, p.f * 0.22, p.f * 0.34), fill: "gold" });
 
     const ticks: string[] = [];
     const boxes = [{ x: p.cx - wStart, y: G, w: wStart * 2, h: m.headBottom }];
@@ -122,8 +122,8 @@ export const spine: SoilStyleDef = {
       }
     }
     shapes.push({ d: ticks.join(""), stroke: "gold", strokeWidth: p.f * 0.05 });
-    if (m.plaque) {
-      const pl = drawPlaque(p, m.plaque, G + m.headBottom);
+    if (m.rest) {
+      const pl = drawInscription(p, m.rest, G + m.headBottom);
       shapes.push(...pl.shapes);
       texts.push(...pl.texts);
       boxes.push(pl.box);

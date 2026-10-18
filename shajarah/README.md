@@ -309,16 +309,16 @@ automatic choice) decides. Only the drawing changes.
 
 | Style | Look | Trunk meets it |
 | --- | --- | --- |
-| **Calligraphic column** (default, Refined) | Names in Ruqaa, one under another, on a thin gold thread with small beads between them. The nearest names are largest and most widely spaced; the oldest are smallest and closest, never below the legibility floor. | The trunk narrows to a point below its last ancestor, and its gold thread runs on into the column. No ground line, no roots. |
+| **Calligraphic column** (default, Refined) | A single centred column of names in Ruqaa on a thin gold thread, with small gold diamonds between names. Size and spacing grow toward the trunk; the oldest names are smallest, never below the legibility floor. No boxes or panels. | The trunk narrows to a point that opens into two fine gold sweeps cradling the nearest name, which is set in the bark's colour, so the column reads as the trunk's base. The thread runs from the trunk's ancestors down through the column. No ground line, no roots. |
 | **Timeline spine** | A spine in the trunk's own colour, with names alternating either side on short gold ticks and each ancestor's generation on a small disc (٤٧, ٤٦ … in Arabic). | The spine starts at the trunk's full width and tapers down, so trunk and spine are one form. |
 | **Illuminated banner** | A manuscript panel: double gold rule, a border of small lozenges, head- and tailpiece, names stacked with ornamental separators. A long lineage is set in columns, read right to left. | The trunk stands on the panel's head with a few fine roots. |
-| **Stepped pedestal** | Steps widening downward, each carrying the next group of names ("بن نصر بن سهل بن …"). | The trunk stands on the top step. |
+| **Stepped pedestal** | Light, finely ruled steps widening downward, each carrying the next group of names ("بن نصر بن سهل بن …"). | The trunk stands on the top step. |
 | **Inscribed panel** | The original: running text in a gold-ruled panel. | A root flare into a mound, with fine roots. |
 
 **Long lineages.** A column of 49 names cannot be legible on A2: it would
 take a third of the poster. So the column and the spine each have a height
-budget (24% of the content area). Names that don't fit continue as an
-inscribed plaque at its foot, starting "بن …" so it reads straight on, down
+budget (26% and 24% of the content area). Names that don't fit continue as an
+unframed inscription on the same axis, under a small gold ornament, starting "بن …" so it reads straight on, down
 to "بن آدم عليه السلام". The banner sets more columns instead. Every
 ancestor appears once, in reading order (tested).
 

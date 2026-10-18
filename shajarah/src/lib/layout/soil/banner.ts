@@ -61,7 +61,7 @@ export const banner: SoilStyleDef = {
     const texts: SoilText[] = [];
 
     // the panel: outer and inner gold rules, lozenges between them, corner and edge ornaments
-    shapes.push({ d: rectPath(x, top, m.width, m.panelH, fs * 0.25), fill: "ivory", stroke: "gold", strokeWidth: p.W * 0.0016, opacity: 0.96 });
+    shapes.push({ d: rectPath(x, top, m.width, m.panelH, fs * 0.25), fill: "ivory", stroke: "gold", strokeWidth: p.W * 0.0011, opacity: 0.7 });
     shapes.push({ d: rectPath(x + rule, top + rule, m.width - 2 * rule, m.panelH - 2 * rule, fs * 0.15), stroke: "gold", strokeWidth: p.W * 0.0006 });
     const border: string[] = [];
     const mid = rule / 2;
@@ -77,7 +77,7 @@ export const banner: SoilStyleDef = {
     for (const [cx, cy] of [[x + mid, top + mid], [x + m.width - mid, top + mid], [x + mid, top + m.panelH - mid], [x + m.width - mid, top + m.panelH - mid]]) {
       border.push(lozenge(cx, cy, fs * 0.28, fs * 0.28), dot(cx, cy, fs * 0.08));
     }
-    shapes.push({ d: border.join(""), fill: "gold", opacity: 0.85 });
+    shapes.push({ d: border.join(""), fill: "gold", opacity: 0.7 });
     // head- and tailpiece
     const innerTop = top + rule + pad;
     const innerBottom = top + m.panelH - rule - pad;
