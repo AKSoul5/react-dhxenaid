@@ -848,6 +848,9 @@ the poster size, and `&colors=1` to force lineage colours:
   relatives in the same shape;
 - `abdullah`: a founder, عبدالله, whose sons have very different families,
   built from pasted nasab lines by the importer itself;
+- `natural350`: a natural, balanced family of exactly 350 (the stress
+  test's: a founder with seven children, a grandson with six, most men
+  with 2–4 children early on and 0–2 later, lines ending);
 - `huge`: about 500 people.
 
 Add `&soil=column|spine|banner|pedestal|paragraph` for a foundation style,

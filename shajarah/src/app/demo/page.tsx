@@ -2,10 +2,11 @@ import { SOIL_STYLES, type SoilStyleId } from "@/lib/layout/soil";
 import { TreeWorkspace } from "@/components/editor/TreeWorkspace";
 import { generateSampleTree } from "@/lib/sampleData";
 import { kalaliFilledTree, kalaliRealistic150, kalaliTree } from "@/lib/samples/kalali";
+import { naturalFamily } from "@/lib/samples/natural";
 import { abdullahFamily, denseFamily, marriagesFamily, multiMarriageFamily, namesFamily, smallFamily } from "@/lib/samples/fixtures";
 
 const SAMPLES = {
-  abdullah: abdullahFamily, kalali: kalaliTree, "kalali-filled": kalaliFilledTree, "kalali-realistic": kalaliRealistic150, small: smallFamily, marriages: marriagesFamily, names: namesFamily,
+  abdullah: abdullahFamily, natural350: () => naturalFamily(350), kalali: kalaliTree, "kalali-filled": kalaliFilledTree, "kalali-realistic": kalaliRealistic150, small: smallFamily, marriages: marriagesFamily, names: namesFamily,
   dense: denseFamily, multi: multiMarriageFamily,
   // ~500 people with daughters, for checking dense layouts and the size warning
   huge: () => {
@@ -22,6 +23,7 @@ export const metadata = { title: "Demo — Shajarah" };
  * kalali-filled: its trunk from شعلان, the real line to أحمد with invented relatives (test data);
  * kalali-realistic: a natural ~150-person family under فضل (test data);
  * abdullah: a founder whose sons have very different families, pasted as nasab lines;
+ * natural350: a natural, balanced family of exactly 350 (the stress test's);
  * small, marriages, names, dense, multi and huge load the validation families.
  * &colors=1 turns on lineage colours, &poster=A1 sets the poster size and
  * &soil=column|spine|banner|pedestal|paragraph the foundation style, so

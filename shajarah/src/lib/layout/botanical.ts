@@ -1666,43 +1666,53 @@ type Body = { x: number; y: number; tx: number; ty: number; w: number; h: number
 export function relax<T extends Body>(nodes: T[], constrain: (n: T) => void, iterations = 120, bound?: (n: T) => void) {
   if (nodes.length === 0) return;
   const gap = 3;
-  const cell = Math.max(...nodes.map((n) => Math.max(n.w, n.h))) + gap;
+  // The grid's cells fit ordinary names; the few large bodies (the canopy
+  // base, frame medallions, trunk badges) are checked against every name
+  // instead, so they do not make every cell large and every pass quadratic.
+  const sizes = nodes.map((n) => Math.max(n.w, n.h)).sort((a, b) => a - b);
+  const cell = sizes[Math.min(sizes.length - 1, Math.floor(sizes.length * 0.9))] + gap;
+  const big = nodes.map((n, i) => (Math.max(n.w, n.h) + gap > cell ? i : -1)).filter((i) => i >= 0);
+  const isBig = new Set(big);
+  const keyOf = (gx: number, gy: number) => (gx + 4096) * 8192 + (gy + 4096);
+  const push = (i: number, j: number) => {
+    const a = nodes[i], b = nodes[j];
+    if (a.mass >= 1e6 && b.mass >= 1e6) return 0;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const px = (a.w + b.w) / 2 + gap - Math.abs(dx);
+    const py = (a.h + b.h) / 2 + gap - Math.abs(dy);
+    if (px <= 0 || py <= 0) return 0;
+    const ma = b.mass / (a.mass + b.mass);
+    const mb = a.mass / (a.mass + b.mass);
+    if (px < py) {
+      const s = dx === 0 ? (i % 2 ? 1 : -1) : Math.sign(dx);
+      a.x -= s * px * ma;
+      b.x += s * px * mb;
+    } else {
+      const s = dy === 0 ? (j % 2 ? 1 : -1) : Math.sign(dy);
+      a.y -= s * py * ma;
+      b.y += s * py * mb;
+    }
+    return 1;
+  };
   const separate = () => {
-    const grid = new Map<string, number[]>();
+    const grid = new Map<number, number[]>();
     nodes.forEach((n, i) => {
-      const key = `${Math.floor(n.x / cell)},${Math.floor(n.y / cell)}`;
+      if (isBig.has(i)) return;
+      const key = keyOf(Math.floor(n.x / cell), Math.floor(n.y / cell));
       const list = grid.get(key);
       if (list) list.push(i); else grid.set(key, [i]);
     });
     let moved = 0;
     nodes.forEach((a, i) => {
+      if (isBig.has(i)) return;
       const gx = Math.floor(a.x / cell), gy = Math.floor(a.y / cell);
       for (let ox = -1; ox <= 1; ox++) {
         for (let oy = -1; oy <= 1; oy++) {
-          for (const j of grid.get(`${gx + ox},${gy + oy}`) ?? []) {
-            if (j <= i) continue;
-            const b = nodes[j];
-            if (a.mass >= 1e6 && b.mass >= 1e6) continue;
-            const dx = b.x - a.x, dy = b.y - a.y;
-            const px = (a.w + b.w) / 2 + gap - Math.abs(dx);
-            const py = (a.h + b.h) / 2 + gap - Math.abs(dy);
-            if (px <= 0 || py <= 0) continue;
-            moved++;
-            const ma = b.mass / (a.mass + b.mass);
-            const mb = a.mass / (a.mass + b.mass);
-            if (px < py) {
-              const s = dx === 0 ? (i % 2 ? 1 : -1) : Math.sign(dx);
-              a.x -= s * px * ma;
-              b.x += s * px * mb;
-            } else {
-              const s = dy === 0 ? (j % 2 ? 1 : -1) : Math.sign(dy);
-              a.y -= s * py * ma;
-              b.y += s * py * mb;
-            }
-          }
+          for (const j of grid.get(keyOf(gx + ox, gy + oy)) ?? []) if (j > i) moved += push(i, j);
         }
       }
     });
+    for (const i of big) for (let j = 0; j < nodes.length; j++) if (j !== i && (!isBig.has(j) || j > i)) moved += push(Math.min(i, j), Math.max(i, j));
     return moved;
   };
 
