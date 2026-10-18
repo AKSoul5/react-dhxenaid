@@ -7,6 +7,8 @@ import { parseNasab, planNasabImport, splitNasabLines } from "../nasab";
 import { GEDCOM_MAX_PEOPLE, parseGedcom, planGedcomImport } from "../gedcom";
 import { planRestore, snapshotError } from "../restore";
 import { planMergeSources } from "../sources";
+import { readProjectFile, withNewIds } from "../project";
+import { restoreTreeSchema } from "../validation";
 import type {
   CreateCitationInput, CreateMarriageInput, CreateMediaInput, CreateMemberInput, CreateSourceInput, CreateTreeInput,
   ImportGedcomInput, ImportNasabInput, RestoreTreeInput, UndoImportInput, UpdateMediaInput, UpdateMemberInput, UpdateSourceInput,
@@ -562,4 +564,41 @@ function nextBirthOrder(members: MemberDTO[], fatherId?: string | null, motherId
     (m) => (fatherId && m.fatherId === fatherId) || (!fatherId && motherId && m.motherId === motherId),
   );
   return siblings.length ? Math.max(...siblings.map((s) => s.birthOrder)) + 1 : 0;
+}
+
+/**
+ * Opens a project file (.shajarah) as a new family: its photos and
+ * documents are stored, every record gets a new id (the same file can be
+ * opened twice), and the family is rebuilt in one restore. If that fails,
+ * the half-made family is removed again.
+ */
+export async function openProject(text: string): Promise<TreeDTO> {
+  let file;
+  try {
+    file = readProjectFile(text);
+  } catch (err) {
+    throw new DomainError((err as Error).message);
+  }
+  for (const blob of Object.values(file.files)) {
+    await saveMediaBlob(Buffer.from(blob.data, "base64"), blob.type);
+  }
+  // photos kept inside the family itself (saved from the demo) become uploads
+  const media = [];
+  for (const m of file.tree.media) {
+    const inline = m.url.match(/^data:([^;,]+);base64,(.*)$/s);
+    if (!inline) media.push(m);
+    else media.push({ ...m, url: (await saveMediaBlob(Buffer.from(inline[2], "base64"), inline[1])).url });
+  }
+  const parsed = restoreTreeSchema.safeParse(withNewIds({ ...file.tree, media }, randomUUID));
+  if (!parsed.success) throw new DomainError("This project file is damaged and cannot be opened.");
+  const snapshot = parsed.data;
+  const err = snapshotError(snapshot);
+  if (err) throw new DomainError(`This project file cannot be opened: ${err}`);
+  const tree = await createTree({ name: snapshot.name, title: snapshot.title, subtitle: snapshot.subtitle, lineage: snapshot.lineage });
+  try {
+    return await restoreTree(tree.id, snapshot);
+  } catch (e) {
+    await deleteTree(tree.id).catch(() => {});
+    throw e;
+  }
 }

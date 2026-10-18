@@ -2,6 +2,7 @@ import Link from "next/link";
 import { listTrees } from "@/lib/data/treeService";
 import type { TreeSummary } from "@/lib/types";
 import { CreateTreeForm } from "./CreateTreeForm";
+import { OpenProjectButton } from "./OpenProjectButton";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,15 @@ export default async function Home() {
           </section>
           <section className="rounded-xl border border-parchment-300 bg-white p-6 shadow-sm">
             <h2 className="mb-4 text-lg font-semibold">Start a new tree</h2>
-            {dbError ? <p className="text-sm text-gray-500">Available once the database is connected.</p> : <CreateTreeForm />}
+            {dbError ? <p className="text-sm text-gray-500">Available once the database is connected.</p> : (
+              <div className="space-y-6">
+                <CreateTreeForm />
+                <div className="space-y-2 border-t border-parchment-200 pt-4">
+                  <p className="text-sm text-gray-600">Or continue a family saved as a project file.</p>
+                  <OpenProjectButton />
+                </div>
+              </div>
+            )}
           </section>
         </div>
       </div>

@@ -23,6 +23,8 @@ import { StylePanel } from "./StylePanel";
 import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
 import { PAPER_ORDER, PAPER_SIZES, paperForScale, type PaperSize } from "@/lib/paper";
 import { ConflictError, apiRepository, localRepository, type FamilyRepository } from "./repository";
+import { readProjectFile, withNewIds } from "@/lib/project";
+import { openProjectFile } from "../projectFiles";
 
 interface Props {
   initialTree: TreeDTO;
@@ -284,6 +286,34 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     [selected, tree.members, tree.lineage],
   );
 
+  /**
+   * Opens a project file: saved families become a new family (and the editor
+   * moves to it); the demo, which saves nothing, shows it in place of the
+   * current one, as one undoable step.
+   */
+  const openProject = async (file: File) => {
+    if (mode === "api") {
+      setBusy(true);
+      try {
+        window.location.assign(`/trees/${await openProjectFile(file)}`);
+      } catch (e) {
+        setError((e as Error).message);
+        setBusy(false);
+      }
+      return;
+    }
+    let project;
+    try {
+      project = readProjectFile(await file.text());
+    } catch (e) {
+      setError((e as Error).message);
+      return;
+    }
+    const snapshot = withNewIds(project.tree, () => `local-${Math.random().toString(36).slice(2, 12)}`);
+    const next = await mutate(() => repo.restore({ ...treeRef.current, ...snapshot }), { label: `Open ${file.name}` });
+    if (next) setPanel({ kind: "list" });
+  };
+
   /** Runs a bulk import, remembering exactly what it added so it can be undone. */
   const runImport = async (fn: () => Promise<TreeDTO>, source: string) => {
     const before = treeRef.current;
@@ -422,8 +452,8 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 <button type="button" className="btn-outline" title="Paste a nasab: أحمد بن نوفل بن …" onClick={() => setPanel({ kind: "import" })}>
                   بن…
                 </button>
-                <button type="button" className="btn-outline px-2 text-xs" title="Import or export a GEDCOM file" onClick={() => setPanel({ kind: "gedcom" })}>
-                  GEDCOM
+                <button type="button" className="btn-outline px-2 text-xs" title="Save or open a project file; import or export GEDCOM" onClick={() => setPanel({ kind: "gedcom" })}>
+                  Files
                 </button>
               </div>
               {lastImport && importUndoable && (
@@ -479,6 +509,8 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               filename={exportName(tree.name)}
               onCancel={() => setPanel({ kind: "list" })}
               onImport={(text, fileName) => void runImport(() => repo.importGedcom(text), fileName)}
+              opensAsNew={mode === "api"}
+              onOpenProject={(file) => void openProject(file)}
             />
           )}
 

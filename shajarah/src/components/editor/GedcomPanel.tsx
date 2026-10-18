@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { GEDCOM_MAX_CHARS, exportGedcom } from "@/lib/gedcom";
 import type { TreeDTO } from "@/lib/types";
 import { previewGedcom, type GedcomPreview } from "./gedcomPreview";
+import { PROJECT_EXTENSION } from "@/lib/project";
+import { saveProjectFile } from "../projectFiles";
 
 interface Props {
   tree: TreeDTO;
@@ -11,6 +13,10 @@ interface Props {
   /** Base name for the downloaded file (ASCII). */
   filename: string;
   onImport: (text: string, fileName: string) => void;
+  /** Opens a project file (as a new family, or in the demo in place of this one). */
+  onOpenProject: (file: File) => void;
+  /** Where an opened project goes: a new family, or this demo. */
+  opensAsNew: boolean;
   onCancel: () => void;
 }
 
@@ -32,7 +38,21 @@ const formatSize = (bytes: number) =>
  * will do before anything is saved. That work runs in a Web Worker: a large
  * file never freezes the editor, and choosing another file cancels it.
  */
-export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props) {
+export function GedcomPanel({ tree, busy, filename, onImport, onOpenProject, opensAsNew, onCancel }: Props) {
+  const projectInput = useRef<HTMLInputElement>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveProject = async () => {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await saveProjectFile(tree);
+    } catch (e) {
+      setSaveError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
   const [file, setFile] = useState<{ name: string; size: number; bytes: ArrayBuffer } | null>(null);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const worker = useRef<Worker | null>(null);
@@ -96,7 +116,29 @@ export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props)
   const p = status.kind === "ready" ? status.preview : null;
   return (
     <div className="flex-1 space-y-4 overflow-auto p-4 text-sm">
-      <section className="space-y-3">
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-bark-500">Project file</h2>
+        <p className="text-gray-600">
+          The whole family in one <code>{PROJECT_EXTENSION}</code> file: everyone, the poster settings, sources and
+          photos. Keep it as a copy, open it on another computer, or send it to someone.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className="btn-primary" disabled={busy || saving} onClick={() => void saveProject()}>
+            {saving ? "Saving…" : "Save project file"}
+          </button>
+          <button type="button" className="btn-outline" disabled={busy} onClick={() => projectInput.current?.click()}>
+            Open project file…
+          </button>
+          <input ref={projectInput} type="file" accept={`${PROJECT_EXTENSION},application/json`} className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onOpenProject(f); }} />
+        </div>
+        <p className="text-xs text-gray-500">
+          {opensAsNew ? "A project you open becomes a new family; this one stays as it is." : "In the demo, an opened project replaces this family (Undo brings it back)."}
+        </p>
+        {saveError && <p className="text-red-700">{saveError}</p>}
+      </section>
+
+      <section className="space-y-3 border-t border-parchment-200 pt-4">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-bark-500">Import a GEDCOM file</h2>
         <p className="text-gray-600">
           GEDCOM (.ged) is the file other genealogy programs export: Ancestry, MyHeritage, FamilySearch,
@@ -177,7 +219,7 @@ export function GedcomPanel({ tree, busy, filename, onImport, onCancel }: Props)
       </section>
 
       <section className="space-y-2 border-t border-parchment-200 pt-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-bark-500">Export</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-bark-500">Export GEDCOM</h2>
         <p className="text-gray-600">
           Download this family as a GEDCOM 5.5.1 file (UTF-8) to open it in any genealogy program,
           or to keep a copy.
