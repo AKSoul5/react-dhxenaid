@@ -37,13 +37,10 @@ export function branchHeads(tree: TreeDTO, layout: PosterLayout): Omit<BranchOpt
  * is too small to be legible, skips straight to the size legibility needs.
  */
 export function clearestPaper(tree: TreeDTO, id: string, optionsFor: (p: PaperSize) => LayoutOptions): PaperSize | null {
-  let i = 0;
-  while (i < PAPER_ORDER.length) {
-    const paper = PAPER_ORDER[i];
-    const l = computePosterLayout(tree, { ...optionsFor(paper), focusId: id });
-    if (isClear(l)) return paper;
-    const needed = l.legibility.ok ? null : paperForScale(paper, l.legibility.scaleNeeded);
-    i = Math.max(i + 1, needed ? PAPER_ORDER.indexOf(needed) : i + 1);
+  // every size in turn: jumping ahead to the size the legibility estimate
+  // suggests could skip a smaller size that is in fact clear
+  for (const paper of PAPER_ORDER) {
+    if (isClear(computePosterLayout(tree, { ...optionsFor(paper), focusId: id }))) return paper;
   }
   return null;
 }

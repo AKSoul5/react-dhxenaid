@@ -381,19 +381,21 @@ function Divider({ x, y, w, pal }: { x: number; y: number; w: number; pal: Palet
 }
 
 /** Ivory disc with a fine double gold ring: branch heads, the crown base, stubs. */
+/** A round medallion (branch heads), or an oval one (the canopy base) when wider than tall. */
 function Medallion({ node, pal, onClick, strong, ring }: { node: PosterNode; pal: Palette; onClick: object; strong?: boolean; ring?: string | null }) {
-  const r = node.w / 2;
+  const rx = node.w / 2, ry = node.h / 2;
   const fs = node.fontSize;
+  const inset = fs * 0.22;
   return (
     <g transform={`translate(${node.x.toFixed(1)} ${node.y.toFixed(1)})`} {...onClick}>
       <title>{node.label}</title>
       {pal.mono ? (
-        <circle r={r} fill="#fff" stroke="#111" strokeWidth={fs * 0.09} />
+        <ellipse rx={rx} ry={ry} fill="#fff" stroke="#111" strokeWidth={fs * 0.09} />
       ) : (
         <>
-          {strong && <path d={scallopPath(0, 0, r * 1.07, r * 1.07, 28, 0.025)} fill="none" stroke={GOLD} strokeWidth={fs * 0.05} />}
-          <circle r={r} fill={IVORY} stroke={ring ?? GOLD} strokeWidth={fs * (ring ? 0.12 : 0.09)} />
-          <circle r={r - fs * 0.22} fill="none" stroke={GOLD} strokeWidth={fs * 0.03} />
+          {strong && <path d={scallopPath(0, 0, rx + ry * 0.07, ry * 1.07, 28, 0.025)} fill="none" stroke={GOLD} strokeWidth={fs * 0.05} />}
+          <ellipse rx={rx} ry={ry} fill={IVORY} stroke={ring ?? GOLD} strokeWidth={fs * (ring ? 0.12 : 0.09)} />
+          <ellipse rx={rx - inset} ry={ry - inset} fill="none" stroke={GOLD} strokeWidth={fs * 0.03} />
         </>
       )}
       <text y={node.subLabel ? -fs * 0.32 : 0} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight={700} fill={pal.ink}>

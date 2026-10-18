@@ -331,6 +331,9 @@ const LOWER_SHARE = 0.3;
 const TRUNK_SHARE = 0.2;
 const BRANCH_TRUNK_NAMES = 6;
 
+/** The canopy base's oval, as fractions of its round space's radius (wider than tall). */
+const BASE_OVAL = { w: 1, h: 0.66 };
+
 /** The least share of its father's space a child gets (see partition). */
 const MIN_CHILD_SHARE = 0.1;
 
@@ -547,6 +550,10 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     return { rx, ry: Math.max(A / (EGG * rx), depthNeed / 1.7) };
   };
   const baseText = base.data.member ? labelOf(base.data.member) : { label: "", subLabel: null };
+  // The canopy base's space: a circle of radius baseRFor, which sets the
+  // spacing of canopy, trunk and foundation. It is drawn as an oval inside
+  // that space (BASE_OVAL), like the other names but larger, with the
+  // scalloped double ring that marks the tree's anchor.
   const baseRFor = (f: number) => {
     const fb = f * 1.3;
     if (!base.data.member) return f;
@@ -689,6 +696,8 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   crown = { cx: W / 2, cy: top0 + ry, rx, ry, exponent: 2.4 };
   origin = { x: W / 2, y: crown.cy + 0.8 * ry };
   const baseMedallionR = baseRFor(f);
+  // the oval drawn inside the base's space
+  const baseOval = { rx: baseMedallionR * BASE_OVAL.w, ry: baseMedallionR * (baseText.subLabel ? 0.85 : BASE_OVAL.h) };
   const trunkFont = trunkFontFor(f);
   const trunkStep = stepFor(f);
   const labelTop = origin.y + baseMedallionR + trunkFont * 1.4;
@@ -1162,6 +1171,29 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const familySize = new Map<string, number>();
   for (const n of growingNodes) if (n.parentId) familySize.set(n.parentId, (familySize.get(n.parentId) ?? 0) + 1);
   const fanOf = (parentId: string | null) => clamp(((parentId ? familySize.get(parentId) ?? 0 : 0) - 5) / 4, 0, 1);
+  // Two touches that make branches read as wood rather than wire:
+  //  - the main limbs (from the canopy base) rise out of the trunk before
+  //    sweeping out to each son, instead of leaving it in a straight line;
+  //  - an only child's line bends in a slight sideways S (alternating with
+  //    the generation), so a chain of only children reaches up like a
+  //    branch, not a pole.
+  const SWEEP = 0.5, ONLY_S = 0.12;
+  const organic = (node: LiveNode, c: Cubic): Cubic => {
+    const d = sub(c.p1, c.p0);
+    const L = len(d) || 1;
+    const dv = scale(d, 1 / L);
+    let { c1, c2 } = c;
+    if (node.region === "crown" && node.depth === 1) {
+      c1 = add(c.p0, scale(norm(add(scale(UP, SWEEP), scale(dv, 1 - SWEEP))), L * 0.45));
+    }
+    if (node.parentId && familySize.get(node.parentId) === 1 && node.region === "crown") {
+      const side = node.depth % 2 === 0 ? 1 : -1;
+      const perp = { x: -dv.y * side, y: dv.x * side };
+      c1 = add(c1, scale(perp, L * ONLY_S));
+      c2 = sub(c2, scale(perp, L * ONLY_S));
+    }
+    return { ...c, c1, c2 };
+  };
   const buildCurves = () => {
     const growthDir = new Map<string, Vec>();
     for (const node of growingNodes) {
@@ -1190,7 +1222,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         void dir;
         const rayDirL = node.ray !== undefined ? dirOf(node.ray) : dv;
         const e0 = norm(add(scale(dv, 1 - arrive), scale(rayDirL, arrive)));
-        curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * (reach0 - 0.03))), c2: sub(B, scale(e0, L * 0.3)), p1: B });
+        curveOf.set(node.id, organic(node, { p0: P, c1: add(P, scale(s0, L * (reach0 - 0.03))), c2: sub(B, scale(e0, L * 0.3)), p1: B }));
         continue;
       }
       const C: Vec = { x: node.x, y: node.y };
@@ -1200,7 +1232,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       // arrive along the child's own ray (outward), never hooking back
       const rayDir = node.ray !== undefined ? dirOf(node.ray) : UP;
       const e0 = norm(add(scale(dv, 1 - arrive), scale(rayDir, arrive)));
-      curveOf.set(node.id, { p0: P, c1: add(P, scale(s0, L * reach0)), c2: sub(C, scale(e0, L * 0.3)), p1: C });
+      curveOf.set(node.id, organic(node, { p0: P, c1: add(P, scale(s0, L * reach0)), c2: sub(C, scale(e0, L * 0.3)), p1: C }));
       growthDir.set(node.id, e0);
     }
   };
@@ -1227,7 +1259,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   {
     const lineW = Math.max(W * 0.0018, f * 0.1) * 1.5;
     const baseBox = base.data.member
-      ? { id: base.data.member.id, member: base.data.member, x: origin.x, y: origin.y, w: baseMedallionR * 2, h: baseMedallionR * 2, shape: "medallion" }
+      ? { id: base.data.member.id, member: base.data.member, x: origin.x, y: origin.y, w: baseOval.rx * 2, h: baseOval.ry * 2, shape: "medallion" }
       : null;
     const check = () => {
       buildCurves();
@@ -1418,7 +1450,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     const { label, subLabel } = labelOf(m);
     baseNode = {
       id: m.id, member: m, x: origin.x, y: origin.y, depth: 0, generation: m.generation,
-      w: baseMedallionR * 2, h: baseMedallionR * 2, fontSize: fs, shape: "medallion",
+      w: baseOval.rx * 2, h: baseOval.ry * 2, fontSize: fs, shape: "medallion",
       label: m.name, subLabel, terminal: !base.children,
       angle: 0, leafLength: 0, leafWidth: 0, leafCount: base.value ?? 1,
       parentId: base.parent?.data.member?.id ?? null,
@@ -1461,7 +1493,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     // flaring at the top to meet the canopy base, as a trunk divides into
     // its limbs (no wider than the medallion, which covers the top)
     trunkPath: trunkOutline(
-      origin, groundY, trunkWidth, TW, Math.max(trunkWidth, baseMedallionR * 1.9),
+      origin, groundY, trunkWidth, TW, Math.max(trunkWidth, baseOval.rx * 1.6),
       soil ? soil.trunkSpread : 1, soil?.trunkTaper ?? 0,
     ),
     trunkWidth,
@@ -1576,17 +1608,24 @@ function trunkOutline(o: Vec, groundY: number, w: number, flareW = w, topW = w, 
       close,
     ].join("");
   }
-  // root flare: `spread` < 1 keeps it inside a soil mound or on a panel
+  // root flare: `spread` < 1 keeps it inside a soil mound or on a panel.
+  // The trunk starts widening well above the ground and spreads gradually
+  // (a concave sweep, like the buttressed foot of an old tree), not in a
+  // sudden kink at the ground line.
   const fl = (flareW + (w - flareW) * 0.35) * spread;
+  const rise = Math.min(fl * 1.8, Math.max(0, groundY - (o.y + flare)) * 0.75);
+  const yr = groundY - rise;
   return [
     head,
     `C${L(topW * 0.5)} ${f(o.y)} ${L(topW * 0.5)} ${f(o.y + flare * 0.1)} ${L(topW * 0.5)} ${f(o.y + flare * 0.2)}`,
     `C${L(topW * 0.42)} ${f(o.y + flare * 0.4)} ${L(w * 0.5)} ${f(o.y + flare * 0.6)} ${L(w * 0.5)} ${f(o.y + flare)}`,
-    `C${L(w * 0.5)} ${f(o.y + h * 0.62)} ${L(w * 0.52)} ${f(o.y + h * 0.82)} ${L(w * 0.5 + fl * 0.35)} ${f(groundY - fl * 0.08)}`,
-    `C${L(w * 0.5 + fl * 0.55)} ${f(groundY)} ${L(w * 0.5 + fl * 1.1)} ${f(groundY + fl * 0.12)} ${L(w * 0.5 + fl * 1.5)} ${f(groundY + fl * 0.18)}`,
-    `L${R(w * 0.5 + fl * 1.5)} ${f(groundY + fl * 0.18)}`,
-    `C${R(w * 0.5 + fl * 1.1)} ${f(groundY + fl * 0.12)} ${R(w * 0.5 + fl * 0.55)} ${f(groundY)} ${R(w * 0.5 + fl * 0.35)} ${f(groundY - fl * 0.08)}`,
-    `C${R(w * 0.52)} ${f(o.y + h * 0.82)} ${R(w * 0.5)} ${f(o.y + h * 0.62)} ${R(w * 0.5)} ${f(o.y + flare)}`,
+    `L${L(w * 0.5)} ${f(yr)}`,
+    `C${L(w * 0.5)} ${f(yr + rise * 0.45)} ${L(w * 0.5 + fl * 0.2)} ${f(groundY - rise * 0.12)} ${L(w * 0.5 + fl * 0.6)} ${f(groundY + fl * 0.04)}`,
+    `C${L(w * 0.5 + fl * 0.95)} ${f(groundY + fl * 0.13)} ${L(w * 0.5 + fl * 1.4)} ${f(groundY + fl * 0.18)} ${L(w * 0.5 + fl * 1.9)} ${f(groundY + fl * 0.2)}`,
+    `L${R(w * 0.5 + fl * 1.9)} ${f(groundY + fl * 0.2)}`,
+    `C${R(w * 0.5 + fl * 1.4)} ${f(groundY + fl * 0.18)} ${R(w * 0.5 + fl * 0.95)} ${f(groundY + fl * 0.13)} ${R(w * 0.5 + fl * 0.6)} ${f(groundY + fl * 0.04)}`,
+    `C${R(w * 0.5 + fl * 0.2)} ${f(groundY - rise * 0.12)} ${R(w * 0.5)} ${f(yr + rise * 0.45)} ${R(w * 0.5)} ${f(yr)}`,
+    `L${R(w * 0.5)} ${f(o.y + flare)}`,
     `C${R(w * 0.5)} ${f(o.y + flare * 0.6)} ${R(topW * 0.42)} ${f(o.y + flare * 0.4)} ${R(topW * 0.5)} ${f(o.y + flare * 0.2)}`,
     close,
   ].join("");

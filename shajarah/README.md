@@ -408,7 +408,15 @@ reserved height matches what it draws.
   choose Leaves, Circular badges or Oval medallions outright.
 - **Branches:** gentle S-curves: a line leaves its father half along his
   own growth direction and arrives partly along its own ray (measured on
-  every sample: no less clear than straight lines).
+  every sample: no less clear than straight lines). The main limbs rise out
+  of the trunk before sweeping out to each son, and an only child's line
+  bends in a slight sideways S (alternating with the generation), so a
+  chain of only children reaches up like a branch, not a pole.
+- **The canopy base:** an ivory oval with a scalloped double gold ring,
+  larger than the other names, drawn inside the round space the layout
+  keeps for it.
+- **The trunk's foot:** it starts widening well above the ground and
+  spreads gradually into the roots, like the buttressed foot of an old tree.
 - **Daughters:** soft-gold capsules.
 - **Fathers:** members with descendants are ivory capsules with a gold
   rim.
