@@ -47,6 +47,8 @@ export interface PosterTheme {
   nodeShape: "auto" | "leaf" | "circle" | "oval";
   labelMode: "name" | "withFather";
   showYears: boolean;
+  /** A second line naming the mother of each child of a man with children by more than one wife. */
+  motherNames: boolean;
   /** Ancestors carved into the bark, or stacked as framed badges. */
   trunkStyle: "carved" | "badges";
   /** How the ancient lineage below the trunk (the foundation) is drawn: see src/lib/layout/soil. */

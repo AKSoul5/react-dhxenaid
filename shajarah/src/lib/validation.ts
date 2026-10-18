@@ -31,6 +31,7 @@ export const themeSchema = z
     nodeShape: z.enum(["auto", "leaf", "circle", "oval"]),
     labelMode: z.enum(["name", "withFather"]),
     showYears: z.boolean(),
+    motherNames: z.boolean(),
     trunkStyle: z.enum(["carved", "badges"]),
     soilStyle: z.enum(["column", "spine", "banner", "pedestal", "paragraph"]),
     foliage: z.boolean(),

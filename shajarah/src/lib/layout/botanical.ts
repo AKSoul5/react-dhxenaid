@@ -89,6 +89,11 @@ export interface LayoutOptions {
   nodeShape?: NodeShape | "auto";
   labelMode?: LabelMode;
   showYears?: boolean;
+  /**
+   * Half-siblings: when a man has children by more than one wife, each child
+   * carries his mother's name on a second line (the father, in a mother's-line tree).
+   */
+  motherNames?: boolean;
   /** How the foundation (the ancestors below the trunk) is drawn. Default: the inscribed panel. */
   soilStyle?: SoilStyleId;
   /** Where the trunk starts; older ancestors go into the soil. Defaults to tree.trunkStartId. */
@@ -545,6 +550,26 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
           : `${m.gender === "FEMALE" ? "daughter" : "son"} of ${parentOfLine.name}`;
         subLabel = subLabel ? `${line} · ${subLabel}` : line;
       }
+    }
+    // half-siblings: the mother of each child of a man with several wives
+    const lineParentId = tree.lineage === "MATRILINEAL" ? m.motherId : m.fatherId;
+    const otherParentId = tree.lineage === "MATRILINEAL" ? m.fatherId : m.motherId;
+    const other = otherParentId ? byMemberId.get(otherParentId) : undefined;
+    const partnersOf = (id: string) => new Set(tree.members
+      .filter((c) => (tree.lineage === "MATRILINEAL" ? c.motherId : c.fatherId) === id)
+      .map((c) => (tree.lineage === "MATRILINEAL" ? c.fatherId : c.motherId))
+      .filter(Boolean));
+    const partners = lineParentId ? partnersOf(lineParentId) : new Set();
+    if (opts.motherNames && !dotted.has(m.id) && other && partners.size > 1) {
+      // her own name ("فاطمة" for "فاطمة بنت سعد") tells the wives apart,
+      // unless two of them share it
+      const own = (name: string) => name.split(/\s+(?:بنت|بن|ابنة|bint|bin|ibn)\s+/i)[0].trim();
+      const names = [...partners].map((id) => own(byMemberId.get(id as string)?.name ?? ""));
+      const name = names.filter((x) => x === own(other.name)).length > 1 ? other.name : own(other.name);
+      const line = ARABIC.test(other.name)
+        ? `${tree.lineage === "MATRILINEAL" ? (m.gender === "FEMALE" ? "أبوها" : "أبوه") : m.gender === "FEMALE" ? "أمها" : "أمه"} ${name}`
+        : `${tree.lineage === "MATRILINEAL" ? "father" : "mother"}: ${name}`;
+      subLabel = subLabel ? `${line} · ${subLabel}` : line;
     }
     const spouse = through.has(m.id) && otherParents(m.id).size <= 1 ? spouseOf(m) : undefined;
     if (spouse) {

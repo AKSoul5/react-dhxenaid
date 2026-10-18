@@ -359,6 +359,17 @@ father's name on a second line ("بن سعد العتيبي") instead of one hus
 under her name. When adding a child to someone married more than once,
 choose the child's other parent under the name field.
 
+## Half-siblings: naming the mothers
+
+A father with children from more than one wife: his children are grouped by
+mother. Turn on **Style → Name the mothers of half-siblings** and each of
+them carries his or her mother's name on a second line ("أمه فاطمة",
+"أمها عائشة"; "mother: Fatimah" for English names). Her own name is used
+("فاطمة" for "فاطمة بنت سعد"), or her full name when two wives share it.
+It only applies to fathers with more than one recorded wife, and to
+children whose mother is recorded. (In a mother's-line tree it names the
+fathers instead.)
+
 ## The three tiers: foundation, trunk, canopy
 
 The ancestral chain is split into three tiers. You set the two boundaries

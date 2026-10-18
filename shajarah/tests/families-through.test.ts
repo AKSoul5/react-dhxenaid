@@ -75,7 +75,7 @@ describe("a daughter's family on dotted lines", () => {
     // no single husband on her own label
     expect(l.nodes.find((n) => n.member.id === amina.id)!.subLabel ?? null).toBeNull();
     // the two husbands' children side by side, not interleaved
-    const order = [...kids].sort((a, b) => (a.ray ?? 0) - (b.ray ?? 0)).map((k) => k.member.name);
+    const order = [...kids].sort((a, b) => a.x - b.x).map((k) => k.member.name);
     expect(Math.abs(order.indexOf("Yusuf") - order.indexOf("Hamza"))).toBe(1);
     expect(l.clarity.issues).toEqual([]);
     expect(l.branches.filter((b) => b.dotted).length).toBe(7);
