@@ -17,8 +17,8 @@
  *       the trunk exactly when they are an ancestor of the crown base.
  *     - Three tiers along the ancestral chain: SOIL (ancestors older than
  *       FamilyTree.trunkStartId, inscribed as text in the soil among the
- *       roots), TRUNK (stacked medallions — one column, or a zigzag of two
- *       when the chain is long, with the canopy giving up height), CANOPY.
+ *       roots), TRUNK (stacked medallions in one centred column, inside the
+ *       bark; when the chain is long the oldest go to the soil), CANOPY.
  *       Without a trunk start, the nearest ancestors go on the trunk and
  *       the rest into the soil.
  *     - Brothers of trunk ancestors become stubs (no descendants) or side
@@ -540,14 +540,14 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     const sub = baseText.subLabel ? textWidth(baseText.subLabel, fb * 0.68) / 2 + fb * 0.7 : 0;
     return Math.max(fb * 1.75, textWidth(baseText.label, fb) / 2 + fb * 0.8, sub);
   };
-  // Trunk: ancestors stacked one per row at (nearly) the names' size; a
-  // two-column zigzag only when one column cannot fit legibly.
+  // Trunk: the ancestors in one centred column, one per row, inside the
+  // bark (never two staggered columns: the trunk reads as one solid form).
   const trunkFontFor = (f: number) => Math.max(floorFor(f), f * 0.95);
-  const stepFor = (f: number, zig: boolean) => trunkFontFor(f) * (zig ? 1.05 : 1.75);
-  const trunkSection = (count: number, f: number, zig: boolean) => {
+  const stepFor = (f: number) => trunkFontFor(f) * 1.75;
+  const trunkSection = (count: number, f: number) => {
     if (!count) return f * 3.5;
     const ft = trunkFontFor(f);
-    return ft * 1.4 + (count - 1) * stepFor(f, zig) + ft * 1.5;
+    return ft * 1.4 + (count - 1) * stepFor(f) + ft * 1.5;
   };
   // Foundation: the ancestors older than the trunk, drawn by the chosen
   // soil style. The style measures itself, so the whole poster is sized
@@ -568,7 +568,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     rtl, joiner, f, floor: floorFor(f), maxFont, maxWidth: soilW, avail, textWidth,
   });
 
-  type Plan = { onTrunk: HNode[]; soil: HNode[]; zig: boolean };
+  type Plan = { onTrunk: HNode[]; soil: HNode[] };
   // The foundation has a height budget. Its names are never set below the
   // legible size: a lineage too long for its budget leaves names out of
   // its middle (shown as "…"), keeping the nearest and the last ones.
@@ -579,7 +579,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // (a whole family's foundation gets less room when the canopy is the larger part)
   const soilShare = crownNodes.length > trunkChain.length ? SOIL_SHARE_SMALL : SOIL_SHARE;
   const soilBudget = (f: number, p: Plan) =>
-    branchMode ? Math.max(f * 6, avail * LOWER_SHARE - trunkSection(p.onTrunk.length, f, p.zig)) : avail * soilShare;
+    branchMode ? Math.max(f * 6, avail * LOWER_SHARE - trunkSection(p.onTrunk.length, f)) : avail * soilShare;
   const soilFor = (f: number, p: Plan): { ctx: SoilContext; height: number } => {
     const full = soilContextFor(f, p);
     const budget = soilBudget(f, p);
@@ -595,7 +595,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     return { ctx, height: soilDef.height(ctx) };
   };
   const totalFor = (f: number, p: Plan) => {
-    const trunkH = trunkSection(p.onTrunk.length, f, p.zig);
+    const trunkH = trunkSection(p.onTrunk.length, f);
     if (branchMode && trunkH > avail * TRUNK_SHARE) return Infinity;
     const useSoil = p.soil.length > 0 || !!customSoil;
     return 1.8 * crownDims(f).ry + baseRFor(f) + trunkH + (useSoil ? soilFor(f, p).height : f * 0.8);
@@ -606,20 +606,17 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   if (startIdx >= 0) {
     const onTrunk = trunkChain.slice(startIdx);
     const soil = trunkChain.slice(0, startIdx);
-    plans.push({ onTrunk, soil, zig: false });
-    if (onTrunk.length >= 6) plans.push({ onTrunk, soil, zig: true });
+    plans.push({ onTrunk, soil });
     // a trunk too long for its share hands its oldest names to the foundation
     for (let k = startIdx + 1; k <= trunkChain.length - 4; k++) {
-      plans.push({ onTrunk: trunkChain.slice(k), soil: trunkChain.slice(0, k), zig: false });
-      if (trunkChain.length - k >= 6) plans.push({ onTrunk: trunkChain.slice(k), soil: trunkChain.slice(0, k), zig: true });
+      plans.push({ onTrunk: trunkChain.slice(k), soil: trunkChain.slice(0, k) });
     }
   } else {
     // automatic: the nearest ancestors on the trunk, the rest in the foundation
     const most = Math.min(trunkChain.length, opts.maxTrunkLabels ?? (branchMode ? BRANCH_TRUNK_NAMES : 12));
     for (let k = most; k >= Math.min(most, 4); k--) {
       const onTrunk = trunkChain.slice(trunkChain.length - k), soil = trunkChain.slice(0, trunkChain.length - k);
-      plans.push({ onTrunk, soil, zig: false });
-      if (k >= 6) plans.push({ onTrunk, soil, zig: true });
+      plans.push({ onTrunk, soil });
     }
   }
   const largestFitting = (p: Plan, lo: number, hi: number) => {
@@ -638,16 +635,6 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   let f: number;
   if (plan) {
     f = bestF(plan);
-    // Two staggered columns (joined by a thread) beat one column when they
-    // let every name be set clearly larger.
-    const zig = plans.find((p) => p.zig && p.onTrunk === plan!.onTrunk);
-    if (zig && !plan.zig) {
-      const fz = bestF(zig);
-      if (fz > f * 1.25) {
-        plan = zig;
-        f = fz;
-      }
-    }
   } else {
     // Cannot fit legibly on this paper: fit anyway, smaller, and report it.
     plan = plans[plans.length - 1];
@@ -656,7 +643,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // A retry (fontScale < 1) keeps the canopy the same size and sets the
   // canopy's names smaller, so each gets more room around it.
   const fl = f * fontScale;
-  const trunkZigzag = plan.zig;
+  const trunkZigzag = false;
   const shownTrunk = plan.onTrunk;
   const ancient = plan.soil;
   const shownSet = new Set(shownTrunk);
@@ -690,7 +677,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   origin = { x: W / 2, y: crown.cy + 0.8 * ry };
   const baseMedallionR = baseRFor(f);
   const trunkFont = trunkFontFor(f);
-  const trunkStep = stepFor(f, trunkZigzag);
+  const trunkStep = stepFor(f);
   const labelTop = origin.y + baseMedallionR + trunkFont * 1.4;
   const labelBottom = labelTop + Math.max(0, shownTrunk.length - 1) * trunkStep;
   groundY = shownTrunk.length ? labelBottom + trunkFont * 1.5 : origin.y + baseMedallionR + f * 3.5 + stemExtra;
@@ -698,7 +685,8 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const widest = Math.max(0, ...shownTrunk.map(badgeW));
   const medianBadge = shownTrunk.length ? shownTrunk.map(badgeW).sort((a, b) => a - b)[shownTrunk.length >> 1] : 0;
   const TW = clamp(medianBadge * 0.85, f * 2.6, W * 0.12);
-  trunkWidth = trunkZigzag ? clamp(widest * 1.3, TW, W * 0.2) : TW;
+  // the badges rest inside the bark: the trunk is the widest badge plus a margin of wood
+  trunkWidth = shownTrunk.length ? clamp(widest + trunkFont * 1.6, TW, W * 0.22) : TW;
 
   // ── 3. Arc-length parameterisation of the crown outline ──────────────
   // Egg-shaped crown, a little narrower at the top than at the bottom.
@@ -952,19 +940,14 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   }
 
   // ── Trunk labels ─────────────────────────────────────────────────────
-  // Bottom (eldest) to top, one per row; a zigzag alternates sides,
-  // starting on the right in RTL posters.
-  // the columns stand apart so the thread joining each ancestor to the
-  // next (alternating sides) stays visible between them
-  const zigOffset = widest / 2 + trunkFont * 1.1;
+  // Bottom (eldest) to top, one per row, centred in the trunk, all one
+  // width (the widest name's), so they read as a column inside the bark.
   const trunkLabels: TrunkLabel[] = shownTrunk.map((n, i) => {
     const m = n.data.member!;
-    const side = trunkZigzag ? ((i % 2 === 0) === rtl ? 1 : -1) : 0;
     return {
-      member: m, label: m.name, x: origin.x + side * zigOffset, fontSize: trunkFont,
+      member: m, label: m.name, x: origin.x, fontSize: trunkFont,
       y: labelBottom - i * trunkStep,
-      // each badge fits its name; zigzag badges share one width so the columns line up
-      w: trunkZigzag ? widest : badgeW(n), h: trunkFont * 1.6,
+      w: widest, h: trunkFont * 1.6,
     };
   });
   const labelY = new Map(trunkLabels.map((l) => [l.member.id, l.y]));
@@ -1458,7 +1441,12 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     ...empty,
     // geometry may have switched to the tall-base variant
     crown, origin, groundY,
-    trunkPath: trunkOutline(origin, groundY, trunkWidth, TW, TW, soil ? soil.trunkSpread : 1, soil?.trunkTaper ?? 0),
+    // flaring at the top to meet the canopy base, as a trunk divides into
+    // its limbs (no wider than the medallion, which covers the top)
+    trunkPath: trunkOutline(
+      origin, groundY, trunkWidth, TW, Math.max(trunkWidth, baseMedallionR * 1.9),
+      soil ? soil.trunkSpread : 1, soil?.trunkTaper ?? 0,
+    ),
     trunkWidth,
     rtl,
     trunkLabels,
@@ -1533,41 +1521,57 @@ function withLaqab(m: MemberDTO, rtl: boolean): string {
  * Trunk silhouette: narrow under the crown (topW), swelling to its full
  * width w where the medallions sit, then flaring into roots at the ground.
  */
+/**
+ * The trunk as one solid form. At the top it flares out (to `topW`) to meet
+ * the canopy base, like a trunk dividing into its limbs; below that it is
+ * `w` wide, wide enough for the badges to rest inside the bark. At the
+ * ground it either spreads into a root flare (`spread`, onto a mound or a
+ * panel) or, with `taper` > 0, curves smoothly in to a fine point `taper`
+ * below the ground line, where the foundation's gold thread carries on:
+ * an S-curve, vertical where it leaves the trunk and where it ends, so
+ * there is no pinch or corner.
+ */
 function trunkOutline(o: Vec, groundY: number, w: number, flareW = w, topW = w, spread = 1, taper = 0): string {
   const h = groundY - o.y;
   const f = (n: number) => n.toFixed(1);
+  const L = (dx: number) => f(o.x - dx), R = (dx: number) => f(o.x + dx);
+  // the flare under the canopy base: from topW wide to w, over a short height
+  const flare = Math.min(h * 0.32, Math.max(topW, w) * 0.9);
+  // the top is a low dome hidden under the canopy base's medallion
+  const head = `M${L(topW * 0.5)} ${f(o.y - topW * 0.1)}`;
+  const close = `C${R(topW * 0.5)} ${f(o.y + flare * 0.1)} ${R(topW * 0.5)} ${f(o.y)} ${R(topW * 0.5)} ${f(o.y - topW * 0.1)}Q${f(o.x)} ${f(o.y - topW * 0.45)} ${L(topW * 0.5)} ${f(o.y - topW * 0.1)}Z`;
   if (taper > 0) {
-    // no flare: below the ground line the trunk narrows to a fine point
-    const tip = Math.max(w * 0.015, 0.5);
-    const L = (dx: number) => f(o.x - dx), R = (dx: number) => f(o.x + dx);
+    const tip = Math.max(w * 0.02, 0.6);
+    // the narrowing starts above the ground line and ends `taper` below it
+    const y0 = Math.max(o.y + flare, groundY - taper * 0.6);
+    const y1 = groundY + taper;
+    const k = (y1 - y0) * 0.55;
     return [
-      `M${L(topW * 0.62)} ${f(o.y - topW * 0.15)}`,
-      `C${L(topW * 0.52)} ${f(o.y + h * 0.08)} ${L(w * 0.5)} ${f(o.y + h * 0.1)} ${L(w * 0.5)} ${f(o.y + h * 0.28)}`,
-      `C${L(w * 0.5)} ${f(o.y + h * 0.62)} ${L(w * 0.52)} ${f(groundY - taper * 0.3)} ${L(w * 0.46)} ${f(groundY)}`,
-      `C${L(w * 0.36)} ${f(groundY + taper * 0.35)} ${L(tip * 4)} ${f(groundY + taper * 0.75)} ${L(tip)} ${f(groundY + taper)}`,
-      `L${R(tip)} ${f(groundY + taper)}`,
-      `C${R(tip * 4)} ${f(groundY + taper * 0.75)} ${R(w * 0.36)} ${f(groundY + taper * 0.35)} ${R(w * 0.46)} ${f(groundY)}`,
-      `C${R(w * 0.52)} ${f(groundY - taper * 0.3)} ${R(w * 0.5)} ${f(o.y + h * 0.62)} ${R(w * 0.5)} ${f(o.y + h * 0.28)}`,
-      `C${R(w * 0.5)} ${f(o.y + h * 0.1)} ${R(topW * 0.52)} ${f(o.y + h * 0.08)} ${R(topW * 0.62)} ${f(o.y - topW * 0.15)}`,
-      `Q${f(o.x)} ${f(o.y - topW * 0.7)} ${L(topW * 0.62)} ${f(o.y - topW * 0.15)}Z`,
+      head,
+      `C${L(topW * 0.5)} ${f(o.y)} ${L(topW * 0.5)} ${f(o.y + flare * 0.1)} ${L(topW * 0.5)} ${f(o.y + flare * 0.2)}`,
+      `C${L(topW * 0.42)} ${f(o.y + flare * 0.4)} ${L(w * 0.5)} ${f(o.y + flare * 0.6)} ${L(w * 0.5)} ${f(o.y + flare)}`,
+      `L${L(w * 0.5)} ${f(y0)}`,
+      `C${L(w * 0.5)} ${f(y0 + k)} ${L(tip)} ${f(y1 - k)} ${L(tip)} ${f(y1)}`,
+      `L${R(tip)} ${f(y1)}`,
+      `C${R(tip)} ${f(y1 - k)} ${R(w * 0.5)} ${f(y0 + k)} ${R(w * 0.5)} ${f(y0)}`,
+      `L${R(w * 0.5)} ${f(o.y + flare)}`,
+      `C${R(w * 0.5)} ${f(o.y + flare * 0.6)} ${R(topW * 0.42)} ${f(o.y + flare * 0.4)} ${R(topW * 0.5)} ${f(o.y + flare * 0.2)}`,
+      close,
     ].join("");
   }
-  // root flare: widens with the base trunk, only partly with a zigzag trunk;
-  // `spread` < 1 keeps it inside a soil mound
+  // root flare: `spread` < 1 keeps it inside a soil mound or on a panel
   const fl = (flareW + (w - flareW) * 0.35) * spread;
-  const side = (s: 1 | -1) => (dx: number) => f(o.x + s * dx);
-  const L = side(-1);
-  const R = side(1);
   return [
-    `M${L(topW * 0.62)} ${f(o.y - topW * 0.15)}`,
-    `C${L(topW * 0.52)} ${f(o.y + h * 0.08)} ${L(w * 0.5)} ${f(o.y + h * 0.1)} ${L(w * 0.5)} ${f(o.y + h * 0.28)}`,
+    head,
+    `C${L(topW * 0.5)} ${f(o.y)} ${L(topW * 0.5)} ${f(o.y + flare * 0.1)} ${L(topW * 0.5)} ${f(o.y + flare * 0.2)}`,
+    `C${L(topW * 0.42)} ${f(o.y + flare * 0.4)} ${L(w * 0.5)} ${f(o.y + flare * 0.6)} ${L(w * 0.5)} ${f(o.y + flare)}`,
     `C${L(w * 0.5)} ${f(o.y + h * 0.62)} ${L(w * 0.52)} ${f(o.y + h * 0.82)} ${L(w * 0.5 + fl * 0.35)} ${f(groundY - fl * 0.08)}`,
     `C${L(w * 0.5 + fl * 0.55)} ${f(groundY)} ${L(w * 0.5 + fl * 1.1)} ${f(groundY + fl * 0.12)} ${L(w * 0.5 + fl * 1.5)} ${f(groundY + fl * 0.18)}`,
     `L${R(w * 0.5 + fl * 1.5)} ${f(groundY + fl * 0.18)}`,
     `C${R(w * 0.5 + fl * 1.1)} ${f(groundY + fl * 0.12)} ${R(w * 0.5 + fl * 0.55)} ${f(groundY)} ${R(w * 0.5 + fl * 0.35)} ${f(groundY - fl * 0.08)}`,
-    `C${R(w * 0.52)} ${f(o.y + h * 0.82)} ${R(w * 0.5)} ${f(o.y + h * 0.62)} ${R(w * 0.5)} ${f(o.y + h * 0.28)}`,
-    `C${R(w * 0.5)} ${f(o.y + h * 0.1)} ${R(topW * 0.52)} ${f(o.y + h * 0.08)} ${R(topW * 0.62)} ${f(o.y - topW * 0.15)}`,
-    `Q${f(o.x)} ${f(o.y - topW * 0.7)} ${L(topW * 0.62)} ${f(o.y - topW * 0.15)}Z`,
+    `C${R(w * 0.52)} ${f(o.y + h * 0.82)} ${R(w * 0.5)} ${f(o.y + h * 0.62)} ${R(w * 0.5)} ${f(o.y + flare)}`,
+    `C${R(w * 0.5)} ${f(o.y + flare * 0.6)} ${R(topW * 0.42)} ${f(o.y + flare * 0.4)} ${R(topW * 0.5)} ${f(o.y + flare * 0.2)}`,
+    close,
   ].join("");
 }
 

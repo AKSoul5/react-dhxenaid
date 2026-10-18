@@ -276,11 +276,16 @@ on any member's panel:
 | **Trunk** | trunk start … the canopy's father (e.g. عبد كلال الأصغر … سالم) | ivory badges up the trunk, eldest at the bottom, joined by a gold thread | — |
 | **Canopy** | the canopy base and all descendants | Bézier branches, leaves and capsules | 🌳 **Start the canopy here** → `FamilyTree.crownBaseId` |
 
-- **Long trunks stay readable.** The trunk gets the height it needs: one
-  row per ancestor at about the size of the names. When two staggered
-  columns let every name print clearly larger (at least 25% larger), the
-  trunk uses them, with the gold thread showing the order. The
-  34-ancestor Al-Kalali trunk prints at about 8 mm on A2.
+- **One solid trunk.** The ancestors stand in one centred column, one row
+  per ancestor at about the size of the names, all badges one width,
+  resting inside the bark: the trunk is the widest badge plus a margin of
+  wood, a gold thread runs up its middle to the canopy base, it flares
+  under the canopy base's medallion, and at the bottom it either spreads
+  into roots or curves smoothly in to a point where the foundation's thread
+  carries on (an S-curve with no pinch or corner). Never two staggered
+  columns: when the column would be too tall to print legibly, its oldest
+  names go to the foundation instead. The 34-ancestor Al-Kalali trunk
+  prints at about 3.8 mm on A2 and 5.3 mm on A1.
 - **Automatic mode:** without a trunk start, up to 12 of the nearest
   ancestors go on the trunk (fewer if they would not fit legibly) and the
   rest into the foundation. Without a canopy base, the canopy starts at
@@ -317,7 +322,7 @@ automatic choice) decides. Only the drawing changes.
 
 **Branch posters and very long lineages.** A branch poster is about the
 descendants; its ancestors are context. The trunk shows the nearest six
-ancestors (two staggered columns when that is larger), at most 20% of the
+ancestors, at most 20% of the
 content height, and trunk and foundation together take at most 30%, so the
 canopy has at least 70%. The foundation never sets names below the legible
 minimum to fit: a lineage too long for its share leaves names out of its

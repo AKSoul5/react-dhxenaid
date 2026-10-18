@@ -1,15 +1,17 @@
 // Timeline spine: the trunk narrows into a fine spine running down the
 // foundation; the ancestors sit to either side of it (alternating, so the
 // spine stays short), each joined to it by a short gold tick, with their
-// generation number on the spine. The spine is widest where it leaves the
-// trunk, so trunk and spine read as one form.
+// generation number on the spine. The trunk narrows smoothly to the
+// spine's width (see trunkTaper), so trunk and spine read as one form.
 
 import {
-  clamp, dot, drawInscription, fitCount, fx, gapBelowGround, inscriptionFor, lozenge, namesOf, restAsText, smallestName, unionBox,
+  ELLIPSIS, clamp, dot, drawInscription, fitCount, fx, gapBelowGround, inscriptionFor, lozenge, namesOf, restAsText, smallestName, unionBox,
 } from "./common";
 import type { SoilContext, SoilPlacement, SoilShape, SoilStyleDef, SoilText } from "./types";
 
 const SPINE_SHARE = 0.24;
+/** How far below the ground line the trunk narrows to the spine (as the column's trunk does to its point). */
+const taperOf = (ctx: SoilContext) => ctx.f * 2.2;
 
 interface Row {
   label: string;
@@ -35,7 +37,7 @@ function measure(ctx: SoilContext) {
   const first: 1 | -1 = ctx.rtl ? 1 : -1;
   const rowsFor = (k: number): Row[] => {
     const rows: Row[] = [];
-    let y = gapBelowGround(ctx);
+    let y = taperOf(ctx) + gapBelowGround(ctx) * 0.6;
     for (let i = 0; i < k; i++) {
       const t = k > 1 ? i / (k - 1) : 0;
       // a name wider than the half-page beside the spine is set smaller (never below the floor)
@@ -50,7 +52,7 @@ function measure(ctx: SoilContext) {
   };
   const bottomOf = (rows: Row[]) => {
     const last = rows[rows.length - 1];
-    return last ? last.y + last.fs * 0.6 + last.fs * 1.1 : gapBelowGround(ctx);
+    return last ? last.y + last.fs * 0.6 + last.fs * 1.1 : taperOf(ctx) + gapBelowGround(ctx) * 0.6;
   };
   const k = fitCount(entries.length, ctx.avail * SPINE_SHARE, (n) => bottomOf(rowsFor(n)));
   const rows = rowsFor(k);
@@ -79,14 +81,15 @@ export const spine: SoilStyleDef = {
     const G = p.groundY;
     const shapes: SoilShape[] = [];
     const texts: SoilText[] = [];
-    const yTop = G - p.f * 0.4; // starts inside the trunk's foot
+    // the spine leaves the trunk's point (the trunk narrows smoothly into it)
+    const yTop = G + taperOf(p) - p.f * 0.3;
     const yEnd = G + m.headBottom - (m.rest ? 0 : (m.rows.at(-1)?.fs ?? p.f) * 0.4);
     // as wide as the trunk where it leaves it: trunk and spine are one form
-    const wStart = p.trunkWidth * 0.5;
+    const wStart = p.f * 0.16;
     const wEnd = p.f * 0.07;
     const halfWidth = (y: number) => {
       const u = clamp((y - yTop) / Math.max(1, yEnd - yTop), 0, 1);
-      return wEnd + (wStart - wEnd) * (1 - u) ** 2.8;
+      return wEnd + (wStart - wEnd) * (1 - u);
     };
 
     // the spine: a tapered body in the trunk's colour, sampled down its length
@@ -107,6 +110,11 @@ export const spine: SoilStyleDef = {
     const boxes = [{ x: p.cx - wStart, y: G, w: wStart * 2, h: m.headBottom }];
     for (const r of m.rows) {
       const y = G + r.y;
+      if (r.label === ELLIPSIS) {
+        // names left out: a vertical ellipsis on the spine itself
+        texts.push({ x: p.cx + r.fs * 0.6, y: y + r.fs * 0.35, text: "⋮", fontSize: r.fs, anchor: "start", ink: "muted", font: "naskh", weight: 700 });
+        continue;
+      }
       const disc = discR(p, r.fs);
       const from = Math.max(halfWidth(y), disc);
       const tickEnd = p.cx + r.side * (from + m.tick);
@@ -147,7 +155,7 @@ export const spine: SoilStyleDef = {
       count: p.custom ? 0 : p.entries.length,
       custom: p.custom,
       trunkSpread: 0,
-      trunkTaper: 0,
+      trunkTaper: taperOf(p),
     };
   },
 };

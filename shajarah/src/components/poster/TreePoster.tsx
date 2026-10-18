@@ -229,10 +229,11 @@ export const TreePoster = memo(
           </g>
         )}
 
-        {/* The ancestral chain on the trunk, eldest at the bottom, joined by a gold thread */}
-        {layout.trunkLabels.length > 1 && (
+        {/* The ancestral chain on the trunk, eldest at the bottom, joined by a gold
+            thread that runs up the middle of the bark to the canopy base */}
+        {layout.trunkLabels.length > 0 && (
           <polyline
-            points={layout.trunkLabels.map((l) => `${l.x.toFixed(1)},${l.y.toFixed(1)}`).join(" ")}
+            points={[...layout.trunkLabels, layout.origin].map((l) => `${l.x.toFixed(1)},${l.y.toFixed(1)}`).join(" ")}
             fill="none" stroke={pal.mono ? "#111" : "#d9b45a"} strokeWidth={layout.trunkLabels[0].fontSize * 0.12} strokeLinejoin="round"
           />
         )}

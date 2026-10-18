@@ -1,15 +1,15 @@
 // Calligraphic column: the ancestors in Ruqaa, one under another on the
 // trunk's axis, strung on a thin gold thread that continues the thread
-// joining the trunk's ancestors. The trunk narrows to a point and opens into
-// two fine gold sweeps that cradle the nearest name, so the column reads as
-// the trunk's own base. Names nearest the trunk are larger and more widely
+// joining the trunk's ancestors. The trunk narrows smoothly to a point and
+// the thread runs on from it into the nearest name (set in the bark's
+// colour), so the column reads as the trunk's own root. Names nearest the trunk are larger and more widely
 // spaced; the oldest are smallest (never below the legibility floor). Small
 // gold diamonds sit on the thread between names. A lineage longer than the
 // column's share of the page continues as an unframed inscription on the
 // same axis ("بن … بن آدم"): no panels, no boxes.
 
 import {
-  RUQAA_WIDTH, clamp, dot, drawInscription, fitCount, fx, inscriptionFor, lozenge, namesOf, restAsText, smallestName, unionBox,
+  RUQAA_WIDTH, clamp, drawInscription, fitCount, fx, inscriptionFor, lozenge, namesOf, restAsText, smallestName, unionBox,
 } from "./common";
 import type { SoilContext, SoilShape, SoilStyleDef, SoilText } from "./types";
 
@@ -17,8 +17,8 @@ import type { SoilContext, SoilShape, SoilStyleDef, SoilText } from "./types";
 const COLUMN_SHARE = 0.26;
 /** How far below the ground line the trunk narrows to the point the thread leaves from. */
 const taperOf = (ctx: SoilContext) => ctx.f * 2.2;
-/** Room between the trunk's point and the nearest name, for the sweeps. */
-const neckOf = (ctx: SoilContext) => ctx.f * 0.6;
+/** Room between the trunk's point and the nearest name. */
+const neckOf = (ctx: SoilContext) => ctx.f * 0.5;
 /** The oldest name in the column, relative to the nearest. */
 const SMALLEST = 0.76;
 
@@ -93,25 +93,10 @@ export const column: SoilStyleDef = {
     const seg = (y0: number, y1: number, w: number) => {
       if (y1 - y0 > p.f * 0.12) shapes.push({ d: `M${fx(p.cx)} ${fx(y0)}V${fx(y1)}`, stroke: "goldLight", strokeWidth: w });
     };
-    const tip = G + taperOf(p);
     if (m.rows.length) {
       const first = m.rows[0];
-      seg(p.threadFrom, top(first) - first.fs * 0.3, threadW);
-      // the trunk's point opens into two fine sweeps cradling the nearest name
-      const reach = widthOf(first) / 2 + first.fs * 0.45;
-      const endY = G + first.y - first.fs * 0.3;
-      const sweeps: string[] = [];
-      for (const side of [-1, 1]) {
-        const ex = p.cx + side * reach;
-        sweeps.push(
-          `M${fx(p.cx)} ${fx(tip)}C${fx(p.cx + side * reach * 0.35)} ${fx(tip + p.f * 0.05)} ${fx(ex)} ${fx(tip + (endY - tip) * 0.25)} ${fx(ex)} ${fx(endY)}`,
-        );
-        shapes.push({ d: dot(ex, endY + first.fs * 0.12, first.fs * 0.07), fill: "gold" });
-      }
-      shapes.push({ d: sweeps.join(""), stroke: "gold", strokeWidth: p.f * 0.045 });
-      shapes.push({ d: lozenge(p.cx, tip, p.f * 0.09, p.f * 0.13), fill: "gold" });
-      boxes.push({ x: p.cx - reach - first.fs * 0.1, y: tip, w: 2 * reach + first.fs * 0.2, h: endY - tip + first.fs * 0.3 });
-
+      // the thread leaves the trunk's point and runs on into the nearest name
+      seg(p.threadFrom, top(first) - first.fs * 0.2, threadW);
       m.rows.forEach((r, i) => {
         const next = m.rows[i + 1];
         if (!next) return;
