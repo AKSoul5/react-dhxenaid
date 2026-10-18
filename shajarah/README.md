@@ -40,6 +40,25 @@ The page at **`/demo`** works without a database. It runs the same editor
 with an in-memory repository. **`/demo?sample=kalali`** loads the Al-Kalali
 lineage (85 generations, آدم → أحمد بن نوفل).
 
+## Opening Shajarah like a regular program (Windows)
+
+`desktop/windows/` turns Shajarah into a program with its own icon:
+
+1. Install [Node.js](https://nodejs.org) (LTS) and
+   [Docker Desktop](https://www.docker.com/products/docker-desktop), and open
+   Docker Desktop once to accept its terms.
+2. Double-click **`desktop/windows/Install Shajarah.cmd`**. It installs the
+   packages, prepares the database, builds the app and puts a **Shajarah**
+   icon on the desktop and in the Start menu. Run it again after updating
+   the code.
+3. Open Shajarah from that icon. It starts Docker Desktop and the database
+   if needed, starts the app in the background (port 3210) and opens it in
+   a window of its own (Microsoft Edge in app mode, no tabs or address
+   bar). Closing the window stops the app and the database; the families
+   are kept in the database's Docker volume.
+
+Logs are in `%LOCALAPPDATA%\Shajarah\logs`.
+
 ## Entering a family quickly: paste a nasab
 
 Click **بن…** in the member list and paste one lineage per line, newest name
