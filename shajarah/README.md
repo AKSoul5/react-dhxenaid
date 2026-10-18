@@ -855,6 +855,8 @@ the poster size, and `&colors=1` to force lineage colours:
 - `natural350`: a natural, balanced family of exactly 350 (the stress
   test's: a founder with seven children, a grandson with six, most men
   with 2–4 children early on and 0–2 later, lines ending);
+- `sultan`: one founder with 40 sons, each with 5 sons (241 people):
+  extreme fan-out on one ring; too small to be legible on A1, clean on A0;
 - `huge`: about 500 people.
 
 Add `&soil=column|spine|banner|pedestal|paragraph` for a foundation style,
