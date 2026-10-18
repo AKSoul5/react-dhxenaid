@@ -10,7 +10,8 @@ interface Props {
   member: MemberDTO;
   busy: boolean;
   onSelect: (id: string) => void;
-  onQuickAddChild: (name: string, gender: Gender) => void;
+  /** `otherParentId`: the child's other parent (a spouse), when chosen. */
+  onQuickAddChild: (name: string, gender: Gender, otherParentId?: string | null) => void;
   /** Adds a new father (MALE) or mother (FEMALE) above this member. */
   onQuickAddParent: (name: string, gender: Gender) => void;
   onAddSpouse: (spouseId: string) => void;
@@ -39,9 +40,14 @@ export function RelationsPanel({
   const byId = new Map(tree.members.map((m) => [m.id, m]));
   const parents = [member.fatherId, member.motherId].filter(Boolean).map((id) => byId.get(id!)!).filter(Boolean);
 
+  // Married more than once: the new child's other parent is chosen (the
+  // latest marriage by default), so half-siblings are recorded correctly.
+  const spouses = [...spouseIds].map((id) => byId.get(id)).filter((m): m is MemberDTO => !!m);
+  const [otherParent, setOtherParent] = useState<string | null>(null);
+  const chosenOther = otherParent && spouseIds.has(otherParent) ? otherParent : spouses[spouses.length - 1]?.id ?? null;
   const submitChild = () => {
     if (!childName.trim()) return;
-    onQuickAddChild(childName.trim(), childGender);
+    onQuickAddChild(childName.trim(), childGender, spouses.length > 1 ? chosenOther : undefined);
     setChildName("");
   };
 
@@ -125,6 +131,14 @@ export function RelationsPanel({
             +
           </button>
         </div>
+        {spouses.length > 1 && (
+          <label className="mt-1 flex items-center gap-2 text-xs text-gray-600">
+            {member.gender === "FEMALE" ? "Father" : "Mother"} of the new child
+            <select className="input flex-1 py-1 font-naskh text-sm" dir="auto" value={chosenOther ?? ""} onChange={(e) => setOtherParent(e.target.value)}>
+              {spouses.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+            </select>
+          </label>
+        )}
       </section>
 
       <section>

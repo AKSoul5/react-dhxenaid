@@ -56,4 +56,28 @@ describe("a daughter's family on dotted lines", () => {
     expect(l.nodes.some((n) => n.parentId === amina.id)).toBe(true);
     expect(l.clarity.issues).toEqual([]);
   });
+
+  it("a mother with children from two husbands: grouped by father, each child naming his father", () => {
+    // Amina remarried: Rania (born between her brothers) is the daughter of
+    // her second husband
+    const second = { ...amina, id: "second-husband", name: "Fahd Al-Otaibi", gender: "MALE" as const, fatherId: null, motherId: null, birthOrder: 0 };
+    const members = [...tree.members.map((m) => (m.name === "Rania" && m.motherId === amina.id ? { ...m, fatherId: second.id } : m)), second];
+    const remarried: TreeDTO = {
+      ...tree, members,
+      marriages: [...tree.marriages, { id: "m-second", spouseAId: second.id, spouseBId: amina.id, startYear: null, endYear: null }],
+    };
+    const l = computePosterLayout(throughHer(remarried, [amina.id]), opts);
+    const kids = l.nodes.filter((n) => n.parentId === amina.id);
+    expect(kids.map((k) => k.member.name).sort()).toEqual(["Hamza", "Rania", "Yusuf"]);
+    expect(kids.find((k) => k.member.name === "Rania")!.subLabel).toBe("daughter of Fahd Al-Otaibi");
+    expect(kids.find((k) => k.member.name === "Yusuf")!.subLabel).toBe("son of Hassan");
+    expect(kids.find((k) => k.member.name === "Hamza")!.subLabel).toBe("son of Hassan");
+    // no single husband on her own label
+    expect(l.nodes.find((n) => n.member.id === amina.id)!.subLabel ?? null).toBeNull();
+    // the two husbands' children side by side, not interleaved
+    const order = [...kids].sort((a, b) => (a.ray ?? 0) - (b.ray ?? 0)).map((k) => k.member.name);
+    expect(Math.abs(order.indexOf("Yusuf") - order.indexOf("Hamza"))).toBe(1);
+    expect(l.clarity.issues).toEqual([]);
+    expect(l.branches.filter((b) => b.dotted).length).toBe(7);
+  });
 });

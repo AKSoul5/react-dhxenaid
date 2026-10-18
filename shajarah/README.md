@@ -64,7 +64,7 @@ NEXT_OUTPUT=standalone npm run build   # self-contained server in .next/standalo
 cd desktop/electron
 npm install
 npm run prepare-app                    # gathers the server and the migrations
-npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.4.exe (build on Windows)
+npx electron-builder --win nsis        # dist/Shajarah-Setup-1.0.5.exe (build on Windows)
 npm start                              # or run it unpackaged
 ```
 
@@ -352,6 +352,12 @@ line, so they are not drawn. To include them, select her and press
 dotted lines, counted in generations through her; the key explains the
 dots ("عن طريق البنات"). It works even with daughters hidden, and the
 other way round in a mother's-line tree.
+
+A mother with children from more than one husband (divorced or widowed and
+remarried): her children are grouped by father, and each carries his
+father's name on a second line ("بن سعد العتيبي") instead of one husband
+under her name. When adding a child to someone married more than once,
+choose the child's other parent under the name field.
 
 ## The three tiers: foundation, trunk, canopy
 

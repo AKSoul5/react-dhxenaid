@@ -156,13 +156,15 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     if (created) setPanel({ kind: "edit", id: created.id });
   };
 
-  const quickAddChild = (name: string, gender: Gender) => {
+  const quickAddChild = (name: string, gender: Gender, otherParentId?: string | null) => {
     if (!selected) return;
     const parentKey = selected.gender === "FEMALE" ? "motherId" : "fatherId";
-    // If the parent has exactly one spouse, link the other parent too.
+    // The other parent: the one chosen (married more than once), else the
+    // only spouse.
     const marriages = tree.marriages.filter((x) => x.spouseAId === selected.id || x.spouseBId === selected.id);
-    const spouseId =
-      marriages.length === 1
+    const spouseId = otherParentId !== undefined
+      ? otherParentId
+      : marriages.length === 1
         ? marriages[0].spouseAId === selected.id ? marriages[0].spouseBId : marriages[0].spouseAId
         : null;
     const otherKey = parentKey === "fatherId" ? "motherId" : "fatherId";

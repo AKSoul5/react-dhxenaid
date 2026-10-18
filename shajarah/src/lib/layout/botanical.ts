@@ -462,7 +462,9 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     seen.add(m.id); // guards against cycles
     // Half-siblings stay together: children are grouped by mother (in the
     // order the mothers first appear), keeping birth order within a group.
-    const kids = groupByMother((index.get(m.id) ?? []).filter((c) => !seen.has(c.id)));
+    // (a daughter whose family is shown: her children grouped by father)
+    const own = (index.get(m.id) ?? []).filter((c) => !seen.has(c.id));
+    const kids = groupByParent(own, through.has(m.id) && tree.lineage !== "MATRILINEAL" ? "fatherId" : "motherId");
     return { member: m, children: kids.map(build) };
   };
   const explicitRoot = visible.find((m) => m.id === tree.rootMemberId);
@@ -527,8 +529,24 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     // A laqab or honorific (الشيخ، رحمه الله …) is a quiet second line.
     const laqab = m.laqab?.trim();
     if (laqab) subLabel = subLabel ? `${laqab} · ${subLabel}` : laqab;
-    // whose family is shown through her: her husband's name with hers
-    const spouse = through.has(m.id) ? spouseOf(m) : undefined;
+    // whose family is shown through her: her husband's name with hers; when
+    // her children have different fathers (she remarried), each child
+    // carries his own father's name instead ("بن سعد العتيبي")
+    const otherParents = (id: string) => new Set(tree.members
+      .filter((c) => (tree.lineage === "MATRILINEAL" ? c.fatherId === id : c.motherId === id))
+      .map((c) => (tree.lineage === "MATRILINEAL" ? c.motherId : c.fatherId))
+      .filter(Boolean));
+    const throughParent = dotted.has(m.id) ? (tree.lineage === "MATRILINEAL" ? m.fatherId : m.motherId) : null;
+    if (throughParent && through.has(throughParent) && otherParents(throughParent).size > 1) {
+      const parentOfLine = byMemberId.get((tree.lineage === "MATRILINEAL" ? m.motherId : m.fatherId) ?? "");
+      if (parentOfLine) {
+        const line = ARABIC.test(parentOfLine.name)
+          ? `${m.gender === "FEMALE" ? "بنت" : "بن"} ${parentOfLine.name}`
+          : `${m.gender === "FEMALE" ? "daughter" : "son"} of ${parentOfLine.name}`;
+        subLabel = subLabel ? `${line} · ${subLabel}` : line;
+      }
+    }
+    const spouse = through.has(m.id) && otherParents(m.id).size <= 1 ? spouseOf(m) : undefined;
     if (spouse) {
       const line = ARABIC.test(spouse.name) ? `${m.gender === "FEMALE" ? "زوجها" : "زوجته"} ${spouse.name}` : `m. ${spouse.name}`;
       subLabel = subLabel ? `${line} · ${subLabel}` : line;
@@ -1750,11 +1768,11 @@ function framePlacement(W: number, H: number, framed: boolean): PosterLayout["fr
 }
 
 /** Stable grouping of siblings by mother, mothers in order of first appearance. */
-function groupByMother(kids: MemberDTO[]): MemberDTO[] {
+function groupByParent(kids: MemberDTO[], key: "motherId" | "fatherId"): MemberDTO[] {
   const order = new Map<string | null, number>();
-  for (const k of kids) if (!order.has(k.motherId)) order.set(k.motherId, order.size);
+  for (const k of kids) if (!order.has(k[key])) order.set(k[key], order.size);
   if (order.size < 2) return kids;
-  return kids.map((k, i) => ({ k, i })).sort((a, b) => order.get(a.k.motherId)! - order.get(b.k.motherId)! || a.i - b.i).map((x) => x.k);
+  return kids.map((k, i) => ({ k, i })).sort((a, b) => order.get(a.k[key])! - order.get(b.k[key])! || a.i - b.i).map((x) => x.k);
 }
 
 function fixedObstacle(m: MemberDTO, x: number, y: number, w: number, h: number): LiveNode {
