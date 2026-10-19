@@ -43,7 +43,7 @@
  * ISO-216 aspect ratio), so the same layout scales to any A-size paper.
  */
 import { hierarchy, type HierarchyNode } from "d3-hierarchy";
-import { childrenIndex, lineagePath } from "../genealogy";
+import { childrenIndex, hiddenFromPoster, lineagePath, withAncestors } from "../genealogy";
 import { givenAndFamilyName, nameLines } from "../nasab";
 import type { MemberDTO, TreeDTO } from "../types";
 import {
@@ -82,6 +82,8 @@ export interface LayoutOptions {
   focusId?: string | null;
   /** People whose families are drawn through them, on dotted lines. Defaults to settings.familiesThrough. */
   familiesThrough?: string[];
+  /** People left off the poster with their descendants. Defaults to settings.hiddenIds. */
+  hiddenIds?: string[];
   /** Primary lineage: the branch to centre in the canopy. Defaults to settings.centerBranchId. */
   centerBranchId?: string | null;
   /** Where the canopy starts. Defaults to tree.crownBaseId, then automatic. */
@@ -286,6 +288,8 @@ export interface PosterLayout {
   /** Generations present on crown / side-branch tags (for the legend). */
   generationsPresent: number[];
   stats: { total: number; males: number; females: number; placed: number; unplaced: number };
+  /** The people on the poster's list who are not drawn on it (stats.unplaced of them), for the editor to show. */
+  unplacedIds?: string[];
 }
 
 interface TNode {
@@ -628,14 +632,30 @@ function layoutAttempt(
     const shownNow = new Set(visible);
     visible = tree.members.filter((m) => shownNow.has(m) || through.has(m.id));
   }
-  let counted = tree.members;
+  // People hidden from the poster, each with all their descendants; never
+  // anyone the tree stands on (its root, trunk start, canopy start, the
+  // focused person, or their ancestors).
+  const hidden = hiddenFromPoster(
+    tree.members,
+    opts.hiddenIds ?? tree.settings?.hiddenIds ?? [],
+    withAncestors(tree.members, [
+      tree.rootMemberId, opts.crownBaseId !== undefined ? opts.crownBaseId : tree.crownBaseId,
+      opts.trunkStartId !== undefined ? opts.trunkStartId : tree.trunkStartId, focusMember?.id,
+    ]),
+    tree.marriages,
+  );
+  if (hidden.size) {
+    visible = visible.filter((m) => !hidden.has(m.id));
+    for (const id of hidden) through.delete(id);
+  }
+  let counted = hidden.size ? tree.members.filter((m) => !hidden.has(m.id)) : tree.members;
   if (focusMember) {
     const { ancestors, descendants } = lineagePath(tree.members, tree.lineage, focusMember.id, through);
     const keep = new Set([focusMember.id, ...ancestors, ...descendants]);
     // the focused person is drawn even when daughters are otherwise hidden
     const shown = new Set(visible);
     visible = tree.members.filter((m) => keep.has(m.id) && (m.id === focusMember.id || shown.has(m)));
-    counted = tree.members.filter((m) => keep.has(m.id));
+    counted = tree.members.filter((m) => keep.has(m.id) && !hidden.has(m.id));
   }
   const stats = {
     total: counted.length,
@@ -2644,13 +2664,15 @@ function layoutAttempt(
   const gens = new Set<number>();
   for (const n of growing) if (n.shape !== "medallion") gens.add(n.generation);
 
-  const placed = growing.length + stubs.length + trunkLabels.length + ancient.length + (baseNode ? 1 : 0);
-  // (a spouse shown on a branch is drawn, even if not of the family)
-  const visibleIds = new Set(visible.map((m) => m.id));
-  const drawnIds = new Set([...growing, ...stubs].map((n) => n.id));
-  const spousesDrawn = new Set(holders.map((h) => h.member.id).filter((id) => visibleIds.has(id) && !drawnIds.has(id))).size;
-  stats.placed = placed + spousesDrawn;
-  stats.unplaced = Math.max(0, visible.length - placed - spousesDrawn);
+  // Everyone drawn: names, trunk, soil, the canopy base, and spouses on
+  // their branches (drawn even when not of the family); the rest are listed.
+  const shownIds = new Set<string>([
+    ...growing.map((n) => n.member.id), ...stubs.map((n) => n.member.id), ...trunkLabels.map((t) => t.member.id),
+    ...ancient.map((n) => n.data.member!.id), ...(baseNode ? [baseNode.member.id] : []), ...holders.map((h) => h.member.id),
+  ]);
+  const unplacedIds = visible.filter((m) => !shownIds.has(m.id)).map((m) => m.id);
+  stats.placed = visible.length - unplacedIds.length;
+  stats.unplaced = unplacedIds.length;
 
   // Legibility: the smallest text anywhere on the genealogy, in print mm.
   const smallest = Math.min(
@@ -2696,6 +2718,7 @@ function layoutAttempt(
     // side branches lower on the trunk are older than the canopy base
     generationOffset: Math.min(base.data.member?.generation ?? 0, ...gens),
     generationsPresent: [...gens].sort((a, b) => a - b),
+    unplacedIds,
     legibility,
     overlaps,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },

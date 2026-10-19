@@ -51,6 +51,66 @@ export function compareSiblings(a: MemberDTO, b: MemberDTO) {
 }
 
 /**
+ * Everyone a poster leaves out for `hiddenIds` (people hidden from it): each
+ * of them and all their descendants, through either parent, so a mother's
+ * children by every husband go with her; and those who married into the
+ * family only through them (no parents in the tree, every spouse and child
+ * hidden). Never anyone in `keep` (the people the tree stands on), nor
+ * anyone reached only through them.
+ */
+export function hiddenFromPoster(
+  members: MemberDTO[], hiddenIds: readonly string[], keep: ReadonlySet<string> = new Set(),
+  marriages: readonly { spouseAId: string; spouseBId: string }[] = [],
+): Set<string> {
+  const hidden = new Set<string>();
+  if (!hiddenIds.length) return hidden;
+  const children = new Map<string, MemberDTO[]>();
+  for (const m of members) {
+    for (const p of [m.fatherId, m.motherId]) if (p) children.set(p, [...(children.get(p) ?? []), m]);
+  }
+  const ids = new Set(members.map((m) => m.id));
+  const queue = hiddenIds.filter((id) => ids.has(id) && !keep.has(id));
+  for (const id of queue) hidden.add(id);
+  for (let i = 0; i < queue.length; i++) {
+    for (const c of children.get(queue[i]) ?? []) {
+      if (hidden.has(c.id) || keep.has(c.id)) continue;
+      hidden.add(c.id);
+      queue.push(c.id);
+    }
+  }
+  // in-laws of the hidden: partners by marriage or by a child together
+  const partners = new Map<string, Set<string>>();
+  const link = (a: string | null, b: string | null) => {
+    if (!a || !b) return;
+    partners.set(a, (partners.get(a) ?? new Set()).add(b));
+    partners.set(b, (partners.get(b) ?? new Set()).add(a));
+  };
+  for (const x of marriages) link(x.spouseAId, x.spouseBId);
+  for (const m of members) link(m.fatherId, m.motherId);
+  for (const m of members) {
+    if (hidden.has(m.id) || keep.has(m.id) || m.fatherId || m.motherId) continue;
+    const ps = partners.get(m.id);
+    if (ps?.size && [...ps].every((p) => hidden.has(p)) && (children.get(m.id) ?? []).every((c) => hidden.has(c.id))) hidden.add(m.id);
+  }
+  return hidden;
+}
+
+/** The people given and all their ancestors, through both parents (whom hiding must never take away). */
+export function withAncestors(members: MemberDTO[], ids: readonly (string | null | undefined)[]): Set<string> {
+  const byId = new Map(members.map((m) => [m.id, m]));
+  const out = new Set<string>();
+  const queue = ids.filter((id): id is string => !!id && byId.has(id));
+  while (queue.length) {
+    const id = queue.pop()!;
+    if (out.has(id)) continue;
+    out.add(id);
+    const m = byId.get(id)!;
+    for (const p of [m.fatherId, m.motherId]) if (p && byId.has(p) && !out.has(p)) queue.push(p);
+  }
+  return out;
+}
+
+/**
  * A person and their brothers and sisters (the children of the same lineage
  * parent, half-siblings included), eldest first. Only the person when their
  * lineage parent is not recorded.

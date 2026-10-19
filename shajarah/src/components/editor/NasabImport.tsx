@@ -18,7 +18,7 @@ export function NasabImport({ tree, busy, onImport, onCancel }: Props) {
   const preview = useMemo(() => {
     let n = 0;
     return applyNasabLines(tree.members, tree.lineage, text, () => `preview-${n++}`, tree.rootMemberId).results;
-  }, [text, tree.members, tree.lineage]);
+  }, [text, tree.members, tree.lineage, tree.rootMemberId]);
 
   return (
     <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">

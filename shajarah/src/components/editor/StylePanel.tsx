@@ -106,6 +106,14 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange, frameA
                 <option value="badges">Framed badges</option>
               </select>
             </label>
+            <label className="flex items-center justify-between text-sm" title="How a wife's (or husband's) name is set on the branch, when spouses are shown">
+              Spouses
+              <select className="input w-36" value={theme.spouseStyle} onChange={(e) => onChange({ spouseStyle: e.target.value as PosterTheme["spouseStyle"] })}>
+                <option value="manuscript">Manuscript cartouche</option>
+                <option value="capsule">Soft capsule</option>
+                <option value="inscribed">Inscribed, no box</option>
+              </select>
+            </label>
             <label className="flex items-center justify-between text-sm" title="How the ancient lineage below the trunk is drawn">
               Foundation
               <select className="input w-36" value={theme.soilStyle} onChange={(e) => onChange({ soilStyle: e.target.value as PosterTheme["soilStyle"] })}>

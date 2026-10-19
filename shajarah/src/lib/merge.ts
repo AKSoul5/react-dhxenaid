@@ -87,6 +87,7 @@ export function mergePeople<T extends Pick<TreeDTO, "members" | "marriages" | "c
       ...(s.focusId !== undefined ? { focusId: swap(s.focusId) } : {}),
       ...(s.centerBranchId !== undefined ? { centerBranchId: swap(s.centerBranchId) } : {}),
       ...(s.familiesThrough ? { familiesThrough: [...new Set(s.familiesThrough.map((id) => swap(id)!))] } : {}),
+      ...(s.hiddenIds ? { hiddenIds: [...new Set(s.hiddenIds.map((id) => swap(id)!))] } : {}),
     },
   };
 }

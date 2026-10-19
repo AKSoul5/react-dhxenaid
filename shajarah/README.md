@@ -397,10 +397,18 @@ field.
 
 Turn on **Show spouses** in the header (next to *Show daughters*; also
 **Style → Show spouses on the branch**) and every recorded wife a man had
-children with is a cartouche (a name panel with its corners cut
-in, the manuscript frame for a name, in soft rose) on his branch, with the
-children she bore him growing from it: father → wife → her children. The
-key adds "زوجة" ("Spouse").
+children with is a name panel on his branch, with the children she bore
+him growing from it: father → wife → her children. The key adds "زوجة"
+("Spouse"). **Style → Spouses** sets the panel in one of three designs:
+
+| Design | Look |
+| --- | --- |
+| **Manuscript cartouche** (default) | An ivory panel whose ends draw to a soft point, as name panels are in manuscripts, with one fine gold rule and a small lozenge at each point. |
+| **Soft capsule** | A plain rounded pill in pale rose with a thin rose rim. |
+| **Inscribed, no box** | The name in a quiet rose ink on a clean paper ground, over a fine gold rule with a lozenge at its centre. |
+
+A daughter's husband (a family shown through her) is set with a dashed rule
+in each design.
 
 - Spouses are named by first and family name, set on two lines, first name
   over family name, so the cartouche stays narrow and upright: "فاطمة" over
@@ -1016,6 +1024,36 @@ Measured on the 496-person family (`tests/hardening.test.ts`):
 | فايز | 25 | A3 |
 | سليمان | 135 | A1 |
 | عبدالله | 282 | no single sheet; its biggest sub-branch is clear on A1 |
+
+## Hiding a branch from the poster
+
+Select someone and press **🙈 Hide from the poster** under *Poster tiers*:
+they are left off the poster with all their children and descendants, by
+every marriage (a mother's children by each husband go with her), and so
+are spouses who married into the family only through them. Nothing is
+deleted; it is a poster setting (`settings.hiddenIds`). The button says how
+many descendants go with them.
+
+- Hidden people are listed at the bottom left of the poster ("Hidden:
+  ماجدة +8"); **✕** brings one back, and clicking the name opens them.
+- Nobody the tree stands on can be hidden: the root, the trunk and canopy
+  starts, the person a branch poster is of, and their ancestors.
+- Hidden people are not counted in the poster's totals, nor reported as
+  "not connected".
+
+## People not on the poster
+
+When some recorded people are not drawn, a note at the top left says how
+many. Click it: the side panel lists each of them with the reason, and what
+would bring them onto the poster:
+
+- married into the family and shown when **Show spouses** is on;
+- a daughter's child, shown with **Show her husband and children** on her
+  panel;
+- not linked to anyone (no parents, spouse or children): often a leftover
+  that can be deleted.
+
+Choosing someone opens their panel to link, fix or delete them.
 
 ## Moving around the poster
 

@@ -222,7 +222,7 @@ export const TreePoster = memo(
         {layout.trunkLabels.map((l) => <TrunkBadge key={l.member.id} label={l} pal={pal} onClick={click(l.member.id)} />)}
 
         {/* Spouses on the branches */}
-        {layout.spouses.map((s) => <Cartouche key={s.id} holder={s} pal={pal} onClick={click(s.member.id)} />)}
+        {layout.spouses.map((s) => <Cartouche key={s.id} holder={s} pal={pal} style={theme.spouseStyle ?? "manuscript"} onClick={click(s.member.id)} />)}
 
         {/* People */}
         {layout.stubs.map((n) => (
@@ -513,26 +513,64 @@ function Medallion({ node, pal, onClick, strong, ring }: { node: PosterNode; pal
  * A cartouche: a name panel with its corners cut in as quarter circles,
  * the classic frame of a name in a manuscript; centred on 0, 0.
  */
-function cartouchePath(w: number, h: number, r = h * 0.3): string {
-  const x = w / 2, y = h / 2;
+/**
+ * A manuscript cartouche: a panel whose ends draw to a point in a gentle
+ * convex curve, as name panels are drawn in manuscripts (never notched
+ * inward, which reads as a ticket).
+ */
+function manuscriptPath(w: number, h: number, tip: number): string {
+  const x = w / 2, y = h / 2, b = x - tip;
   const f = (v: number) => v.toFixed(1);
-  return `M${f(-x + r)} ${f(-y)}H${f(x - r)}A${f(r)} ${f(r)} 0 0 0 ${f(x)} ${f(-y + r)}V${f(y - r)}`
-    + `A${f(r)} ${f(r)} 0 0 0 ${f(x - r)} ${f(y)}H${f(-x + r)}A${f(r)} ${f(r)} 0 0 0 ${f(-x)} ${f(y - r)}`
-    + `V${f(-y + r)}A${f(r)} ${f(r)} 0 0 0 ${f(-x + r)} ${f(-y)}Z`;
+  return `M${f(-x)} 0Q${f(-x + tip * 0.3)} ${f(-y)} ${f(-b)} ${f(-y)}H${f(b)}Q${f(x - tip * 0.3)} ${f(-y)} ${f(x)} 0`
+    + `Q${f(x - tip * 0.3)} ${f(y)} ${f(b)} ${f(y)}H${f(-b)}Q${f(-x + tip * 0.3)} ${f(y)} ${f(-x)} 0Z`;
 }
 
-function Cartouche({ holder: s, pal, onClick }: { holder: SpouseHolder; pal: Palette; onClick: object }) {
+const lozengePath = (x: number, y: number, s: number) =>
+  `M${(x - s).toFixed(1)} ${y.toFixed(1)}L${x.toFixed(1)} ${(y - s * 1.3).toFixed(1)}L${(x + s).toFixed(1)} ${y.toFixed(1)}L${x.toFixed(1)} ${(y + s * 1.3).toFixed(1)}Z`;
+
+/** Spouses' names in a quieter ink than the line's own. */
+const SPOUSE_INK = "#6e4438";
+
+/**
+ * A spouse's name on the branch, in one of three designs (theme.spouseStyle).
+ * A daughter's husband (a family shown through her) is set with a dashed rule.
+ */
+function Cartouche({ holder: s, pal, style, onClick }: { holder: SpouseHolder; pal: Palette; style: PosterTheme["spouseStyle"]; onClick: object }) {
   const fs = s.fontSize;
-  const inset = fs * 0.2;
+  const ink = pal.mono ? "#111" : SPOUSE_INK;
+  const rule = pal.mono ? "#111" : GOLD;
+  const dash = s.dotted ? `${(fs * 0.25).toFixed(1)} ${(fs * 0.18).toFixed(1)}` : undefined;
+  const text = s.lines.map((line, i) => (
+    <text key={i} y={(i - (s.lines.length - 1) / 2) * fs * 1.05 - (style === "inscribed" ? fs * 0.12 : 0)} textAnchor="middle" dominantBaseline="central"
+      fontSize={fs} fill={style === "inscribed" ? ink : pal.ink}>{line}</text>
+  ));
+  let frame: ReactNode;
+  if (style === "capsule") {
+    frame = <rect x={-s.w / 2} y={-s.h / 2} width={s.w} height={s.h} rx={s.h / 2} fill={pal.mono ? "#fff" : SPOUSE_FILL} stroke={pal.mono ? "#111" : SPOUSE_RIM} strokeWidth={fs * 0.05} strokeDasharray={dash} />;
+  } else if (style === "inscribed") {
+    // no box: a soft paper ground keeps the name clear of branches, a fine gold rule with a lozenge under it
+    const y = s.h / 2 - fs * 0.22, half = s.w / 2 - fs * 0.45;
+    frame = (
+      <>
+        <rect x={-s.w / 2} y={-s.h / 2} width={s.w} height={s.h} rx={fs * 0.5} fill={pal.mono ? "#fff" : PAPER} />
+        <path d={`M${(-half).toFixed(1)} ${y.toFixed(1)}H${(-fs * 0.3).toFixed(1)}M${(fs * 0.3).toFixed(1)} ${y.toFixed(1)}H${half.toFixed(1)}`} stroke={rule} strokeWidth={fs * 0.045} strokeDasharray={dash} strokeLinecap="round" />
+        <path d={lozengePath(0, y, fs * 0.13)} fill={rule} />
+      </>
+    );
+  } else {
+    const tip = Math.min(fs * 0.85, s.h * 0.55);
+    frame = (
+      <>
+        <path d={manuscriptPath(s.w, s.h, tip)} fill={pal.mono ? "#fff" : IVORY} stroke={rule} strokeWidth={fs * 0.06} strokeDasharray={dash} />
+        {!pal.mono && <path d={lozengePath(-s.w / 2 + tip * 0.42, 0, fs * 0.09) + lozengePath(s.w / 2 - tip * 0.42, 0, fs * 0.09)} fill={SPOUSE_RIM} opacity={0.8} />}
+      </>
+    );
+  }
   return (
     <g transform={`translate(${s.x.toFixed(1)} ${s.y.toFixed(1)})`} {...onClick}>
       <title>{s.member.name}</title>
-      <path d={cartouchePath(s.w, s.h, fs * 0.48)} fill={pal.mono ? "#fff" : SPOUSE_FILL} stroke={pal.mono ? "#111" : SPOUSE_RIM} strokeWidth={fs * 0.08}
-        strokeDasharray={s.dotted ? `${(fs * 0.25).toFixed(1)} ${(fs * 0.18).toFixed(1)}` : undefined} />
-      {!pal.mono && <path d={cartouchePath(s.w - inset * 2, s.h - inset * 2, fs * 0.48 - inset)} fill="none" stroke={GOLD} strokeWidth={fs * 0.03} />}
-      {s.lines.map((line, i) => (
-        <text key={i} y={(i - (s.lines.length - 1) / 2) * fs * 1.05} textAnchor="middle" dominantBaseline="central" fontSize={fs} fill={pal.ink}>{line}</text>
-      ))}
+      {frame}
+      {text}
     </g>
   );
 }
@@ -845,10 +883,22 @@ function Footer({ layout, theme, pal, meta }: { layout: PosterLayout; theme: Pos
     const kinds = new Set(layout.spouses.map((s) => s.member.gender));
     items.push({
       label: rtl ? (kinds.size > 1 ? "زوج / زوجة" : kinds.has("MALE") ? "زوج" : "زوجة") : "Spouse",
-      swatch: (x) => (
-        <path transform={`translate(${x + sw / 2} ${y})`} d={cartouchePath(sw, fs * 0.95)}
-          fill={pal.mono ? "#fff" : SPOUSE_FILL} stroke={pal.mono ? "#111" : SPOUSE_RIM} strokeWidth={fs * 0.08} />
-      ),
+      swatch: (x) => {
+        const style = theme.spouseStyle ?? "manuscript";
+        const rule = pal.mono ? "#111" : style === "capsule" ? SPOUSE_RIM : GOLD;
+        const fill = pal.mono ? "#fff" : style === "capsule" ? SPOUSE_FILL : IVORY;
+        return (
+          <g transform={`translate(${x + sw / 2} ${y})`}>
+            {style === "inscribed" ? (
+              <path d={`M${(-sw / 2).toFixed(1)} ${(fs * 0.3).toFixed(1)}H${(sw / 2).toFixed(1)}`} stroke={rule} strokeWidth={fs * 0.08} />
+            ) : style === "capsule" ? (
+              <rect x={-sw / 2} y={-fs * 0.47} width={sw} height={fs * 0.95} rx={fs * 0.47} fill={fill} stroke={rule} strokeWidth={fs * 0.08} />
+            ) : (
+              <path d={manuscriptPath(sw, fs * 0.95, fs * 0.5)} fill={fill} stroke={rule} strokeWidth={fs * 0.08} />
+            )}
+          </g>
+        );
+      },
     });
   }
   if (theme.colorBy === "generation") {

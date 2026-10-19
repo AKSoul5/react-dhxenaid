@@ -5,7 +5,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { computePosterLayout } from "@/lib/layout/botanical";
 import { branchHeads, clearestPaper, rankBranches, smallestClearPaper, type BranchOption } from "@/lib/layout/branches";
 import { generationColor } from "@/lib/layout/palette";
-import { lineagePath, moveAmongSiblings, nasab, siblingsInOrder } from "@/lib/genealogy";
+import { hiddenFromPoster, lineagePath, moveAmongSiblings, nasab, siblingsInOrder, withAncestors } from "@/lib/genealogy";
 import type { Gender, MemberDTO, TreeDTO } from "@/lib/types";
 import type { CreateMemberInput } from "@/lib/validation";
 import { ExportMenu } from "../poster/ExportMenu";
@@ -41,7 +41,9 @@ type Panel =
   | { kind: "edit"; id: string }
   | { kind: "new"; draft: MemberDraft }
   | { kind: "import" }
-  | { kind: "gedcom" };
+  | { kind: "gedcom" }
+  /** The people the poster could not draw, each to open and fix. */
+  | { kind: "unplaced" };
 
 export function TreeWorkspace({ initialTree, mode }: Props) {
   const [tree, setTree] = useState(initialTree);
@@ -335,6 +337,44 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     () => !!selected && lineagePath(tree.members, tree.lineage, selected.id).descendants.length > 0,
     [selected, tree.members, tree.lineage],
   );
+  // People hidden from the poster with their descendants. Nobody the tree
+  // stands on can be: its root, trunk and canopy start, their ancestors.
+  const hiddenIds = useMemo(() => tree.settings?.hiddenIds ?? [], [tree.settings?.hiddenIds]);
+  const standsOn = useMemo(
+    () => withAncestors(tree.members, [
+      tree.rootMemberId, tree.crownBaseId, tree.trunkStartId, tree.settings?.focusId,
+      layout.base?.member.id, ...layout.trunkLabels.map((l) => l.member.id),
+    ]),
+    [tree.members, tree.rootMemberId, tree.crownBaseId, tree.trunkStartId, tree.settings?.focusId, layout.base, layout.trunkLabels],
+  );
+  /** Why someone is not on the poster, and what would bring them onto it. */
+  const whyNotDrawn = (m: MemberDTO): string => {
+    const byId = (id: string | null) => (id ? tree.members.find((x) => x.id === id) : undefined);
+    const partners = tree.marriages
+      .filter((x) => x.spouseAId === m.id || x.spouseBId === m.id)
+      .map((x) => byId(x.spouseAId === m.id ? x.spouseBId : x.spouseAId)?.name)
+      .filter(Boolean);
+    const mother = byId(m.motherId), father = byId(m.fatherId);
+    if (!father && !mother) {
+      if (partners.length) {
+        return theme.motherNames
+          ? `Married to ${partners.join(" / ")}, with no children by them on the poster.`
+          : `Married to ${partners.join(" / ")}: shown on the branch when Show spouses is on.`;
+      }
+      return tree.members.some((c) => c.fatherId === m.id || c.motherId === m.id)
+        ? "No parents recorded, and not married to anyone on the poster."
+        : "Not linked to anyone: no parents, spouse or children recorded. A leftover? It can be deleted.";
+    }
+    if (mother && (!father || !father.fatherId) && tree.lineage !== "MATRILINEAL") {
+      return `A child of ${mother.name}${father ? ` and ${father.name}` : ""}: shown with “Show her husband and children” on ${mother.name}'s panel.`;
+    }
+    if (father) return `A child of ${father.name}, who is not on the poster.`;
+    return "Not connected to the main lineage.";
+  };
+  /** How many of their descendants go with `id` when hidden (in-laws who married in aside). */
+  const hiddenWith = (id: string) =>
+    [...hiddenFromPoster(tree.members, [id], standsOn, tree.marriages)]
+      .filter((x) => x !== id && tree.members.some((m) => m.id === x && (m.fatherId || m.motherId))).length;
 
   /**
    * Opens a project file: saved families become a new family (and the editor
@@ -545,6 +585,32 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             </>
           )}
 
+          {panel.kind === "unplaced" && (
+            <div className="space-y-3 p-3">
+              <div className="flex items-center gap-2">
+                <button type="button" className="btn-ghost px-2" onClick={() => setPanel({ kind: "list" })}>← All</button>
+                <h3 className="text-sm font-semibold text-bark-900">Not on the poster ({layout.unplacedIds?.length ?? 0})</h3>
+              </div>
+              <p className="text-xs text-bark-500">
+                Recorded in the family but not connected to what the poster draws. Choose someone to link, fix or delete them.
+              </p>
+              <ul className="space-y-1" aria-label="People not on the poster">
+                {(layout.unplacedIds ?? []).map((id) => {
+                  const m = tree.members.find((x) => x.id === id);
+                  if (!m) return null;
+                  return (
+                    <li key={id}>
+                      <button type="button" className="w-full rounded-md border border-parchment-200 px-3 py-2 text-start hover:border-gilt-400 hover:bg-parchment-50" onClick={() => select(id)}>
+                        <span className="block font-naskh text-base text-bark-900" dir="auto">{nasab(tree.members, id, 3)}</span>
+                        <span className="block text-xs text-bark-500">{whyNotDrawn(m)}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
           {panel.kind === "import" && (
             <NasabImport
               tree={tree}
@@ -710,6 +776,20 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 {selectedHasOwnFamily && !showFemales && tree.lineage !== "MATRILINEAL" && selected.gender === "FEMALE" && (
                   <p className="text-xs text-bark-500">Daughters are hidden, and their families with them: tick <b>Show daughters</b> to see hers.</p>
                 )}
+                {hiddenIds.includes(selected.id) ? (
+                  <button type="button" className="btn-outline w-full" onClick={() => updateSettings({ hiddenIds: hiddenIds.filter((id) => id !== selected.id) })}>
+                    ✓ Hidden from the poster — show again
+                  </button>
+                ) : !standsOn.has(selected.id) && (
+                  <button
+                    type="button"
+                    className="btn-outline w-full"
+                    title="Leave this person off the poster, with all their children and descendants (by every marriage). Nothing is deleted."
+                    onClick={() => updateSettings({ hiddenIds: [...hiddenIds, selected.id] })}
+                  >
+                    🙈 Hide from the poster{hiddenWith(selected.id) > 0 && ` (and ${hiddenWith(selected.id)} ${selected.gender === "FEMALE" ? "of her" : "of his"} descendants)`}
+                  </button>
+                )}
                 {tree.settings?.focusId === selected.id ? (
                   <button type="button" className="btn-outline w-full" onClick={() => updateSettings({ focusId: null })}>
                     ✓ Poster shows only this branch — show the whole family
@@ -791,6 +871,26 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               />
             </PosterViewport>
             </div>
+            {hiddenIds.length > 0 && (
+              // (hidden people cannot be clicked on the poster: brought back from here)
+              <div className="absolute bottom-4 start-4 z-10 flex max-w-[40%] flex-wrap items-center gap-1.5 rounded-xl border border-parchment-300 bg-white/95 px-3 py-1.5 text-xs shadow">
+                <span className="text-bark-500">Hidden:</span>
+                {hiddenIds.map((id) => {
+                  const m = tree.members.find((x) => x.id === id);
+                  if (!m) return null;
+                  const more = hiddenWith(id);
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1 rounded-full border border-parchment-300 bg-parchment-50 ps-2">
+                      <button type="button" className="font-naskh text-sm" dir="auto" onClick={() => select(id)}>{m.name}</button>
+                      {more > 0 && <span className="text-bark-500">+{more}</span>}
+                      <button type="button" className="rounded-full px-1.5 text-bark-500 hover:bg-parchment-200 hover:text-bark-900"
+                        aria-label={`Show ${m.name} on the poster again`} title="Show again"
+                        onClick={() => updateSettings({ hiddenIds: hiddenIds.filter((x) => x !== id) })}>✕</button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
             {layout.focus && (
               <div className="absolute bottom-4 start-1/2 z-10 flex -translate-x-1/2 items-center gap-3 rounded-full border border-parchment-300 bg-white/95 px-4 py-1.5 text-xs shadow">
                 <span>
@@ -822,10 +922,14 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               />
             )}
             {layout.stats.unplaced > 0 && (
-              <div className="absolute start-4 top-4 rounded-md bg-white/90 px-3 py-2 text-xs shadow">
-                {layout.stats.unplaced} member(s) are not connected to the main lineage and are not drawn
-                (e.g. in-laws without recorded parents).
-              </div>
+              <button
+                type="button"
+                className="absolute start-4 top-4 rounded-md bg-white/90 px-3 py-2 text-start text-xs shadow outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-gilt-500"
+                onClick={() => setPanel({ kind: "unplaced" })}
+              >
+                {layout.stats.unplaced} {layout.stats.unplaced === 1 ? "member is" : "members are"} not connected to the main lineage and not drawn
+                (e.g. in-laws without recorded parents). <span className="font-medium text-gilt-600 underline">Show who →</span>
+              </button>
             )}
             </>
           )}

@@ -52,6 +52,12 @@ export interface PosterTheme {
   motherNames: boolean;
   /** Ancestors carved into the bark, or stacked as framed badges. */
   trunkStyle: "carved" | "badges";
+  /**
+   * How a spouse's name is set on the branch: a manuscript cartouche (an
+   * ivory panel with pointed ends and a fine gold rule), a soft capsule, or
+   * inscribed over a gold rule without a box.
+   */
+  spouseStyle: "manuscript" | "capsule" | "inscribed";
   /** How the ancient lineage below the trunk (the foundation) is drawn: see src/lib/layout/soil. */
   soilStyle: "column" | "spine" | "banner" | "pedestal" | "paragraph";
   /** Rim colour of name roundels. */
@@ -88,6 +94,12 @@ export interface PosterSettings {
    * her on dotted lines, as relatives outside the lineage.
    */
   familiesThrough?: string[];
+  /**
+   * People left off the poster, each with all their descendants (through
+   * either parent): a branch that would clutter it. Nobody the tree stands
+   * on (the root, trunk start, canopy start and their ancestors).
+   */
+  hiddenIds?: string[];
   /** Printed size the poster is designed for (legibility is judged at it). Default A2. */
   posterSize?: PaperSize;
   seed?: number;
