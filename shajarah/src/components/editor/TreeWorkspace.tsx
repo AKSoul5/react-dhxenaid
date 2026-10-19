@@ -26,6 +26,7 @@ import { ConflictError, apiRepository, localRepository, type FamilyRepository } 
 import { readProjectFile, withNewIds } from "@/lib/project";
 import { openProjectFile } from "../projectFiles";
 import { mergePeople, spouseNamed } from "@/lib/merge";
+import { explainNotDrawn, type NotDrawn, type NotDrawnKind } from "@/lib/notDrawn";
 import { normalizeName } from "@/lib/nasab";
 
 interface Props {
@@ -347,30 +348,9 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     ]),
     [tree.members, tree.rootMemberId, tree.crownBaseId, tree.trunkStartId, tree.settings?.focusId, layout.base, layout.trunkLabels],
   );
-  /** Why someone is not on the poster, and what would bring them onto it. */
-  const whyNotDrawn = (m: MemberDTO): string => {
-    const byId = (id: string | null) => (id ? tree.members.find((x) => x.id === id) : undefined);
-    const partners = tree.marriages
-      .filter((x) => x.spouseAId === m.id || x.spouseBId === m.id)
-      .map((x) => byId(x.spouseAId === m.id ? x.spouseBId : x.spouseAId)?.name)
-      .filter(Boolean);
-    const mother = byId(m.motherId), father = byId(m.fatherId);
-    if (!father && !mother) {
-      if (partners.length) {
-        return theme.motherNames
-          ? `Married to ${partners.join(" / ")}, with no children by them on the poster.`
-          : `Married to ${partners.join(" / ")}: shown on the branch when Show spouses is on.`;
-      }
-      return tree.members.some((c) => c.fatherId === m.id || c.motherId === m.id)
-        ? "No parents recorded, and not married to anyone on the poster."
-        : "Not linked to anyone: no parents, spouse or children recorded. A leftover? It can be deleted.";
-    }
-    if (mother && (!father || !father.fatherId) && tree.lineage !== "MATRILINEAL") {
-      return `A child of ${mother.name}${father ? ` and ${father.name}` : ""}: shown with “Show her husband and children” on ${mother.name}'s panel.`;
-    }
-    if (father) return `A child of ${father.name}, who is not on the poster.`;
-    return "Not connected to the main lineage.";
-  };
+  // The people the poster leaves out, by what would bring them on.
+  const notDrawn = useMemo(() => explainNotDrawn(tree, layout.unplacedIds ?? []), [tree, layout.unplacedIds]);
+  const notDrawnCount = (kind: NotDrawnKind) => notDrawn.filter((x) => x.kind === kind).length;
   /** How many of their descendants go with `id` when hidden (in-laws who married in aside). */
   const hiddenWith = (id: string) =>
     [...hiddenFromPoster(tree.members, [id], standsOn, tree.marriages)]
@@ -585,31 +565,78 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
             </>
           )}
 
-          {panel.kind === "unplaced" && (
-            <div className="space-y-3 p-3">
-              <div className="flex items-center gap-2">
-                <button type="button" className="btn-ghost px-2" onClick={() => setPanel({ kind: "list" })}>← All</button>
-                <h3 className="text-sm font-semibold text-bark-900">Not on the poster ({layout.unplacedIds?.length ?? 0})</h3>
+          {panel.kind === "unplaced" && (() => {
+            const name = (id: string) => tree.members.find((x) => x.id === id)?.name ?? "";
+            const person = (x: NotDrawn, note?: string) => (
+              <li key={x.id}>
+                <button type="button" className="w-full rounded-md border border-parchment-200 px-3 py-1.5 text-start hover:border-gilt-400 hover:bg-parchment-50" onClick={() => select(x.id)}>
+                  <span className="block font-naskh text-base text-bark-900" dir="auto">{nasab(tree.members, x.id, 3)}</span>
+                  {note && <span className="block text-xs text-bark-500">{note}</span>}
+                </button>
+              </li>
+            );
+            const daughters = [...new Set(notDrawn.filter((x) => x.kind === "daughter").map((x) => x.throughId!))];
+            const spouses = notDrawn.filter((x) => x.kind === "spouse");
+            const unlinked = notDrawn.filter((x) => x.kind === "unlinked");
+            const other = notDrawn.filter((x) => x.kind === "other");
+            const her = (id: string) => tree.members.find((x) => x.id === id)?.gender === "MALE" ? "his wife and children" : "her husband and children";
+            return (
+              <div className="space-y-4 p-3">
+                <div className="flex items-center gap-2">
+                  <button type="button" className="btn-ghost px-2" onClick={() => setPanel({ kind: "list" })}>← All</button>
+                  <h3 className="text-sm font-semibold text-bark-900">Not on the poster ({notDrawn.length})</h3>
+                </div>
+                <p className="text-xs text-bark-500">Recorded in the family but not drawn. Choose someone to open them; each group says what would bring it onto the poster.</p>
+                {daughters.length > 0 && (
+                  <section className="space-y-2">
+                    <h4 className="section-title">Daughters&rsquo; families ({notDrawnCount("daughter")})</h4>
+                    <p className="text-xs text-bark-500">They belong to their fathers&rsquo; families, so the poster leaves them out unless you show them through her, on dotted lines.</p>
+                    {daughters.map((d) => (
+                      <div key={d} className="space-y-1 rounded-md border border-parchment-200 p-2">
+                        <div className="flex items-center gap-2">
+                          <button type="button" className="font-naskh text-base font-bold text-bark-900" dir="auto" onClick={() => select(d)}>{nasab(tree.members, d, 2)}</button>
+                          <button type="button" className="btn-outline ms-auto px-2 py-0.5 text-xs" disabled={!showFemales && tree.lineage !== "MATRILINEAL"}
+                            title={!showFemales && tree.lineage !== "MATRILINEAL" ? "Daughters are hidden: tick Show daughters first" : undefined}
+                            onClick={() => updateSettings({ familiesThrough: [...familiesThrough, d] })}>
+                            ┈ Show {her(d)}
+                          </button>
+                        </div>
+                        <ul className="space-y-1">{notDrawn.filter((x) => x.throughId === d).map((x) => person(x))}</ul>
+                      </div>
+                    ))}
+                  </section>
+                )}
+                {spouses.length > 0 && (
+                  <section className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <h4 className="section-title">Spouses ({spouses.length})</h4>
+                      {!theme.motherNames && (
+                        <button type="button" className="btn-outline ms-auto px-2 py-0.5 text-xs" onClick={() => updateSettings({ theme: { ...theme, motherNames: true } })}>Show spouses</button>
+                      )}
+                    </div>
+                    <p className="text-xs text-bark-500">
+                      {theme.motherNames ? "Married into the family, with no children by them on the poster." : "Shown on their husbands' (or wives') branches when Show spouses is on."}
+                    </p>
+                    <ul className="space-y-1">{spouses.map((x) => person(x, `married to ${x.partnerIds.map(name).join(" / ")}`))}</ul>
+                  </section>
+                )}
+                {unlinked.length > 0 && (
+                  <section className="space-y-2">
+                    <h4 className="section-title">Linked to no one ({unlinked.length})</h4>
+                    <p className="text-xs text-bark-500">No parents, spouse or children recorded: often a leftover. Open one to link or delete it.</p>
+                    <ul className="space-y-1">{unlinked.map((x) => person(x))}</ul>
+                  </section>
+                )}
+                {other.length > 0 && (
+                  <section className="space-y-2">
+                    <h4 className="section-title">Not connected to the line ({other.length})</h4>
+                    <p className="text-xs text-bark-500">Their parents are not recorded, or not on the poster. Open one to add the missing link.</p>
+                    <ul className="space-y-1">{other.map((x) => person(x))}</ul>
+                  </section>
+                )}
               </div>
-              <p className="text-xs text-bark-500">
-                Recorded in the family but not connected to what the poster draws. Choose someone to link, fix or delete them.
-              </p>
-              <ul className="space-y-1" aria-label="People not on the poster">
-                {(layout.unplacedIds ?? []).map((id) => {
-                  const m = tree.members.find((x) => x.id === id);
-                  if (!m) return null;
-                  return (
-                    <li key={id}>
-                      <button type="button" className="w-full rounded-md border border-parchment-200 px-3 py-2 text-start hover:border-gilt-400 hover:bg-parchment-50" onClick={() => select(id)}>
-                        <span className="block font-naskh text-base text-bark-900" dir="auto">{nasab(tree.members, id, 3)}</span>
-                        <span className="block text-xs text-bark-500">{whyNotDrawn(m)}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
+            );
+          })()}
 
           {panel.kind === "import" && (
             <NasabImport
@@ -921,14 +948,20 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 onChoose={(p) => updateSettings({ posterSize: p })}
               />
             )}
-            {layout.stats.unplaced > 0 && (
+            {notDrawn.length > 0 && (
               <button
                 type="button"
-                className="absolute start-4 top-4 rounded-md bg-white/90 px-3 py-2 text-start text-xs shadow outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-gilt-500"
+                className="absolute start-4 top-4 max-w-[45%] rounded-md bg-white/90 px-3 py-2 text-start text-xs shadow outline-none hover:bg-white focus-visible:ring-2 focus-visible:ring-gilt-500"
                 onClick={() => setPanel({ kind: "unplaced" })}
               >
-                {layout.stats.unplaced} {layout.stats.unplaced === 1 ? "member is" : "members are"} not connected to the main lineage and not drawn
-                (e.g. in-laws without recorded parents). <span className="font-medium text-gilt-600 underline">Show who →</span>
+                {notDrawn.length} recorded {notDrawn.length === 1 ? "person is" : "people are"} not on the poster:{" "}
+                {[
+                  notDrawnCount("daughter") && `${notDrawnCount("daughter")} in daughters' families`,
+                  notDrawnCount("spouse") && `${notDrawnCount("spouse")} ${notDrawnCount("spouse") === 1 ? "spouse" : "spouses"}`,
+                  notDrawnCount("unlinked") && `${notDrawnCount("unlinked")} linked to no one`,
+                  notDrawnCount("other") && `${notDrawnCount("other")} not connected to the line`,
+                ].filter(Boolean).join(" · ")}
+                . <span className="font-medium text-gilt-600 underline">Show who →</span>
               </button>
             )}
             </>

@@ -214,12 +214,14 @@ export function nasab(members: MemberDTO[], id: string, depth = 4): string {
   const parts: string[] = [];
   let cur = byId.get(id);
   const seen = new Set<string>();
+  const female = byId.get(id)?.gender === "FEMALE";
   while (cur && parts.length <= depth && !seen.has(cur.id)) {
     seen.add(cur.id);
     parts.push(cur.name);
     cur = cur.fatherId ? byId.get(cur.fatherId) : undefined;
   }
-  return parts.join(" بن ");
+  // a woman is بنت her father; her father and his are بن theirs
+  return parts.map((p, i) => (i === 0 ? p : `${i === 1 && female ? "بنت" : "بن"} ${p}`)).join(" ");
 }
 
 /**

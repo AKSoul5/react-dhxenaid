@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { nasab } from "@/lib/genealogy";
 import { applyNasabLines, normalizeName, parseNasab, planNasabImport } from "@/lib/nasab";
 import { KALALI_NASAB } from "@/lib/samples/kalali";
 import type { MemberDTO } from "@/lib/types";
@@ -144,5 +145,13 @@ describe("applyNasabLines", () => {
     const tree = [m("r", "علي"), m("a", "محمد", "r"), m("b", "سالم", "a"), m("c", "محمد", "r"), m("d", "سالم", "c")];
     const { results } = applyNasabLines(tree, "PATRILINEAL", "عمر بن سالم بن محمد", () => "x");
     expect(results[0].ambiguous).toBe(true);
+  });
+});
+
+describe("nasab", () => {
+  it("names a woman بنت her father, and her fathers بن theirs", () => {
+    const tree = [m("a", "أحمد"), m("n", "نوفل", "a"), { ...m("j", "ماجدة", "n"), gender: "FEMALE" as const }, m("s", "سالم", "n")];
+    expect(nasab(tree, "j")).toBe("ماجدة بنت نوفل بن أحمد");
+    expect(nasab(tree, "s")).toBe("سالم بن نوفل بن أحمد");
   });
 });

@@ -1044,16 +1044,23 @@ many descendants go with them.
 ## People not on the poster
 
 When some recorded people are not drawn, a note at the top left says how
-many. Click it: the side panel lists each of them with the reason, and what
-would bring them onto the poster:
+many and why, for example «35 recorded people are not on the poster: 28 in
+daughters' families · 7 spouses». Click it: the side panel lists them in
+groups, each with what would bring it onto the poster.
 
-- married into the family and shown when **Show spouses** is on;
-- a daughter's child, shown with **Show her husband and children** on her
-  panel;
-- not linked to anyone (no parents, spouse or children): often a leftover
-  that can be deleted.
+- **Daughters' families:** a card for each daughter with her husbands,
+  children and their descendants, and **┈ Show her husband and children**
+  to draw them through her on dotted lines. (A father recorded only by a
+  child together, with no marriage, counts as her husband.)
+- **Spouses:** wives (or husbands) who married into the family; **Show
+  spouses** sets them on their partners' branches.
+- **Linked to no one:** no parents, spouse or children recorded, often a
+  leftover to delete.
+- **Not connected to the line:** parents not recorded, or not on the poster.
 
-Choosing someone opens their panel to link, fix or delete them.
+Choosing someone opens their panel to link, fix or delete them. Names are
+given as a short nasab, a woman's as «بنت» her father («ماجدة بنت نوفل بن
+أحمد»).
 
 ## Moving around the poster
 
