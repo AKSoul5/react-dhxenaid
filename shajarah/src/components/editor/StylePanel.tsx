@@ -122,6 +122,13 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange, frameA
                 ))}
               </select>
             </label>
+            <label className="flex items-center justify-between text-sm" title="A lineage too long for the foundation's share of the page">
+              Foundation names
+              <select className="input w-36" value={theme.soilShorten ? "shorten" : "all"} onChange={(e) => onChange({ soilShorten: e.target.value === "shorten" })}>
+                <option value="all">Every name</option>
+                <option value="shorten">Shorten long lineages (…)</option>
+              </select>
+            </label>
             <label className="flex items-center justify-between text-sm">
               Background
               <select className="input w-36" value={theme.background} onChange={(e) => onChange({ background: e.target.value as PosterTheme["background"] })}>

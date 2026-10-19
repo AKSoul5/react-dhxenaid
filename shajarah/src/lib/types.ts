@@ -58,6 +58,13 @@ export interface PosterTheme {
    * inscribed over a gold rule without a box.
    */
   spouseStyle: "manuscript" | "capsule" | "inscribed";
+  /**
+   * A foundation too long for its share of the page: false (the default)
+   * keeps every name and gives it the room, the canopy taking less; true
+   * leaves names out of its middle, shown as "…". (A branch poster always
+   * keeps its foundation short.)
+   */
+  soilShorten?: boolean;
   /** How the ancient lineage below the trunk (the foundation) is drawn: see src/lib/layout/soil. */
   soilStyle: "column" | "spine" | "banner" | "pedestal" | "paragraph";
   /** Rim colour of name roundels. */

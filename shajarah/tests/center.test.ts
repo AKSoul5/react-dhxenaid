@@ -8,7 +8,9 @@ import { makeProjectFile, withNewIds } from "@/lib/project";
 // trunk, its brothers to either side.
 describe("centring a branch", () => {
   const tree = kalaliFilledTree();
-  const opts = { ...layoutOptionsFor(resolveTheme(tree.settings), "A1") };
+  // (on A1 the whole 65-name foundation would leave the canopy, centred,
+  // just under the legible size: this is about centring, so it is shortened)
+  const opts = { ...layoutOptionsFor(resolveTheme(tree.settings), "A1"), soilShorten: true };
   const plain = computePosterLayout(tree, opts);
   const base = plain.base!;
   const families = plain.nodes.filter((n) => n.parentId === base.member.id && !n.terminal);

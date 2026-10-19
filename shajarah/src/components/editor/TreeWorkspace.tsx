@@ -946,6 +946,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 suggestion={paperForScale(posterSize, layout.legibility.scaleNeeded)}
                 fallbacks={fallbacks}
                 onChoose={(p) => updateSettings({ posterSize: p })}
+                onShortenSoil={layout.soilOverShare && !theme.soilShorten ? () => updateSettings({ theme: { ...theme, soilShorten: true } }) : undefined}
               />
             )}
             {notDrawn.length > 0 && (
@@ -1012,7 +1013,7 @@ function useFrameArtwork(): string | null | undefined {
  * offers the size that fits, or tiled printing when even A0 is too small.
  */
 function LegibilityNotice({
-  smallestMm, minMm, paper, suggestion, fallbacks, onChoose,
+  smallestMm, minMm, paper, suggestion, fallbacks, onChoose, onShortenSoil,
 }: {
   smallestMm: number;
   minMm: number;
@@ -1020,6 +1021,8 @@ function LegibilityNotice({
   suggestion: PaperSize | null;
   fallbacks: Fallbacks;
   onChoose: (p: PaperSize) => void;
+  /** When every name in a long foundation takes the canopy's room: shorten it instead ("…"). */
+  onShortenSoil?: () => void;
 }) {
   return (
     <div className="absolute end-4 top-4 z-10 max-w-sm rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 shadow">
@@ -1034,6 +1037,14 @@ function LegibilityNotice({
         <button type="button" className="btn-outline mt-2 py-1 text-xs" onClick={() => onChoose(suggestion)}>
           Use {suggestion}
         </button>
+      )}
+      {onShortenSoil && (
+        <>
+          <p className="mt-2">The foundation keeps every ancestor&apos;s name and takes part of the canopy&apos;s room.</p>
+          <button type="button" className="btn-outline mt-1 py-1 text-xs" onClick={onShortenSoil}>
+            Shorten the foundation (…) instead
+          </button>
+        </>
       )}
       {!suggestion && <FallbackActions {...fallbacks} />}
     </div>

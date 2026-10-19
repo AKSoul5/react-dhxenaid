@@ -153,6 +153,7 @@ export function layoutOptionsFor(theme: PosterTheme, paper: PaperSize = "A2") {
     cornerMedallions: theme.verse || theme.hadith,
     framed: theme.frame,
     soilStyle: theme.soilStyle,
+    soilShorten: theme.soilShorten ?? false,
     femaleCapsule: theme.femaleCapsule,
     paperWidthMm: PAPER_SIZES[paper].w,
     // inside the frame the header starts below its top rosette

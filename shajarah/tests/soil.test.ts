@@ -8,6 +8,7 @@ import { SOIL_STYLES, SOIL_STYLE_ORDER, soilStyle, type SoilContext, type SoilGe
 import { RUQAA_WIDTH } from "@/lib/layout/soil/common";
 import { computeGenerations } from "@/lib/genealogy";
 import { kalaliTree } from "@/lib/samples/kalali";
+import { mulberry32 } from "@/lib/layout/random";
 import { layoutOptionsFor, resolveTheme, THEME_PRESETS } from "@/lib/theme";
 import type { MemberDTO, TreeDTO } from "@/lib/types";
 
@@ -213,6 +214,47 @@ describe("the lineage to آدم stays in the foundation's area", () => {
       }
     }, 60_000);
   }
+});
+
+describe("every name in the foundation, unless asked to shorten", () => {
+  // the Al-Kalali line to آدم under a canopy of 120 descendants, the trunk
+  // start automatic: some 70 names for the foundation, far more than the
+  // share a large canopy leaves it
+  const base = kalaliTree();
+  const rand = mulberry32(11);
+  const members = [...base.members];
+  let n = 0;
+  const grow = (fatherId: string, d: number) => {
+    for (let i = 0, k = d === 0 ? 6 : 1 + Math.floor(rand() * 4); i < k && n < 120 && d < 4; i++) {
+      const m = { ...members[0], id: `x${n++}`, name: ["أحمد", "خالد", "سعد", "محمد", "عمر"][Math.floor(rand() * 5)], laqab: null, fatherId, birthOrder: i };
+      members.push(m);
+      grow(m.id, d + 1);
+    }
+  };
+  grow(base.crownBaseId!, 0);
+  const gens = computeGenerations(members, "PATRILINEAL");
+  const long: TreeDTO = { ...base, trunkStartId: null, members: members.map((m) => ({ ...m, generation: gens.get(m.id) ?? 0 })) };
+  for (const style of SOIL_STYLE_ORDER) {
+    it(SOIL_STYLES[style].label, () => {
+      const at = (soilShorten: boolean) => computePosterLayout(long, { ...layoutOptionsFor(resolveTheme(long.settings), "2A0"), soilStyle: style, soilShorten });
+      const all = at(false);
+      const read = all.soil!.texts.map((t) => t.text).join(" ");
+      expect(read).not.toContain("…");
+      expect(all.soil!.texts.some((t) => t.text === "⋮")).toBe(false);
+      for (const name of ["شيث", "آدم"]) expect(read).toContain(name);
+      expect(all.clarity.issues).toEqual([]);
+      expect(all.legibility.ok).toBe(true);
+      // shortening still works when chosen, for a style whose foundation is
+      // over its share: names left out, the foundation kept smaller
+      const short = at(true);
+      if (short.soil!.texts.some((t) => t.text.includes("…") || t.text === "⋮")) expect(short.soil!.box.h).toBeLessThan(all.soil!.box.h);
+      else expect(short.soil!.box.h).toBeCloseTo(all.soil!.box.h, 3);
+    }, 60_000);
+  }
+  it("shortening, when chosen, leaves names out of a column too long for its share", () => {
+    const l = computePosterLayout(long, { ...layoutOptionsFor(resolveTheme(long.settings), "2A0"), soilStyle: "column", soilShorten: true });
+    expect(l.soil!.texts.some((t) => t.text.includes("…"))).toBe(true);
+  });
 });
 
 describe("soil styles on their own", () => {

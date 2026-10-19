@@ -100,6 +100,8 @@ export interface LayoutOptions {
   motherNames?: boolean;
   /** How the foundation (the ancestors below the trunk) is drawn. Default: the inscribed panel. */
   soilStyle?: SoilStyleId;
+  /** A foundation too long for its share leaves names out ("…") instead of taking more room. Default false. */
+  soilShorten?: boolean;
   /** Where the trunk starts; older ancestors go into the soil. Defaults to tree.trunkStartId. */
   trunkStartId?: string | null;
   /** In automatic mode: ancestors on the trunk before the rest move into the soil. */
@@ -290,6 +292,8 @@ export interface PosterLayout {
   stats: { total: number; males: number; females: number; placed: number; unplaced: number };
   /** The people on the poster's list who are not drawn on it (stats.unplaced of them), for the editor to show. */
   unplacedIds?: string[];
+  /** The foundation keeps every name and so takes more than its share of the page (shortening it would give the canopy room). */
+  soilOverShare?: boolean;
 }
 
 interface TNode {
@@ -980,8 +984,10 @@ function layoutAttempt(
 
   type Plan = { onTrunk: HNode[]; soil: HNode[] };
   // The foundation has a height budget. Its names are never set below the
-  // legible size: a lineage too long for its budget leaves names out of
-  // its middle (shown as "…"), keeping the nearest and the last ones.
+  // legible size. A lineage too long for its budget takes the room it
+  // needs (the canopy taking less), or, with soilShorten (and always on a
+  // branch poster), leaves names out of its middle, shown as "…", keeping
+  // the nearest and the last ones.
   // A branch poster is about the descendants: trunk and foundation together
   // take at most LOWER_SHARE of the page (the trunk at most TRUNK_SHARE),
   // leaving the canopy at least 60%.
@@ -990,11 +996,39 @@ function layoutAttempt(
   const soilShare = crownNodes.length > trunkChain.length ? SOIL_SHARE_SMALL : SOIL_SHARE;
   const soilBudget = (f: number, p: Plan) =>
     branchMode ? Math.max(f * 6, avail * LOWER_SHARE - trunkSection(p.onTrunk.length, f)) : avail * soilShare;
+  const soilCompaction = new WeakMap<Plan, Map<number, number>>();
   const soilFor = (f: number, p: Plan): { ctx: SoilContext; height: number } => {
     const full = soilContextFor(f, p);
     const budget = soilBudget(f, p);
     const height = soilDef.height(full);
     if (height <= budget) return { ctx: full, height };
+    // Every name, unless asked to shorten (a branch poster always is: its
+    // foundation is context, and the canopy keeps its share). A style with
+    // a column or a spine sets fewer names on it, the rest in its compact
+    // inscription, and a banner sets more columns, until the foundation
+    // fits its share, as far as that goes; then it takes the room it needs.
+    if (!opts.soilShorten && !branchMode) {
+      const at = (k: number): SoilContext => ({ ...full, avail: full.avail * k });
+      // (the font-size search asks again and again: the compaction found
+      // for an arrangement at about this size is reused)
+      const memo = soilCompaction.get(p) ?? new Map<number, number>();
+      soilCompaction.set(p, memo);
+      const key = Math.round(f * 4);
+      let k = memo.get(key);
+      if (k === undefined) {
+        let lo = 0.05, hi = 1;
+        if (soilDef.height(at(lo)) <= budget) {
+          for (let i = 0; i < 7; i++) {
+            const mid = (lo + hi) / 2;
+            if (soilDef.height(at(mid)) <= budget) lo = mid; else hi = mid;
+          }
+        }
+        k = lo;
+        memo.set(key, k);
+      }
+      const ctx = at(k);
+      return { ctx, height: soilDef.height(ctx) };
+    }
     const names = namesOf(full);
     let lo = 1, hi = Math.max(1, names.prose ? wordsOf(names.prose).length : names.entries.length);
     while (lo < hi) {
@@ -2650,10 +2684,12 @@ function layoutAttempt(
   }
 
   // ── Foundation: the ancient ancestors, in the chosen soil style ───────
+  const finalSoil = useSoil ? soilFor(f, plan) : null;
+  const soilOverShare = !!finalSoil && finalSoil.height > soilBudget(f, plan) + 1e-6;
   const soil: SoilInscription | null = useSoil
     ? {
         ...soilDef.layout({
-          ...soilFor(f, plan).ctx, cx: W / 2, groundY, trunkWidth, W,
+          ...finalSoil!.ctx, cx: W / 2, groundY, trunkWidth, W,
           // the gold thread joining the trunk's ancestors continues from just below the lowest one
           threadFrom: shownTrunk.length ? labelBottom + trunkFont * 0.75 : groundY - f * 0.2,
         }),
@@ -2719,6 +2755,7 @@ function layoutAttempt(
     generationOffset: Math.min(base.data.member?.generation ?? 0, ...gens),
     generationsPresent: [...gens].sort((a, b) => a - b),
     unplacedIds,
+    soilOverShare,
     legibility,
     overlaps,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },

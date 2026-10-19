@@ -523,10 +523,20 @@ descendants; its ancestors are context. The trunk shows the nearest six
 ancestors, at most 20% of the
 content height, and trunk and foundation together take at most 30%, so the
 canopy has at least 70%. The foundation never sets names below the legible
-minimum to fit: a lineage too long for its share leaves names out of its
-middle, marked "…", keeping the nearest names and the last two (e.g.
-"… شيث بن آدم عليه السلام"). On a whole-family poster the foundation's share
-is 40%, or 25% when the canopy holds more people than trunk and foundation.
+minimum to fit; on a branch poster a lineage too long for its share leaves
+names out of its middle, marked "…", keeping the nearest names and the last
+two (e.g. "… شيث بن آدم عليه السلام").
+
+**Every name in the foundation.** On a whole-family poster the foundation's
+share is 40%, or 25% when the canopy holds more people than trunk and
+foundation. A lineage longer than that keeps every name: the foundation
+takes the room it needs and the canopy is set in what is left (with the
+whole Al-Kalali line to آدم under a canopy of 90 names, the canopy's names
+on 2A0 come out about as large as with a shortened foundation). If that
+leaves the canopy below the legible size on the chosen paper, the
+legibility note suggests a larger one. **Style → Foundation names →
+Shorten long lineages (…)** brings back the shortened foundation, which
+keeps to its share.
 
 **Too dense for the paper.** A poster with more than 5 ambiguous
 connections is retried with the canopy's names a fifth smaller (when that
