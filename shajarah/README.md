@@ -408,6 +408,24 @@ key adds "زوجة" ("Spouse").
   children, a daughter's husband) is a cartouche on a short line beside the
   partner: solid for a wife, dotted for a daughter's husband, who is of
   another family.
+- **Linking children to their mother.** One wife is one record, mother
+  of all the children she had:
+  - on a father's panel, each child has a menu of his wives (or "mother
+    not set"): one man's children can be given their mothers in one place;
+  - on a child's panel with the father known and the mother not, the
+    father's wives are offered with one click ("His mother: …");
+  - typing a mother's name under *Parents* links the father's wife of
+    that name (hamza forms, a final ى or ي, spaces aside) instead of
+    making a second record; a new mother is recorded as the father's wife
+    too;
+  - in a person's *Details*, the Mother picker lists the father's wives
+    first ("wife of أحمد"), the Father picker the mother's husbands.
+- **One person recorded twice.** When two records with the same name are
+  among a person's spouses and the other parents of their children (a
+  wife added as a spouse, then again as a child's mother, as earlier
+  versions allowed), the person's panel says so: **Merge into one** moves
+  the children, marriages, photos, sources and settings onto one record
+  and removes the other, as one change (Undo brings it back).
 - **Adding a spouse:** on a person's panel, under *Spouses*, type the name
   and press Enter or **+** (as for a child), or link someone already in the
   tree. Adding a spouse switches *Show spouses* on, so the new spouse is on
@@ -674,6 +692,16 @@ true of them: a parent (someone with descendants on the poster) has a
 second, gold ring around the name and bold type; a daughter heading a
 main branch keeps her colour in the medallion too. Only the line of
 fathers on the trunk is ivory. The key shows each of these.
+
+**The trunk in proportion.** When the canopy's names have to be set
+smaller to keep their lines clear, the trunk's names are set smaller with
+them (to no less than 55% of their size) and the height that frees goes to
+the canopy. This is tried once the size is chosen and kept only when the
+poster stays clean, as legible and crosses no more, so it never makes a
+poster worse; then larger names are tried again. A family with a 12-name
+trunk had its canopy names at 7.5–14.7 (depending on the theme) under
+trunk names 2–5.6 times as large; now 16–18.5 in every theme, the trunk
+1.15–1.5 times (tests/themes.test.ts).
 
 **Filling the page.** A canopy of 30 names or more spreads to the page's
 width, so the names keep their size instead of being set smaller to clear

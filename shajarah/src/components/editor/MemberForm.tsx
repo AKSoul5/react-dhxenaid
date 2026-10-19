@@ -67,6 +67,13 @@ export function MemberForm({ tree, member, initialDraft, busy, onSave, onCancel,
   const id = (field: string) => `${uid}-${field}`;
 
   const self = useMemo(() => new Set(member ? [member.id] : []), [member]);
+  // the spouses of a parent already chosen, listed first in the other parent's picker
+  const spousesOf = (id: string | null, as: "wife" | "husband") => {
+    const p = id ? tree.members.find((m) => m.id === id) : undefined;
+    if (!p) return undefined;
+    const ids = tree.marriages.filter((x) => x.spouseAId === p.id || x.spouseBId === p.id).map((x) => (x.spouseAId === p.id ? x.spouseBId : x.spouseAId));
+    return ids.length ? { ids, note: `${as} of ${p.name}` } : undefined;
+  };
   const yearError =
     num(d.birthYear) !== null && num(d.deathYear) !== null && num(d.deathYear)! < num(d.birthYear)!
       ? "Death year is before birth year."
@@ -126,8 +133,11 @@ export function MemberForm({ tree, member, initialDraft, busy, onSave, onCancel,
         </label>
         {yearError && <p className="text-sm text-red-700">{yearError}</p>}
 
-        <MemberPicker label="Father" members={tree.members} value={d.fatherId} onChange={(v) => set("fatherId", v)} excludeGender="FEMALE" excludeIds={self} />
-        <MemberPicker label="Mother" members={tree.members} value={d.motherId} onChange={(v) => set("motherId", v)} excludeGender="MALE" excludeIds={self} />
+        {/* a parent's spouses come first: the other parent is most likely one of them */}
+        <MemberPicker label="Father" members={tree.members} value={d.fatherId} onChange={(v) => set("fatherId", v)} excludeGender="FEMALE" excludeIds={self}
+          suggested={spousesOf(d.motherId, "husband")} />
+        <MemberPicker label="Mother" members={tree.members} value={d.motherId} onChange={(v) => set("motherId", v)} excludeGender="MALE" excludeIds={self}
+          suggested={spousesOf(d.fatherId, "wife")} />
 
         <div>
           <label htmlFor={id("notes")} className="mb-1 block text-xs font-medium text-bark-700">Notes</label>

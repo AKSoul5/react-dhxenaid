@@ -13,10 +13,12 @@ interface Props {
   excludeGender?: Gender;
   excludeIds?: Set<string>;
   placeholder?: string;
+  /** Listed first, with this note (e.g. the father's wives for "Mother": "wife of أحمد"). */
+  suggested?: { ids: string[]; note: string };
 }
 
 /** Searchable member combobox; options show the patronymic chain to disambiguate namesakes. */
-export function MemberPicker({ label, members, value, onChange, excludeGender, excludeIds, placeholder }: Props) {
+export function MemberPicker({ label, members, value, onChange, excludeGender, excludeIds, placeholder, suggested }: Props) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const selected = members.find((m) => m.id === value) ?? null;
@@ -28,8 +30,9 @@ export function MemberPicker({ label, members, value, onChange, excludeGender, e
       .filter((m) => m.gender !== excludeGender && !excludeIds?.has(m.id))
       .map((m) => ({ m, label: nasab(members, m.id, 3) }))
       .filter((o) => !q || o.label.includes(q))
+      .sort((a, b) => Number(!!suggested?.ids.includes(b.m.id)) - Number(!!suggested?.ids.includes(a.m.id)))
       .slice(0, 40);
-  }, [members, query, excludeGender, excludeIds]);
+  }, [members, query, excludeGender, excludeIds, suggested]);
 
   return (
     <div className="relative">
@@ -70,6 +73,7 @@ export function MemberPicker({ label, members, value, onChange, excludeGender, e
                 }}
               >
                 {l}
+                {suggested?.ids.includes(m.id) && <span className="ms-2 font-sans text-xs text-gilt-600">{suggested.note}</span>}
               </button>
             </li>
           ))}

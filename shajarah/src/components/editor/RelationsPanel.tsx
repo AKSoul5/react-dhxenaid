@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { compareSiblings, nasab } from "@/lib/genealogy";
+import { duplicateSpouses } from "@/lib/merge";
 import type { Gender, MemberDTO, TreeDTO } from "@/lib/types";
 import { MemberPicker } from "./MemberPicker";
 
@@ -17,11 +18,16 @@ interface Props {
   onAddSpouse: (spouseId: string) => void;
   onNewSpouse: (name: string) => void;
   onRemoveMarriage: (marriageId: string) => void;
+  /** Sets a child's father or mother to someone already in the tree (null: not known). */
+  onSetParent: (childId: string, role: "fatherId" | "motherId", parentId: string | null) => void;
+  /** Merges records of one person (each of `dropIds` into `keepId`), as one change. */
+  onMerge: (keepId: string, dropIds: string[]) => void;
 }
 
 /** Fast relationship entry: type a name, press Enter, and the child is linked. */
 export function RelationsPanel({
   tree, member, busy, onSelect, onQuickAddChild, onQuickAddParent, onAddSpouse, onNewSpouse, onRemoveMarriage,
+  onSetParent, onMerge,
 }: Props) {
   const [parentName, setParentName] = useState("");
   // the missing parent (the father first)
@@ -57,6 +63,20 @@ export function RelationsPanel({
     setSpouseName("");
   };
 
+  // The missing parent is most likely one of the known parent's spouses
+  // (his mother is one of his father's wives): offered with one click.
+  const known = member.fatherId ? byId.get(member.fatherId) : member.motherId ? byId.get(member.motherId) : undefined;
+  const missingRole = member.fatherId && !member.motherId ? "motherId" as const : member.motherId && !member.fatherId ? "fatherId" as const : null;
+  const spousesOf = (id: string) => tree.marriages
+    .filter((x) => x.spouseAId === id || x.spouseBId === id)
+    .map((x) => byId.get(x.spouseAId === id ? x.spouseBId : x.spouseAId))
+    .filter((m): m is MemberDTO => !!m && m.id !== member.id);
+  const likelyParents = known && missingRole ? spousesOf(known.id) : [];
+  // the same person recorded twice among this person's spouses and the
+  // other parents of their children
+  const duplicates = duplicateSpouses(tree, member.id);
+  const otherRole = member.gender === "FEMALE" ? "fatherId" as const : "motherId" as const;
+
   const submitParent = () => {
     if (!parentName.trim() || !parentGender) return;
     onQuickAddParent(parentName.trim(), parentGender);
@@ -70,6 +90,20 @@ export function RelationsPanel({
         {parents.length > 0 && (
           <div className="mb-2 flex flex-wrap gap-1.5">
             {parents.map((p) => <Chip key={p.id} m={p} onClick={() => onSelect(p.id)} />)}
+          </div>
+        )}
+        {likelyParents.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5 text-sm">
+            <span className="text-xs text-gray-600">
+              {member.gender === "FEMALE" ? "Her" : "His"} {missingRole === "motherId" ? "mother" : "father"}:
+            </span>
+            {likelyParents.map((p) => (
+              <button key={p.id} type="button" className="btn-outline py-0.5 font-naskh text-[15px]" dir="auto" disabled={busy}
+                title={`${p.name} is the ${missingRole === "motherId" ? "mother" : "father"}`}
+                onClick={() => onSetParent(member.id, missingRole!, p.id)}>
+                {p.name}
+              </button>
+            ))}
           </div>
         )}
         {parentGender && (
@@ -107,10 +141,33 @@ export function RelationsPanel({
 
       <section>
         <h4 className="section-title">Children ({children.length})</h4>
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          {children.map((c) => <Chip key={c.id} m={c} onClick={() => onSelect(c.id)} />)}
-          {children.length === 0 && <span className="text-sm text-gray-500">None yet</span>}
-        </div>
+        {spouses.length > 0 && children.length > 0 ? (
+          // with spouses recorded: each child's other parent, set right here
+          <ul className="mb-2 space-y-1">
+            {children.map((c) => (
+              <li key={c.id} className="flex items-center gap-2">
+                <Chip m={c} onClick={() => onSelect(c.id)} />
+                <select
+                  className="input ms-auto w-40 py-0.5 font-naskh text-sm"
+                  dir="auto"
+                  aria-label={`${member.gender === "FEMALE" ? "Father" : "Mother"} of ${c.name}`}
+                  value={c[otherRole] ?? ""}
+                  disabled={busy}
+                  onChange={(e) => onSetParent(c.id, otherRole, e.target.value || null)}
+                >
+                  <option value="">{member.gender === "FEMALE" ? "father" : "mother"} not set</option>
+                  {spouses.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                  {c[otherRole] && !spouseIds.has(c[otherRole]!) && <option value={c[otherRole]!}>{byId.get(c[otherRole]!)?.name}</option>}
+                </select>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {children.map((c) => <Chip key={c.id} m={c} onClick={() => onSelect(c.id)} />)}
+            {children.length === 0 && <span className="text-sm text-gray-500">None yet</span>}
+          </div>
+        )}
         <div className="flex gap-1">
           <input
             className="input flex-1 font-naskh text-base"
@@ -149,6 +206,16 @@ export function RelationsPanel({
 
       <section>
         <h4 className="section-title">Spouses ({marriages.length})</h4>
+        {duplicates.map(([keep, ...copies]) => (
+          <div key={keep.id} className="mb-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900" role="status">
+            <b className="font-naskh text-sm" dir="auto">{keep.name}</b> is recorded {copies.length + 1} times
+            (as a spouse and as a parent of {member.gender === "FEMALE" ? "her" : "his"} children).
+            <button type="button" className="btn-outline ms-2 py-0.5 text-xs" disabled={busy}
+              onClick={() => onMerge(keep.id, copies.map((c) => c.id))}>
+              Merge into one
+            </button>
+          </div>
+        ))}
         <ul className="mb-2 space-y-1">
           {marriages.map((x) => {
             const s = byId.get(x.spouseAId === member.id ? x.spouseBId : x.spouseAId);

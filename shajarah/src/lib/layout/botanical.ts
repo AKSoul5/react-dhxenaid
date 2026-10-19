@@ -331,8 +331,8 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // daughter: holders and dotted lines leave the most to untangle.)
   const untangleChecks = CHECKS + 3 * (opts.familiesThrough ?? tree.settings?.familiesThrough ?? []).length;
   const search = (dense: boolean) => {
-    const attempt = (scale: number, final = false, strict = false, untangle = 0) => {
-      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle });
+    const attempt = (scale: number, final = false, strict = false, untangle = 0, trunk = 1) => {
+      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, trunk });
       layout.clarity = validateRelationships(layout, tree);
       return layout;
     };
@@ -436,7 +436,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
     return { layout, chosen, strict, attempt, tried, dense };
   };
-  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number) => PosterLayout; untangle?: number };
+  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number, t?: number) => PosterLayout; untangle?: number };
   let best: Found = search(false);
   const searches = [best as Found & { tried: Map<number, PosterLayout> }];
   // Dense packing, a second try for a family whose generations do not fit
@@ -495,6 +495,46 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       }
     }
   }
+  // Balance: when the canopy's names had to be set smaller to clear their
+  // lines, the trunk's are set smaller with them, and the height that frees
+  // goes to the canopy (a trunk of names two to five times the canopy's
+  // took the height the canopy needed: a column with a small tree on it).
+  // Tried once the size is chosen, at it or a little below, and kept only
+  // when clean and as legible: it never makes a poster worse.
+  // (only where the trunk is out of proportion: a few names on it, set
+  // half again as large as the canopy's typical name, or more)
+  const outOfProportion = (l: PosterLayout) => {
+    if (l.trunkLabels.length < 2 || !l.nodes.length) return false;
+    const sizes = l.nodes.map((n) => n.fontSize).sort((a, b) => a - b);
+    return Math.max(...l.trunkLabels.map((t) => t.fontSize)) >= sizes[Math.floor(sizes.length / 2)] * BALANCE_RATIO;
+  };
+  if (best.chosen < BALANCE_BELOW && isClean(best.layout) && outOfProportion(best.layout)) {
+    const trunk = clamp(best.chosen, TRUNK_FOLLOW_MIN, 1);
+    let balanced = false;
+    for (const k of [1, 0.95, 0.9]) {
+      const scale = best.chosen * k;
+      const l = best.attempt(scale, false, best.strict, best.untangle ?? 0, trunk);
+      // (and crossing no more than before)
+      if (isClean(l) && (l.legibility.ok || !best.layout.legibility.ok) && l.clarity.clearCrossings <= best.layout.clarity.clearCrossings) {
+        best = { ...best, layout: l, chosen: scale };
+        balanced = true;
+        break;
+      }
+    }
+    // with the trunk's height given back, the canopy may take larger names
+    // again (the trunk following them)
+    if (balanced && best.chosen < UPWARD_BELOW) {
+      const base = best.chosen;
+      for (const k of [2, 1.75, 1.5, 1.25]) {
+        const scale = Math.min(1, base * k);
+        const l = best.attempt(scale, false, best.strict, best.untangle ?? 0, clamp(scale, TRUNK_FOLLOW_MIN, 1));
+        if (isClean(l) && (l.legibility.ok || !best.layout.legibility.ok) && l.clarity.clearCrossings <= best.layout.clarity.clearCrossings) {
+          best = { ...best, layout: l, chosen: scale };
+          break;
+        }
+      }
+    }
+  }
   const result = best.layout;
   result.tooDense = result.clarity.issues.length > CLARITY_LIMIT;
   return result;
@@ -519,6 +559,14 @@ const BRANCH_TRUNK_NAMES = 6;
 
 /** Least height of a trunk without ancestors, below the canopy base, as a share of the content height. */
 const BARE_TRUNK = 0.1;
+/** Below this size, larger sizes are tried for a clean layout too (see search). */
+const UPWARD_BELOW = 0.5;
+/** Below this size the trunk's names are set smaller with the canopy's (see the balancing in computePosterLayout). */
+const BALANCE_BELOW = 0.85;
+/** A trunk name this many times the canopy's typical name is out of proportion. */
+const BALANCE_RATIO = 1.5;
+/** The least the trunk's names follow the canopy's when those are set smaller (see trunkFontFor). */
+const TRUNK_FOLLOW_MIN = 0.55;
 /** Canopies of at least this many names are as wide as the page allows. */
 const WIDE_CANOPY = 30;
 
@@ -549,7 +597,7 @@ export const CLARITY_LIMIT = 5;
 
 function layoutAttempt(
   tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true, strictFamilies = false, dense = false,
-  budget = { checks: CHECKS },
+  budget: { checks: number; trunk?: number } = { checks: CHECKS },
 ): PosterLayout {
   const W = opts.width ?? 2400;
   const H = opts.height ?? Math.round(W * Math.SQRT2);
@@ -878,7 +926,9 @@ function layoutAttempt(
   };
   // Trunk: the ancestors in one centred column, one per row, inside the
   // bark (never two staggered columns: the trunk reads as one solid form).
-  const trunkFontFor = (f: number) => Math.max(floorFor(f), f * 0.95);
+  // budget.trunk < 1 sets the trunk's names smaller with the canopy's (see
+  // the balancing in computePosterLayout).
+  const trunkFontFor = (f: number) => Math.max(floorFor(f), f * 0.95 * clamp(budget.trunk ?? 1, TRUNK_FOLLOW_MIN, 1));
   const stepFor = (f: number) => trunkFontFor(f) * 1.75;
   const trunkSection = (count: number, f: number) => {
     // a bare trunk (no ancestors above the canopy base) still stands tall

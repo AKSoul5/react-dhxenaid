@@ -25,6 +25,7 @@ import { isPaperSize, PAPER_ORDER, PAPER_SIZES, paperForScale, type PaperSize } 
 import { ConflictError, apiRepository, localRepository, type FamilyRepository } from "./repository";
 import { readProjectFile, withNewIds } from "@/lib/project";
 import { openProjectFile } from "../projectFiles";
+import { mergePeople, spouseNamed } from "@/lib/merge";
 
 interface Props {
   initialTree: TreeDTO;
@@ -566,9 +567,31 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 busy={busy}
                 onSelect={select}
                 onQuickAddChild={quickAddChild}
-                onQuickAddParent={(name, gender) =>
-                  void mutate(() => repo.createMember({ name, gender, parentOfId: selected.id }), { label: `Add ${name} above ${selected.name}` })
-                }
+                onQuickAddParent={(name, gender) => {
+                  // the other parent is most likely married to the known one:
+                  // a name already among their spouses is that person, not a new one
+                  const known = selected.fatherId ?? selected.motherId;
+                  const same = known ? spouseNamed(tree, known, name) : null;
+                  if (same) {
+                    void mutate(() => repo.updateMember(selected.id, { [same.gender === "FEMALE" ? "motherId" : "fatherId"]: same.id }), { label: `${same.name} as ${selected.name}'s parent` });
+                    return;
+                  }
+                  // (a new mother is recorded as the father's wife too)
+                  const spouseOfId = known && (gender === "FEMALE") !== (tree.members.find((m) => m.id === known)?.gender === "FEMALE") ? known : undefined;
+                  void mutate(() => repo.createMember({ name, gender, parentOfId: selected.id, ...(spouseOfId ? { spouseOfId } : {}) }), { label: `Add ${name} above ${selected.name}` });
+                }}
+                onSetParent={(childId, role, parentId) => {
+                  const child = tree.members.find((m) => m.id === childId);
+                  const parent = parentId ? tree.members.find((m) => m.id === parentId) : null;
+                  void mutate(() => repo.updateMember(childId, { [role]: parentId }), {
+                    label: parent ? `${parent.name} as ${child?.name}'s ${role === "motherId" ? "mother" : "father"}` : `Clear ${child?.name}'s ${role === "motherId" ? "mother" : "father"}`,
+                  });
+                }}
+                onMerge={(keepId, dropIds) => {
+                  const keep = tree.members.find((m) => m.id === keepId);
+                  const merged = dropIds.reduce((t, id) => mergePeople(t, keepId, id), treeRef.current);
+                  void mutate(() => repo.restore(merged), { label: `Merge the records of ${keep?.name}` });
+                }}
                 onAddSpouse={(sid) => void addSpouse(() => repo.createMarriage({ spouseAId: selected.id, spouseBId: sid }), "Add marriage")}
                 onNewSpouse={(name) =>
                   void addSpouse(
