@@ -377,8 +377,8 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
   }
   const search = (dense: boolean) => {
-    const attempt = (scale: number, final = false, strict = false, untangle = 0, fit?: number) => {
-      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, fit });
+    const attempt = (scale: number, final = false, strict = false, untangle = 0, fit?: number, crossings = false) => {
+      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, fit, crossings });
       layout.clarity = validateRelationships(layout, tree);
       return layout;
     };
@@ -486,7 +486,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
     return { layout, chosen, strict, attempt, tried, dense };
   };
-  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number, fit?: number) => PosterLayout; untangle?: number };
+  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number, fit?: number, cr?: boolean) => PosterLayout; untangle?: number; fit?: number };
   let best: Found = search(false);
   const searches = [best as Found & { tried: Map<number, PosterLayout> }];
   // Dense packing, a second try for a family whose generations do not fit
@@ -583,7 +583,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       // (a few ambiguities left: untangled)
       if (!isClean(l) && !best.untangle && l.overlaps === 0 && l.clarity.issues.length <= 2) l = best.attempt(scale, false, best.strict, untangleChecks, TRUNK_TO_CANOPY);
       if (better(l)) {
-        best = { ...best, layout: l, chosen: scale };
+        best = { ...best, layout: l, chosen: scale, fit: TRUNK_TO_CANOPY };
         fitted = true;
         break;
       }
@@ -596,10 +596,21 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
         const scale = Math.min(1, base * k);
         const l = best.attempt(scale, false, best.strict, best.untangle ?? 0, TRUNK_TO_CANOPY);
         if (better(l)) {
-          best = { ...best, layout: l, chosen: scale };
+          best = { ...best, layout: l, chosen: scale, fit: TRUNK_TO_CANOPY };
           break;
         }
       }
+    }
+  }
+  // Clear crossings on a clean poster: the names at their ends tried a
+  // little elsewhere (see the untangling), kept when the poster stays
+  // clean, as legible, with fewer. (Not on a poster too small to read: the
+  // larger paper the editor recommends is laid out afresh.)
+  if (isClean(best.layout) && best.layout.legibility.ok && best.layout.clarity.clearCrossings > 0) {
+    const before = best.layout;
+    const l = best.attempt(best.chosen, false, best.strict, Math.max(untangleChecks, best.untangle ?? 0), best.fit, true);
+    if (isClean(l) && l.legibility.ok && l.clarity.clearCrossings < before.clarity.clearCrossings) {
+      best = { ...best, layout: l, untangle: Math.max(untangleChecks, best.untangle ?? 0) };
     }
   }
   const result = best.layout;
@@ -699,7 +710,7 @@ export const CLARITY_LIMIT = 5;
 
 function layoutAttempt(
   tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true, strictFamilies = false, dense = false,
-  budget: { checks: number; fit?: number } = { checks: CHECKS },
+  budget: { checks: number; fit?: number; crossings?: boolean } = { checks: CHECKS },
 ): PosterLayout {
   const W = opts.width ?? 2400;
   const H = opts.height ?? Math.round(W * Math.SQRT2);
@@ -1769,14 +1780,44 @@ function layoutAttempt(
       nodes.push(stub); // fixed obstacle for the relaxation
       return;
     }
-    // Side branch: a small canopy fanning outward-upward from the trunk.
+    // Side branch: a small canopy fanning outward from the trunk.
     const sub0 = o.node.descendants() as HNode[];
     const leaves = o.node.value ?? 1;
-    const reachR = clamp(f * 4.8 * Math.sqrt(leaves), f * 4, W * 0.3);
     const A: Vec = { x: origin.x + side * trunkWidth * 0.45, y: y - trunkFont * 0.3 };
     const depthMax = Math.max(1, o.node.height + 1);
-    const a0 = side > 0 ? 1.25 : Math.PI - 1.25; // up-and-out
-    const a1 = side > 0 ? -0.3 : Math.PI + 0.3;  // out-and-slightly-down
+    // Up and out, but never above the canopy base: the crown's lowest
+    // names are there, and a side branch fanned up into them crosses their
+    // lines (one from the badge nearest the crown once tangled with the
+    // canopy base's wife and daughters). It turns down into the free room
+    // beside the trunk instead, above the ground.
+    const pad = f * 1.5;
+    const fanFor = (R: number) => {
+      const hi = Math.min(1.25, Math.atan2(A.y - (origin.y + baseMedallionR + pad), R));
+      const downMost = -Math.atan2(Math.max(0, groundY - pad - A.y), R);
+      return { hi, lo: Math.max(hi - 1.55, Math.min(downMost, hi - 0.6)) };
+    };
+    // As far out as its names need: each generation a ring, a name's width
+    // plus a gap from the last, and every ring long enough for its names
+    // side by side (up to the room beside the trunk).
+    const ringCount = new Map<number, number>();
+    let widest = 0;
+    for (const n of sub0) {
+      const d = n.depth - o.node.depth + 1;
+      ringCount.set(d, (ringCount.get(d) ?? 0) + 1);
+      widest = Math.max(widest, textWidth(labelOf(n.data.member!).label, fl));
+    }
+    const room = Math.max(f * 4, side > 0 ? W - margin - A.x : A.x - margin);
+    let reachR = clamp(f * 4.8 * Math.sqrt(leaves), f * 4, W * 0.3);
+    for (let k = 0; k < 2; k++) {
+      const { hi, lo } = fanFor(reachR);
+      const span = Math.max(0.3, hi - lo);
+      let need = depthMax * (widest + f * 2) / (0.3 + 0.7 * depthMax / depthMax);
+      for (const [d, c] of ringCount) need = Math.max(need, (c * fl * 2.6) / (span * (0.3 + 0.7 * (d / depthMax))));
+      reachR = clamp(Math.max(reachR, need), f * 4, Math.min(W * 0.42, room * 0.92));
+    }
+    const { hi, lo } = fanFor(reachR);
+    const a0 = side > 0 ? hi : Math.PI - hi; // the highest, out
+    const a1 = side > 0 ? lo : Math.PI - lo; // the lowest, out
     partition(o.node, 0, 1);
     stemStart.set(m.id, A);
     stemDir.set(m.id, norm({ x: side * 0.8, y: -0.6 }));
@@ -2537,6 +2578,7 @@ function layoutAttempt(
     // at most CHECKS of them per attempt)
     // (whether the lines as drawn are those of the names as they stand)
     let fresh = false;
+    let lastReport: ReturnType<typeof validateRelationships> | null = null;
     const validate = () => {
       const drawnEdges: Edge[] = [
         ...edges,
@@ -2547,7 +2589,8 @@ function layoutAttempt(
         nodes: growingNodes, stubs, base: baseBox, trunkLabels, edges: drawnEdges, origin, trunkWidth, spouses: holders,
         familiesThrough: [...through],
       } as unknown as PosterLayout;
-      return validateRelationships(provisional, tree).issues;
+      lastReport = validateRelationships(provisional, tree);
+      return lastReport.issues;
     };
     // Draws every line, checks the drawing, and bends the lines found
     // wanting around what is in their way (a crowded drawing is left as it
@@ -2709,6 +2752,44 @@ function layoutAttempt(
     }
     // (the final drawing, with lines bent around names where that helps,
     // unless the last check drew the names as they stand)
+    // Clear crossings (allowed, as one line plainly passes over another)
+    // still read worse than none: on a clean drawing, the names at each end
+    // are tried a little further out or along their ring, kept only while
+    // the drawing stays clean with fewer crossings.
+    if (budget.crossings && !issues.length && budget.checks > 0) {
+      if (!fresh || !lastReport) check();
+      let report = lastReport!;
+      const seen = new Set<string>();
+      for (let round = 0; round < 12 && report.crossings?.length && budget.checks > 0; round++) {
+        const c = report.crossings.find((x) => !seen.has(`${x.edge.join(">")}|${x.other.join(">")}`));
+        if (!c) break;
+        seen.add(`${c.edge.join(">")}|${c.other.join(">")}`);
+        let fixed = false;
+        for (const n of [c.edge[1], c.other[1]].map(nodeById).filter((x): x is LiveNode => !!x)) {
+          const moves = [
+            ...[1, -1, 0.5, -0.5, 1.6, -1.6, 2.4, -2.4].map((k) => () => turn(n, k)),
+            ...[0.6, 1.5, -0.6].map((k) => () => outward(n, (n.h + n.w * 0.3) * k)),
+          ];
+          for (const move of moves) {
+            if (budget.checks <= 0) break;
+            const saved = { x: n.x, y: n.y, angle: n.angle, ray: n.ray };
+            move();
+            if (overlapsAny(n)) { Object.assign(n, saved); continue; }
+            const hint = new Set([n.id, c.edge[1], c.other[1]]);
+            for (const k of growingNodes) if (k.parentId === n.id || k.parentId === n.parentId) hint.add(k.id);
+            const next = check(hint);
+            if (!next.length && lastReport!.clearCrossings < report.clearCrossings) {
+              report = lastReport!;
+              fixed = true;
+              break;
+            }
+            Object.assign(n, saved);
+            fresh = false;
+          }
+          if (fixed) break;
+        }
+      }
+    }
     if (!fresh) check();
   }
   // Verification: overlapping names left after relaxation (fixed obstacles

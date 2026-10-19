@@ -536,6 +536,17 @@ on any member's panel:
 - **Side branches:** brothers of trunk ancestors grow as side branches with
   their own small canopy. Brothers without descendants become small
   medallions beside the trunk.
+  - A side branch fans outward and never rises above the canopy base: it
+    turns down into the free room beside the trunk, above the ground. (One
+    from the badge nearest the crown used to fan up into the canopy's
+    lowest names, tangled with the canopy base's wife and daughters.)
+  - It reaches as far out as its names need, so each generation sits on its
+    own ring with room for its names side by side (tests/side-branches.test.ts).
+- **Crossing lines:** a crossing at a clear angle is allowed, but on a
+  clean poster the people at each end are still tried a little further out
+  or along their ring, kept only when the poster stays clean and readable
+  with fewer crossings. On a 218-person family on 2A0, every theme went from
+  2–5 crossings to none.
 - **Matrilineal trees:** the women are the line, so they are always shown
   (the "Show daughters" toggle only appears for patrilineal trees). Hiding
   them would detach their children from the tree.

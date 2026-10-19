@@ -50,6 +50,8 @@ export interface ClarityReport {
   drawn: number;
   /** Crossings drawn with the clear over/under convention (allowed). */
   clearCrossings: number;
+  /** Where they are: the two connections, as parent → child member ids. */
+  crossings?: { edge: [string, string]; other: [string, string]; at: Vec }[];
   issues: ClarityIssue[];
 }
 
@@ -150,6 +152,7 @@ export function validateRelationships(layout: PosterLayout, tree: TreeDTO): Clar
 
   // ── 4/5. crossings and merges between unrelated connections ───────────
   let clearCrossings = 0;
+  const crossings: NonNullable<ClarityReport["crossings"]> = [];
   const endsCache = new Map<Edge, Vec[]>();
   const visibleEnds = (e: Edge) => {
     if (!endsCache.has(e)) endsCache.set(e, visibleEndsOf(e, boxes));
@@ -179,7 +182,10 @@ export function validateRelationships(layout: PosterLayout, tree: TreeDTO): Clar
         // (a line under an UNRELATED label is reported as an occlusion)
         if (all.some((box) => inside(cross.at, box, 0))) continue;
         const nearLabel = all.some((box) => inside(cross.at, box, Math.max(a.w0, b.w0)));
-        if (cross.angle >= CLEAR_CROSSING_DEG && !nearLabel) clearCrossings++;
+        if (cross.angle >= CLEAR_CROSSING_DEG && !nearLabel) {
+          clearCrossings++;
+          crossings.push({ edge: [a.parentId, a.childId], other: [b.parentId, b.childId], at: cross.at });
+        }
         else issues.push({
           kind: "crossing", edge: [a.parentId, a.childId], other: [b.parentId, b.childId], at: cross.at,
           detail: nearLabel ? "at a label" : `shallow (${cross.angle.toFixed(0)}°)`,
@@ -209,6 +215,7 @@ export function validateRelationships(layout: PosterLayout, tree: TreeDTO): Clar
     expected,
     drawn: layout.edges.length,
     clearCrossings,
+    crossings,
     issues,
   };
 }
