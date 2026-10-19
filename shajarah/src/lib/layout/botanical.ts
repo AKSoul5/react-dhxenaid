@@ -44,7 +44,7 @@
  */
 import { hierarchy, type HierarchyNode } from "d3-hierarchy";
 import { childrenIndex, lineagePath } from "../genealogy";
-import { givenAndFamilyName } from "../nasab";
+import { givenAndFamilyName, nameLines } from "../nasab";
 import type { MemberDTO, TreeDTO } from "../types";
 import {
   add, circlePath, cubicPoint as cubicPointAt, cubicTangent, len, norm, ribbonPath, scale, sub,
@@ -91,8 +91,8 @@ export interface LayoutOptions {
   labelMode?: LabelMode;
   showYears?: boolean;
   /**
-   * Half-siblings: when a man has children by more than one wife, each wife
-   * is a holder on his branch with her own children growing from it (the
+   * Spouses on the branch: every recorded wife a man had children with is
+   * a holder on his branch with her children growing from it (the
    * husbands, in a mother's-line tree). (The husbands of a daughter whose
    * family is shown are always on her line.)
    */
@@ -197,6 +197,8 @@ export interface SpouseHolder {
   partnerId: string;
   childIds: string[];
   label: string;
+  /** The label as set: first name over family name. */
+  lines: string[];
   x: number;
   y: number;
   w: number;
@@ -370,7 +372,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       // the smallest scale at which the names are still legible (on a
       // larger paper the names can be smaller beside their lines, which is
       // what a larger paper is for)
-      const legibleScale = clamp((full.legibility.minTextMm / Math.max(1e-6, full.legibility.smallestTextMm)) * 1.02, 0.2, 1);
+      const legibleScale = clamp((full.legibility.minTextMm / Math.max(1e-6, full.legibility.smallestTextMm)) * 1.02, MIN_SCALE, 1);
       // and a size below it, to tell whether only illegible names would do
       const below = Math.min(0.35, legibleScale * 0.8);
       if (legibleScale < 0.999 && isClean(at(legibleScale))) chosen = bisect(legibleScale, 1);
@@ -385,7 +387,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
           const near = legible[0]?.[0];
           if (near !== undefined && badness(legible[0][1]) <= 1) {
             for (const k of [-1, 1]) {
-              const sc = clamp(near + k * 0.015, 0.2, 1);
+              const sc = clamp(near + k * 0.015, MIN_SCALE, 1);
               const l = at(sc);
               if (isClean(l) && l.legibility.ok) {
                 chosen = sc;
@@ -401,7 +403,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
         const near = at(chosen);
         if (near.overlaps === 0 && near.legibility.ok && near.clarity.issues.length <= 2) {
           for (const k of [1, -1]) {
-            const sc = clamp(chosen + k * 0.01, 0.2, 1);
+            const sc = clamp(chosen + k * 0.01, MIN_SCALE, 1);
             const l = at(sc);
             if (isClean(l) && l.legibility.ok) {
               chosen = sc;
@@ -487,7 +489,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     const one = near.find((c) => c.l.legibility.ok && c.l.clarity.issues.length === 1);
     if (one && !(isClean(best.layout) && best.layout.legibility.ok)) {
       for (const k of [-1, 1, -2, 2]) {
-        const scale = clamp(one.scale + k * 0.015, 0.2, 1);
+        const scale = clamp(one.scale + k * 0.015, MIN_SCALE, 1);
         const l = one.sr.attempt(scale, false, false, untangleChecks);
         if (isClean(l) && l.legibility.ok) {
           best = { layout: l, chosen: scale, strict: false, attempt: one.sr.attempt, untangle: untangleChecks };
@@ -530,6 +532,13 @@ const CENTER_SHARE = 0.3;
 
 /** The least share of its father's space a child gets (see partition). */
 const MIN_CHILD_SHARE = 0.1;
+
+/**
+ * The smallest the canopy's names are set, as a share of the size that
+ * fits the page: far below what any paper up to 2A0 can print legibly, so
+ * a larger paper always gives the names more room.
+ */
+const MIN_SCALE = 0.05;
 
 /** The most relationship checks the untangling makes for one poster, over all its attempts (it redraws every line each time). */
 const CHECKS = 30;
@@ -784,7 +793,7 @@ function layoutAttempt(
     }
     base.each((n) => {
       const id = n.data.member?.id;
-      if (n.children && id && (through.has(id) || (opts.motherNames && (partners.get(id)?.size ?? 0) > 1))) holderRoom.add(n.depth - base.depth + 1);
+      if (n.children && id && (through.has(id) || (opts.motherNames && partners.has(id)))) holderRoom.add(n.depth - base.depth + 1);
     });
   }
   const RING_GAP = 3.6;
@@ -1008,9 +1017,9 @@ function layoutAttempt(
   }
   const fl = f * fontScale;
   // The finest line. When the names are set smaller to give each more
-  // room, the lines are finer too (down to half), or they would crowd
+  // room, the lines are finer too (down to a quarter), or they would crowd
   // each other where the names no longer do.
-  const lineMin = Math.max(W * 0.0018, f * 0.1) * Math.max(0.5, Math.min(1, fontScale));
+  const lineMin = Math.max(W * 0.0018, f * 0.1) * Math.max(0.25, Math.min(1, fontScale));
   const trunkZigzag = false;
   const shownTrunk = plan.onTrunk;
   const ancient = plan.soil;
@@ -1644,8 +1653,8 @@ function layoutAttempt(
   const parentIdOf = (node: LiveNode) => node.parentId ?? sideAnchor.get(node.id) ?? base.data.member?.id ?? "";
   const curveOf = new Map<string, Cubic>();
 
-  // Spouses on the branch: a father's wives (when he has children by more
-  // than one, and the option is on), each a cartouche on his branch with
+  // Spouses on the branch: a father's wives (when the option is on), each a
+  // cartouche on his branch with
   // the children she bore him growing from it; and the husbands of a
   // daughter whose family is shown, on her dotted line. Children whose
   // other parent is not recorded grow from the partner directly.
@@ -1659,7 +1668,7 @@ function layoutAttempt(
       const pid = parentIdOf(n);
       if (n.parentId && pid) kidsOf.set(pid, [...(kidsOf.get(pid) ?? []), n]);
     }
-    // everyone whose children (in the line) have more than one other parent
+    // everyone whose children (in the line) have a recorded other parent
     const partners = new Map<string, Set<string>>();
     for (const c of tree.members) {
       const lineParent = matri ? c.motherId : c.fatherId, other = matri ? c.fatherId : c.motherId;
@@ -1667,7 +1676,7 @@ function layoutAttempt(
     }
     for (const [pid, kids] of kidsOf) {
       const throughHer = through.has(pid);
-      if (!throughHer && !(opts.motherNames && (partners.get(pid)?.size ?? 0) > 1)) continue;
+      if (!throughHer && !(opts.motherNames && partners.has(pid))) continue;
       const groups = new Map<string, LiveNode[]>();
       for (const k of kids) {
         // through a daughter: her children's fathers; otherwise a father's wives
@@ -1684,11 +1693,14 @@ function layoutAttempt(
         const lineages = new Set(group.map((k) => k.lineage ?? null));
         const h: Holder = {
           id: `spouse:${pid}:${sid}`, member: spouse, partnerId: pid, childIds: group.map((k) => k.id),
-          label, fontSize: fs, w: textWidth(label, fs) + fs * 2, h: fs * 1.6, x: 0, y: 0,
+          // (first name over family name: a narrower panel)
+          label, lines: nameLines(label), fontSize: fs, w: 0, h: 0, x: 0, y: 0,
           dotted: throughHer || group.every((k) => dotted.has(k.member.id)),
           lineage: lineages.size === 1 ? [...lineages][0] : null,
           anchorOf: group[0], kids: group, dir: UP, clear: true,
         };
+        h.w = Math.max(...h.lines.map((t) => textWidth(t, fs))) + fs * 2;
+        h.h = fs * (1.6 + 1.05 * (h.lines.length - 1));
         holders.push(h);
         for (const k of group) holderOf.set(k.id, h);
       }
@@ -1795,8 +1807,22 @@ function layoutAttempt(
           const c = add(P, scale(d, (shared ? Math.min(reach, along) : along) * t));
           if (fits(h, c, also, linesToo)) return c;
         }
+        // children fanning out sideways from a large name (the founder at the
+        // base), or on several sides of their father: every spot short of the
+        // nearest child is still inside the partner's own name, so measured
+        // from its edge instead (whether the lines back to the children are
+        // clear, fits judges)
+        for (const t of [1.15, 1.4, 1.8, 2.4, 3.2]) for (const d of dirs) {
+          const c = beyond(h, d, t);
+          if (fits(h, c, also, linesToo)) return c;
+        }
         return null;
       };
+      const edge = (d: Vec, w: number, hh: number) =>
+        Math.min(Math.abs(d.x) > 1e-6 ? w / 2 / Math.abs(d.x) : Infinity, Math.abs(d.y) > 1e-6 ? hh / 2 / Math.abs(d.y) : Infinity);
+      /** A spot along d just clear of the partner's name (t = 1: touching it). */
+      const beyond = (h: Holder, d: Vec, t: number) =>
+        add(P, scale(d, (edge(d, partnerBox.w, partnerBox.h) + edge(d, h.w + h.fontSize * 0.5, h.h + h.fontSize * 0.5)) * t));
       const tryAt = (ts: number[]) => {
         const got: { h: Holder; from: Vec; J: Vec }[] = [];
         for (const h of group) {
@@ -1832,7 +1858,8 @@ function layoutAttempt(
       for (const h of group) {
         const J = got?.find((g) => g.h === h)?.J;
         h.clear = !!J;
-        const at = J ?? add(P, scale(h.dir, reach * 0.45));
+        // (no room anywhere: towards her children, but never on the partner's name)
+        const at = J ?? (reach * 0.45 > edge(h.dir, partnerBox.w + h.w, partnerBox.h + h.h) ? add(P, scale(h.dir, reach * 0.45)) : beyond(h, h.dir, 1.15));
         h.x = at.x;
         h.y = at.y;
         placed.push({ h, from: P });

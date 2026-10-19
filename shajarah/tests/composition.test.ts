@@ -1,3 +1,4 @@
+import type { PaperSize } from "@/lib/paper";
 // Composition and legibility across representative families: a small
 // three-generation family, a large one, a long ancestral chain, several
 // marriages with daughters, and names of very different lengths.
@@ -18,7 +19,7 @@ const families: Record<string, TreeDTO> = {
   marriages: marriagesFamily(),
   names: namesFamily(),
 };
-const layoutOf = (tree: TreeDTO, paper: "A3" | "A2" | "A1" | "A0" | "2A0" = "A2") =>
+const layoutOf = (tree: TreeDTO, paper: PaperSize = "A2") =>
   computePosterLayout(tree, { ...layoutOptionsFor(resolveTheme(tree.settings), paper), showFemales: tree.settings?.showFemales });
 const mm = (l: PosterLayout, units: number, paperW = 420) => (units * paperW) / l.width;
 const extent = (l: PosterLayout) => {

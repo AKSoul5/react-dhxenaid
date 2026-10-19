@@ -1,3 +1,4 @@
+import { isPaperSize } from "./paper";
 import { z } from "zod";
 import { GEDCOM_MAX_CHARS } from "./gedcom";
 
@@ -53,7 +54,7 @@ export const updateTreeSchema = createTreeSchema.partial().extend({
   settings: z
     .object({
       showFemales: z.boolean().optional(),
-      posterSize: z.enum(["A3", "A2", "A1", "A0", "2A0"]).optional(),
+      posterSize: z.string().refine(isPaperSize, "Unknown paper size").optional(),
       focusId: z.string().nullable().optional(),
       centerBranchId: z.string().nullable().optional(),
       familiesThrough: z.array(z.string()).max(1000).optional(),

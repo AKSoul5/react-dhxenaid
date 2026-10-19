@@ -1,3 +1,4 @@
+import type { PaperSize } from "@/lib/paper";
 // Correctness hardening: lineage modes, the relaxation's final pass, and
 // colour adjacency measured on the actual canopy.
 import { describe, expect, it } from "vitest";
@@ -209,7 +210,7 @@ describe("branch options for a family too large for one poster", () => {
   it("lists every branch with its people and the smallest clear size, workable ones first", () => {
     const t = generateSampleTree(5, 5000);
     const big = { ...t, settings: { ...t.settings, showFemales: true } };
-    const optionsFor = (p: "A3" | "A2" | "A1" | "A0" | "2A0") => ({ ...layoutOptionsFor(resolveTheme(big.settings), p), showFemales: true });
+    const optionsFor = (p: PaperSize) => ({ ...layoutOptionsFor(resolveTheme(big.settings), p), showFemales: true });
     const full = computePosterLayout(big, optionsFor("2A0"));
     const heads = branchHeads(big, full);
     expect(heads.length).toBeGreaterThan(2);

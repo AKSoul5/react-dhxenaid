@@ -377,25 +377,33 @@ children he fathered growing from it. When adding a child to someone
 married more than once, choose the child's other parent under the name
 field.
 
-## Spouses on the branch: fathers with several wives
+## Spouses on the branch
 
-A father with children from more than one wife: turn on **Style → Show the
-wives of fathers with several (on the branch)** and each wife is a
-cartouche (a name panel with its corners cut in, the manuscript frame for
-a name, in soft rose) on his branch, with the children she bore him growing
-from it: father → wife → her children. The key adds "زوجة" ("Spouse").
+Turn on **Style → Show spouses on the branch** and every recorded wife a
+man had children with is a cartouche (a name panel with its corners cut
+in, the manuscript frame for a name, in soft rose) on his branch, with the
+children she bore him growing from it: father → wife → her children. The
+key adds "زوجة" ("Spouse").
 
-- Spouses are named by first and family name: "فاطمة العتيبي" for "فاطمة
-  بنت سعد العتيبي" ("فاطمة" for "فاطمة بنت سعد", which has no family name),
-  or in full when two wives share both.
-- It applies to fathers with more than one recorded wife; a child whose
-  mother is not recorded grows from the father directly. (In a
-  mother's-line tree it shows a mother's husbands.)
+- Spouses are named by first and family name, set on two lines, first name
+  over family name, so the cartouche stays narrow and upright: "فاطمة" over
+  "العتيبي" for "فاطمة بنت سعد العتيبي". A family name with its article
+  ("آل سعود", "Al Saud") stays together; a single name ("فاطمة بنت سعد" has
+  no family name: "فاطمة") is one line. Two wives who share both names are
+  shown in full.
+- It applies to every father with a recorded wife, one or several. A
+  spouse with no children on the poster has no cartouche (there is no
+  branch for her to sit on), and a child whose mother is not recorded grows
+  from the father directly. (In a mother's-line tree it shows a mother's
+  husbands.)
 - A man's wives sit at one distance from him, so no line to one passes
   another; each is placed where it, the line to it and the lines from it
   pass no other name (her children move a little further out when there is
   no room). The relationship check treats father → wife → child as the
   connection from father to child. Clicking a cartouche opens that person.
+- Where the children fan out sideways from a large name (the founder at the
+  base of the canopy), the wife's cartouche is placed beyond the edge of
+  his name, never on it.
 
 ## The three tiers: foundation, trunk, canopy
 
@@ -899,15 +907,15 @@ legible size, clean means zero issues):
 | Three wives, interleaved half-siblings | 82 | A2 |
 | Large | 195 | A1 |
 | Dense (7–11 children per father) | 220 | A1 |
-| Very large | 496 | not fully: 3 spots remain on 2A0, circled in the editor; use a branch poster (below) |
+| Very large | 496 | A0 (daughters hidden), 2A0 (daughters shown) |
 
 Passing these checks is necessary, not sufficient: the renders are also
 inspected at print scale.
 
 ### Families too large for one clear poster
 
-When no single sheet up to 2A0 is clear and legible, the warning offers
-three ways out instead of only reporting the problem:
+When the chosen sheet is not clear and legible, the warning offers ways out
+instead of only reporting the problem:
 
 - **Poster of one branch.** Each branch is listed with the number of people
   its poster holds and the smallest size on which it is clear. The list is
@@ -930,7 +938,11 @@ three ways out instead of only reporting the problem:
   - Saved as `settings.focusId`. A focus on a deleted person falls back to
     the whole family.
 - **Hide daughters** (patrilineal trees only).
-- **Use 2A0, printed as a Tiled PDF.**
+- **Use the next size up, printed as a Tiled PDF**, or **find the smallest
+  clear size**: the editor tries each larger size in turn. (Once the names
+  are legible, a layout whose problems have not lessened over three larger
+  sizes is not one more paper fixes, and the search stops there instead of
+  laying the family out on ever larger paper.)
 
 Measured on the 496-person family (`tests/hardening.test.ts`):
 
@@ -944,8 +956,19 @@ Measured on the 496-person family (`tests/hardening.test.ts`):
 
 ## Print export
 
-- **Poster size.** Choose A3, A2, A1, A0 or 2A0 in the header. The layout
+- **Poster size.** Choose A3, A2, A1, A0 or any larger size in the header:
+  2A0, 4A0, 8A0 … up to 1024A0 (about 27 × 38 m), each twice the area of
+  the last, as ISO 216 doubles them (2A0 is 1189 × 1682 mm). There is no
+  practical limit: a family too large to be clear on one size takes the
+  next, printable or not; on screen and as SVG any size works. The layout
   is designed for that size, and the export menu defaults to it.
+- **Very large posters.** A PNG or PDF is capped at the largest image the
+  browser can draw (180 million pixels, below Chrome's limit): beyond that
+  the resolution is lowered, and the menu shows the resolution and pixel
+  size it will actually use; papers larger than A0 default to 150 DPI. A
+  Tiled PDF has no such limit: each sheet is drawn from the vector poster
+  on its own, at full resolution, and the menu shows how many sheets it
+  takes.
 - **SVG** is vector, with the fonts embedded as base64 and a physical size
   in mm. It opens unchanged in Illustrator, Inkscape or a print shop's
   software.

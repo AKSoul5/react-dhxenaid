@@ -52,6 +52,20 @@ export function givenAndFamilyName(name: string): string {
   return at > 0 ? `${parts[0]} ${last.slice(at).join(" ")}` : parts[0];
 }
 
+/**
+ * A name set on two lines, the family name below: "فاطمة العتيبي" →
+ * ["فاطمة", "العتيبي"], "فاطمة بنت سعد آل سعود" → ["فاطمة بنت سعد", "آل سعود"],
+ * "Hassan Smith" → ["Hassan", "Smith"]; a single name stays one line.
+ */
+export function nameLines(name: string): string[] {
+  const words = name.replace(/\s+/g, " ").trim().split(" ");
+  if (words.length < 2) return [words.join(" ")];
+  // the family name: from a word in ال… / Al-…, or آل with the word after it
+  let at = words.findIndex((w, i) => i > 0 && (/^(ال|al-|el-)/i.test(w) || ((w === "آل" || /^al$/i.test(w)) && i < words.length - 1)));
+  if (at < 0) at = words.length - 1;
+  return [words.slice(0, at).join(" "), words.slice(at).join(" ")];
+}
+
 /** Lifts "(laqab)" and a closing honorific (رحمه الله …) out of a name. */
 export function splitLaqab(raw: string): NasabEntry {
   let name = raw.trim();

@@ -423,8 +423,8 @@ function Medallion({ node, pal, onClick, strong, ring }: { node: PosterNode; pal
  * A cartouche: a name panel with its corners cut in as quarter circles,
  * the classic frame of a name in a manuscript; centred on 0, 0.
  */
-function cartouchePath(w: number, h: number): string {
-  const x = w / 2, y = h / 2, r = h * 0.3;
+function cartouchePath(w: number, h: number, r = h * 0.3): string {
+  const x = w / 2, y = h / 2;
   const f = (v: number) => v.toFixed(1);
   return `M${f(-x + r)} ${f(-y)}H${f(x - r)}A${f(r)} ${f(r)} 0 0 0 ${f(x)} ${f(-y + r)}V${f(y - r)}`
     + `A${f(r)} ${f(r)} 0 0 0 ${f(x - r)} ${f(y)}H${f(-x + r)}A${f(r)} ${f(r)} 0 0 0 ${f(-x)} ${f(y - r)}`
@@ -437,10 +437,12 @@ function Cartouche({ holder: s, pal, onClick }: { holder: SpouseHolder; pal: Pal
   return (
     <g transform={`translate(${s.x.toFixed(1)} ${s.y.toFixed(1)})`} {...onClick}>
       <title>{s.member.name}</title>
-      <path d={cartouchePath(s.w, s.h)} fill={pal.mono ? "#fff" : SPOUSE_FILL} stroke={pal.mono ? "#111" : SPOUSE_RIM} strokeWidth={fs * 0.08}
+      <path d={cartouchePath(s.w, s.h, fs * 0.48)} fill={pal.mono ? "#fff" : SPOUSE_FILL} stroke={pal.mono ? "#111" : SPOUSE_RIM} strokeWidth={fs * 0.08}
         strokeDasharray={s.dotted ? `${(fs * 0.25).toFixed(1)} ${(fs * 0.18).toFixed(1)}` : undefined} />
-      {!pal.mono && <path d={cartouchePath(s.w - inset * 2, s.h - inset * 2)} fill="none" stroke={GOLD} strokeWidth={fs * 0.03} />}
-      <text textAnchor="middle" dominantBaseline="central" fontSize={fs} fill={pal.ink}>{s.label}</text>
+      {!pal.mono && <path d={cartouchePath(s.w - inset * 2, s.h - inset * 2, fs * 0.48 - inset)} fill="none" stroke={GOLD} strokeWidth={fs * 0.03} />}
+      {s.lines.map((line, i) => (
+        <text key={i} y={(i - (s.lines.length - 1) / 2) * fs * 1.05} textAnchor="middle" dominantBaseline="central" fontSize={fs} fill={pal.ink}>{line}</text>
+      ))}
     </g>
   );
 }

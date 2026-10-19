@@ -2,7 +2,7 @@
 
 import { useState, type RefObject } from "react";
 import {
-  PAPER_SIZES, exportPdf, exportPng, exportSvg, exportTiledPdf, pixelSize, type PaperSize,
+  PAPER_SIZES, exportPdf, exportPng, exportSvg, exportTiledPdf, maxDpi, pixelSize, tileGrid, type PaperSize,
 } from "@/lib/export/exportPoster";
 import { SHEET_SIZES, type SheetSize } from "@/lib/paper";
 
@@ -16,11 +16,15 @@ interface Props {
 export function ExportMenu({ svgRef, filename, defaultPaper = "A2" }: Props) {
   const [open, setOpen] = useState(false);
   const [paper, setPaper] = useState<PaperSize>(defaultPaper);
-  const [dpi, setDpi] = useState(defaultPaper === "2A0" ? 150 : 300);
+  // (very large papers default to a lower resolution: they are seen from further away)
+  const [dpi, setDpi] = useState(PAPER_SIZES[defaultPaper].w > PAPER_SIZES.A0.w ? 150 : 300);
   const [sheet, setSheet] = useState<SheetSize>("A3");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const px = pixelSize(paper, dpi);
+  // (a PNG or PDF is one browser canvas: very large papers at a lower resolution)
+  const rasterDpi = Math.min(dpi, maxDpi(paper));
+  const px = pixelSize(paper, rasterDpi);
+  const tiles = tileGrid(paper, sheet);
 
   const run = async (kind: "svg" | "png" | "pdf" | "tiles") => {
     const svg = svgRef.current;
@@ -64,6 +68,7 @@ export function ExportMenu({ svgRef, filename, defaultPaper = "A2" }: Props) {
           </div>
           <p className="text-xs text-gray-500">
             Raster output: {px.width.toLocaleString()} × {px.height.toLocaleString()} px
+            {rasterDpi < dpi && ` (${rasterDpi} DPI: the most one image can hold at ${paper}; a Tiled PDF keeps ${dpi} DPI)`}
             {paper !== defaultPaper && ` · the layout was designed for ${defaultPaper}; text scales with the paper`}
           </p>
           <div className="grid gap-2">
@@ -71,15 +76,15 @@ export function ExportMenu({ svgRef, filename, defaultPaper = "A2" }: Props) {
               <span>Vector SVG</span><span className="text-xs text-gray-500">{busy === "svg" ? "Working…" : "infinite resolution"}</span>
             </button>
             <button type="button" className="btn-outline justify-between" disabled={!!busy} onClick={() => run("pdf")}>
-              <span>Print PDF</span><span className="text-xs text-gray-500">{busy === "pdf" ? "Rendering…" : `${paper} @ ${dpi} DPI`}</span>
+              <span>Print PDF</span><span className="text-xs text-gray-500">{busy === "pdf" ? "Rendering…" : `${paper} @ ${rasterDpi} DPI`}</span>
             </button>
             <button type="button" className="btn-outline justify-between" disabled={!!busy} onClick={() => run("png")}>
-              <span>PNG image</span><span className="text-xs text-gray-500">{busy === "png" ? "Rendering…" : `${paper} @ ${dpi} DPI`}</span>
+              <span>PNG image</span><span className="text-xs text-gray-500">{busy === "png" ? "Rendering…" : `${paper} @ ${rasterDpi} DPI`}</span>
             </button>
           </div>
           <div className="flex items-center gap-2 border-t border-parchment-200 pt-3">
             <button type="button" className="btn-outline flex-1 justify-between" disabled={!!busy} onClick={() => run("tiles")}>
-              <span>Tiled PDF</span><span className="text-xs text-gray-500">{busy === "tiles" ? "Rendering…" : `${paper} on ${sheet} sheets`}</span>
+              <span>Tiled PDF</span><span className="text-xs text-gray-500">{busy === "tiles" ? "Rendering…" : `${paper} on ${(tiles.rows * tiles.cols).toLocaleString()} ${sheet} sheets`}</span>
             </button>
             <select className="input w-20" value={sheet} onChange={(e) => setSheet(e.target.value as SheetSize)} aria-label="Sheet size">
               {Object.keys(SHEET_SIZES).map((k) => <option key={k} value={k}>{k}</option>)}

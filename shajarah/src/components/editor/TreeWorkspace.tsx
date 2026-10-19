@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { computePosterLayout } from "@/lib/layout/botanical";
-import { branchHeads, clearestPaper, isClear, rankBranches, type BranchOption } from "@/lib/layout/branches";
+import { branchHeads, clearestPaper, rankBranches, smallestClearPaper, type BranchOption } from "@/lib/layout/branches";
 import { generationColor } from "@/lib/layout/palette";
 import { lineagePath, nasab } from "@/lib/genealogy";
 import type { Gender, TreeDTO } from "@/lib/types";
@@ -21,7 +21,7 @@ import { emptyHistory, forget, record, redo, undo, type History } from "@/lib/hi
 import { RelationsPanel } from "./RelationsPanel";
 import { StylePanel } from "./StylePanel";
 import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
-import { PAPER_ORDER, PAPER_SIZES, paperForScale, type PaperSize } from "@/lib/paper";
+import { isPaperSize, PAPER_ORDER, PAPER_SIZES, paperForScale, type PaperSize } from "@/lib/paper";
 import { ConflictError, apiRepository, localRepository, type FamilyRepository } from "./repository";
 import { readProjectFile, withNewIds } from "@/lib/project";
 import { openProjectFile } from "../projectFiles";
@@ -58,7 +58,9 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
 
   const showFemales = tree.settings?.showFemales ?? false;
   const seed = tree.settings?.seed ?? 7;
-  const posterSize: PaperSize = tree.settings?.posterSize ?? "A2";
+  // (a size this version does not know, from a newer app's file: A2)
+  const savedSize = tree.settings?.posterSize;
+  const posterSize: PaperSize = isPaperSize(savedSize) ? savedSize : "A2";
   const theme = useMemo(() => resolveTheme(tree.settings), [tree.settings]);
   // Layout is recomputed on every edit; deferring keeps typing responsive.
   const deferredTree = useDeferredValue(tree);
@@ -265,21 +267,18 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   // What to offer when no single poster size is enough for the whole family
   // (inside a branch poster: its sub-branches, so a branch can be narrowed again)
   const branches = useMemo(() => branchHeads(deferredTree, layout), [deferredTree, layout]);
+  const nextPaper = PAPER_ORDER[PAPER_ORDER.indexOf(posterSize) + 1] ?? null;
   const fallbacks: Fallbacks = {
     branches,
     measure: (id) => clearestPaper(deferredTree, id, (p) => ({ showFemales, seed, ...layoutOptionsFor(theme, p) })),
     onFocus: (id, paper) => updateSettings({ focusId: id, ...(paper ? { posterSize: paper } : {}) }),
     onHideDaughters: showFemales && tree.lineage !== "MATRILINEAL" ? () => updateSettings({ showFemales: false }) : null,
-    onTiled: posterSize !== "2A0" ? () => updateSettings({ posterSize: "2A0" }) : null,
+    // (a larger paper, printed in tiles: there is always a larger one)
+    onTiled: nextPaper ? () => updateSettings({ posterSize: nextPaper }) : null,
   };
   /** The smallest larger poster on which every connection is unambiguous. */
-  const findClearSize = () => {
-    for (const p of PAPER_ORDER.slice(PAPER_ORDER.indexOf(posterSize) + 1)) {
-      const l = computePosterLayout(deferredTree, { showFemales, seed, ...layoutOptionsFor(theme, p) });
-      if (isClear(l)) return p;
-    }
-    return null;
-  };
+  const findClearSize = () =>
+    nextPaper && smallestClearPaper((p) => computePosterLayout(deferredTree, { showFemales, seed, ...layoutOptionsFor(theme, p) }), nextPaper);
   // the options replace a too-dense poster again whenever the layout changes
   useEffect(() => setShowDense(false), [layout]);
   // a branch poster needs at least one descendant to be a branch
@@ -1039,7 +1038,7 @@ function FallbackActions({ branches, measure, onFocus, onHideDaughters, onTiled 
       )}
       {onTiled && (
         <button type="button" className="btn-outline block py-1 text-xs" onClick={onTiled}>
-          Use 2A0, printed as a Tiled PDF
+          Use the next size up, printed as a Tiled PDF
         </button>
       )}
     </div>

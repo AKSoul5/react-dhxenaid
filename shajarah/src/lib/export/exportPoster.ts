@@ -173,13 +173,17 @@ function probeReady(img: HTMLImageElement, w: number, h: number, strip: number):
   });
 }
 
-async function rasterise(svg: SVGSVGElement, paper: PaperSize, dpi: number): Promise<HTMLCanvasElement> {
-  const { width, height } = pixelSize(paper, dpi);
-  if (width * height > MAX_CANVAS_PIXELS) {
-    throw new Error(
-      `${paper} at ${dpi} DPI is ${width}×${height}px, beyond what browsers can rasterise. Choose a lower DPI or use SVG export.`,
-    );
-  }
+/** The highest resolution at which `paper` still fits on one browser canvas. */
+export function maxDpi(paper: PaperSize): number {
+  const { w, h } = PAPER_SIZES[paper];
+  return Math.floor(Math.sqrt(MAX_CANVAS_PIXELS / ((w / 25.4) * (h / 25.4))));
+}
+
+/**
+ * The poster as an image whose fonts are all in use (see withFontProbe),
+ * for drawing at any size, whole or a part at a time.
+ */
+async function loadPoster(svg: SVGSVGElement, paper: PaperSize) {
   const probe = withFontProbe(await serializePoster(svg, paper));
   const url = URL.createObjectURL(new Blob([probe.markup], { type: "image/svg+xml;charset=utf-8" }));
   try {
@@ -193,18 +197,44 @@ async function rasterise(svg: SVGSVGElement, paper: PaperSize, dpi: number): Pro
       if (!ready) await new Promise((r) => setTimeout(r, 50));
     }
     if (!ready) throw new Error("The poster's fonts did not finish loading, so names would be missing. Please try the export again.");
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas is not available in this browser.");
-    ctx.fillStyle = "#f4ecd8";
-    ctx.fillRect(0, 0, width, height);
-    // the page only, without the probe strip below it
-    ctx.drawImage(img, 0, 0, probe.w, probe.h, 0, 0, width, height);
-    return canvas;
-  } finally {
+    return { img, w: probe.w, h: probe.h, release: () => URL.revokeObjectURL(url) };
+  } catch (e) {
     URL.revokeObjectURL(url);
+    throw e;
+  }
+}
+
+/**
+ * Part of the poster (x, y, w, h in mm, from its top left) drawn onto a new
+ * canvas at `dpi`. The image is a vector drawing, so each part is drawn
+ * sharp at its own size.
+ */
+function drawPart(poster: Awaited<ReturnType<typeof loadPoster>>, paper: PaperSize, dpi: number, x: number, y: number, w: number, h: number) {
+  const P = PAPER_SIZES[paper];
+  const unitsPerMm = poster.w / P.w;
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round((w / 25.4) * dpi));
+  canvas.height = Math.max(1, Math.round((h / 25.4) * dpi));
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas is not available in this browser.");
+  ctx.fillStyle = "#f4ecd8";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(poster.img, x * unitsPerMm, y * unitsPerMm, w * unitsPerMm, h * unitsPerMm, 0, 0, canvas.width, canvas.height);
+  return canvas;
+}
+
+/**
+ * The whole poster on one canvas, at `dpi` or, for a paper too large for
+ * one browser canvas at that resolution, the highest that fits (returned).
+ */
+async function rasterise(svg: SVGSVGElement, paper: PaperSize, dpi: number): Promise<{ canvas: HTMLCanvasElement; dpi: number }> {
+  const used = Math.min(dpi, maxDpi(paper));
+  const poster = await loadPoster(svg, paper);
+  try {
+    const { w, h } = PAPER_SIZES[paper];
+    return { canvas: drawPart(poster, paper, used, 0, 0, w, h), dpi: used };
+  } finally {
+    poster.release();
   }
 }
 
@@ -224,21 +254,25 @@ export async function exportSvg(svg: SVGSVGElement, filename: string, paper: Pap
   download(new Blob([markup], { type: "image/svg+xml;charset=utf-8" }), `${filename}.svg`);
 }
 
+/** Returns the resolution used (lower than asked for a paper too large for one canvas). */
 export async function exportPng(svg: SVGSVGElement, filename: string, paper: PaperSize, dpi: number) {
-  const canvas = await rasterise(svg, paper, dpi);
+  const { canvas, dpi: used } = await rasterise(svg, paper, dpi);
   const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
   if (!blob) throw new Error("PNG encoding failed (image too large?)");
-  download(blob, `${filename}-${paper}-${dpi}dpi.png`);
+  download(blob, `${filename}-${paper}-${used}dpi.png`);
+  return used;
 }
 
+/** Returns the resolution used (lower than asked for a paper too large for one canvas). */
 export async function exportPdf(svg: SVGSVGElement, filename: string, paper: PaperSize, dpi: number) {
-  const [{ jsPDF }, canvas] = await Promise.all([import("jspdf"), rasterise(svg, paper, dpi)]);
+  const [{ jsPDF }, { canvas, dpi: used }] = await Promise.all([import("jspdf"), rasterise(svg, paper, dpi)]);
   const { w, h } = PAPER_SIZES[paper];
   const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: [w, h], compress: true });
   pdf.setProperties({ title: filename, creator: "Shajarah" });
   // High-quality JPEG keeps A0/A1 files printable without hundreds of MB.
   pdf.addImage(canvas.toDataURL("image/jpeg", 0.93), "JPEG", 0, 0, w, h, undefined, "FAST");
-  download(pdf.output("blob"), `${filename}-${paper}-${dpi}dpi.pdf`);
+  download(pdf.output("blob"), `${filename}-${paper}-${used}dpi.pdf`);
+  return used;
 }
 
 /**
@@ -246,36 +280,43 @@ export async function exportPdf(svg: SVGSVGElement, filename: string, paper: Pap
  * each page carries a tile with 10 mm overlap, crop marks and its position
  * (row, column), so the sheets can be trimmed and assembled.
  */
-export async function exportTiledPdf(svg: SVGSVGElement, filename: string, paper: PaperSize, sheet: SheetSize, dpi: number) {
-  const [{ jsPDF }, canvas] = await Promise.all([import("jspdf"), rasterise(svg, paper, dpi)]);
+/** How a tiled print splits `paper` over `sheet`s: 10 mm margins, 10 mm overlap. */
+export function tileGrid(paper: PaperSize, sheet: SheetSize) {
   const P = PAPER_SIZES[paper];
   const S = SHEET_SIZES[sheet];
   const margin = 10, overlap = 10;
   const tileW = S.w - 2 * margin, tileH = S.h - 2 * margin;
   const cols = Math.max(1, Math.ceil((P.w - overlap) / (tileW - overlap)));
   const rows = Math.max(1, Math.ceil((P.h - overlap) / (tileH - overlap)));
-  const pxPerMm = canvas.width / P.w;
-  const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: [S.w, S.h], compress: true });
-  pdf.setProperties({ title: `${filename} (${paper} on ${rows}×${cols} ${sheet} sheets)`, creator: "Shajarah" });
-  const tile = document.createElement("canvas");
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      if (r || c) pdf.addPage([S.w, S.h], "portrait");
-      const x = c * (tileW - overlap), y = r * (tileH - overlap);
-      const w = Math.min(tileW, P.w - x), h = Math.min(tileH, P.h - y);
-      tile.width = Math.round(w * pxPerMm);
-      tile.height = Math.round(h * pxPerMm);
-      tile.getContext("2d")!.drawImage(canvas, x * pxPerMm, y * pxPerMm, w * pxPerMm, h * pxPerMm, 0, 0, tile.width, tile.height);
-      pdf.addImage(tile.toDataURL("image/jpeg", 0.93), "JPEG", margin, margin, w, h, undefined, "FAST");
-      // crop marks at the tile corners, and the tile's position
-      pdf.setLineWidth(0.15);
-      for (const [cx, cy] of [[margin, margin], [margin + w, margin], [margin, margin + h], [margin + w, margin + h]]) {
-        pdf.line(cx - 6, cy, cx - 1, cy); pdf.line(cx + 1, cy, cx + 6, cy);
-        pdf.line(cx, cy - 6, cx, cy - 1); pdf.line(cx, cy + 1, cx, cy + 6);
+  return { P, S, margin, overlap, tileW, tileH, cols, rows };
+}
+
+export async function exportTiledPdf(svg: SVGSVGElement, filename: string, paper: PaperSize, sheet: SheetSize, dpi: number) {
+  // (each sheet's part is drawn on its own, so any paper prints at full resolution)
+  const [{ jsPDF }, poster] = await Promise.all([import("jspdf"), loadPoster(svg, paper)]);
+  try {
+    const { P, S, margin, overlap, tileW, tileH, cols, rows } = tileGrid(paper, sheet);
+    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: [S.w, S.h], compress: true });
+    pdf.setProperties({ title: `${filename} (${paper} on ${rows}×${cols} ${sheet} sheets)`, creator: "Shajarah" });
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (r || c) pdf.addPage([S.w, S.h], "portrait");
+        const x = c * (tileW - overlap), y = r * (tileH - overlap);
+        const w = Math.min(tileW, P.w - x), h = Math.min(tileH, P.h - y);
+        const tile = drawPart(poster, paper, dpi, x, y, w, h);
+        pdf.addImage(tile.toDataURL("image/jpeg", 0.93), "JPEG", margin, margin, w, h, undefined, "FAST");
+        // crop marks at the tile corners, and the tile's position
+        pdf.setLineWidth(0.15);
+        for (const [cx, cy] of [[margin, margin], [margin + w, margin], [margin, margin + h], [margin + w, margin + h]]) {
+          pdf.line(cx - 6, cy, cx - 1, cy); pdf.line(cx + 1, cy, cx + 6, cy);
+          pdf.line(cx, cy - 6, cx, cy - 1); pdf.line(cx, cy + 1, cx, cy + 6);
+        }
+        pdf.setFontSize(7);
+        pdf.text(`${filename} · ${paper} · row ${r + 1}/${rows}, column ${c + 1}/${cols} · overlap ${overlap} mm`, margin, S.h - 4);
       }
-      pdf.setFontSize(7);
-      pdf.text(`${filename} · ${paper} · row ${r + 1}/${rows}, column ${c + 1}/${cols} · overlap ${overlap} mm`, margin, S.h - 4);
     }
+    download(pdf.output("blob"), `${filename}-${paper}-tiled-${sheet}.pdf`);
+  } finally {
+    poster.release();
   }
-  download(pdf.output("blob"), `${filename}-${paper}-tiled-${sheet}.pdf`);
 }

@@ -12,7 +12,7 @@ export interface BranchOption {
   name: string;
   /** People on the branch poster: the person, their ancestors and descendants. */
   people: number;
-  /** Smallest poster on which every line is clear and every name legible; null if none up to 2A0. */
+  /** Smallest poster on which every line is clear and every name legible; null if none (see smallestClearPaper). */
   clearAt: PaperSize | null;
 }
 
@@ -33,16 +33,29 @@ export function branchHeads(tree: TreeDTO, layout: PosterLayout): Omit<BranchOpt
 }
 
 /**
- * Smallest poster on which one branch is clear. Tries A3 first; when that
- * is too small to be legible, skips straight to the size legibility needs.
+ * The smallest paper from `from` up on which the layout is clear. Every
+ * size in turn (jumping ahead to the size the legibility estimate suggests
+ * could skip a smaller size that is in fact clear), but paper has no
+ * practical limit: once the names are legible, a layout whose problems
+ * have not lessened over three larger sizes is not one more paper fixes,
+ * and the search stops there.
  */
-export function clearestPaper(tree: TreeDTO, id: string, optionsFor: (p: PaperSize) => LayoutOptions): PaperSize | null {
-  // every size in turn: jumping ahead to the size the legibility estimate
-  // suggests could skip a smaller size that is in fact clear
-  for (const paper of PAPER_ORDER) {
-    if (isClear(computePosterLayout(tree, { ...optionsFor(paper), focusId: id }))) return paper;
+export function smallestClearPaper(layoutAt: (p: PaperSize) => PosterLayout, from: PaperSize = PAPER_ORDER[0]): PaperSize | null {
+  let best = Infinity, stale = 0;
+  for (const paper of PAPER_ORDER.slice(Math.max(0, PAPER_ORDER.indexOf(from)))) {
+    const l = layoutAt(paper);
+    if (isClear(l)) return paper;
+    if (!l.legibility.ok) continue;
+    const problems = l.clarity.issues.length + l.overlaps;
+    if (problems < best) [best, stale] = [problems, 0];
+    else if (++stale >= 3) return null;
   }
   return null;
+}
+
+/** Smallest poster on which one branch is clear. */
+export function clearestPaper(tree: TreeDTO, id: string, optionsFor: (p: PaperSize) => LayoutOptions): PaperSize | null {
+  return smallestClearPaper((paper) => computePosterLayout(tree, { ...optionsFor(paper), focusId: id }));
 }
 
 /** The branch that will actually work first: clear on the smallest paper, then the larger branch. */

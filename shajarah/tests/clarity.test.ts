@@ -1,3 +1,4 @@
+import type { PaperSize } from "@/lib/paper";
 // Relationship clarity: can a reader reliably trace who descends from whom?
 import { describe, expect, it } from "vitest";
 import { computePosterLayout, type Edge, type PosterLayout, type PosterNode } from "@/lib/layout/botanical";
@@ -9,7 +10,7 @@ import { denseFamily, marriagesFamily, multiMarriageFamily, namesFamily, smallFa
 import { LINEAGE_COLORS, contrast, layoutOptionsFor, resolveTheme } from "@/lib/theme";
 import type { MemberDTO, TreeDTO } from "@/lib/types";
 
-const layoutOf = (tree: TreeDTO, paper: "A3" | "A2" | "A1" | "A0" | "2A0" = "A2") =>
+const layoutOf = (tree: TreeDTO, paper: PaperSize = "A2") =>
   computePosterLayout(tree, { ...layoutOptionsFor(resolveTheme(tree.settings), paper), showFemales: tree.settings?.showFemales });
 
 // ── the validator itself, on hand-made drawings ──────────────────────────

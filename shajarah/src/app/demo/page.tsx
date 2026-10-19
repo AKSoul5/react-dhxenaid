@@ -1,3 +1,4 @@
+import { isPaperSize } from "@/lib/paper";
 import { SOIL_STYLES, type SoilStyleId } from "@/lib/layout/soil";
 import { TreeWorkspace } from "@/components/editor/TreeWorkspace";
 import { generateSampleTree } from "@/lib/sampleData";
@@ -40,9 +41,7 @@ export const metadata = { title: "Demo — Shajarah" };
 export default function DemoPage({ searchParams }: { searchParams: { sample?: string; colors?: string; poster?: string; soil?: string; focus?: string; shape?: string } }) {
   const make = SAMPLES[searchParams.sample as keyof typeof SAMPLES];
   const base = make ? make() : generateSampleTree();
-  const posterSize = ["A3", "A2", "A1", "A0", "2A0"].includes(searchParams.poster ?? "")
-    ? (searchParams.poster as "A3" | "A2" | "A1" | "A0" | "2A0")
-    : undefined;
+  const posterSize = isPaperSize(searchParams.poster) ? searchParams.poster : undefined;
   // &focus=<member id or name>: a branch poster (a name shared by several
   // people picks the canopy base if it is one of them, else the eldest)
   const named = searchParams.focus

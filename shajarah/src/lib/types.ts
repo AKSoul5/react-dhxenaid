@@ -1,3 +1,4 @@
+import type { PaperSize } from "./paper";
 // Plain data-transfer types shared by the API, the editor and the layout
 // engine. They mirror the Prisma models but are free of Prisma runtime types
 // so they can be used in client components.
@@ -47,7 +48,7 @@ export interface PosterTheme {
   nodeShape: "auto" | "leaf" | "circle" | "oval";
   labelMode: "name" | "withFather";
   showYears: boolean;
-  /** For a man with children by more than one wife: each wife on his branch, her children growing from her (see LayoutOptions.motherNames). */
+  /** Spouses on the branch: each wife a man had children with on his branch, her children growing from her (see LayoutOptions.motherNames). */
   motherNames: boolean;
   /** Ancestors carved into the bark, or stacked as framed badges. */
   trunkStyle: "carved" | "badges";
@@ -90,7 +91,7 @@ export interface PosterSettings {
    */
   familiesThrough?: string[];
   /** Printed size the poster is designed for (legibility is judged at it). Default A2. */
-  posterSize?: "A3" | "A2" | "A1" | "A0" | "2A0";
+  posterSize?: PaperSize;
   seed?: number;
   theme?: Partial<PosterTheme>;
 }
