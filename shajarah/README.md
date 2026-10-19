@@ -496,6 +496,15 @@ automatic choice) decides. Only the drawing changes.
 | **Stepped pedestal** | Light, finely ruled steps widening downward, each carrying the next group of names ("بن نصر بن سهل بن …"). | The trunk stands on the top step. |
 | **Inscribed panel** | The original: running text in a gold-ruled panel. | A root flare into a mound, with fine roots. |
 
+**Every name stays in its place.** The foundation has its own width
+(78% of the page, inside the frame), and every line has the width it was
+set for: its panel, plaque, step or column. Widths are measured with Amiri,
+the poster's font. A line drawn wider than that (in another font, or while
+Amiri is still loading) is condensed to fit as it is drawn, so no name runs
+past a border or into the frame's corners, on screen or in an export.
+Tested with the whole lineage from عبد كلال to آدم عليه السلام in every
+style, theme and size, and in the browser with Amiri blocked.
+
 **Branch posters and very long lineages.** A branch poster is about the
 descendants; its ancestors are context. The trunk shows the nearest six
 ancestors, at most 20% of the

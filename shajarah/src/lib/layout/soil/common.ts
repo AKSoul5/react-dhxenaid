@@ -182,7 +182,7 @@ export function drawPlaque(p: SoilPlacement, pl: Plaque, top: number): { shapes:
     { d: rectPath(x + inset, y + inset, width - 2 * inset, h - 2 * inset, fs * 0.35), stroke: "gold", strokeWidth: p.W * 0.0005 },
   ];
   const texts: SoilText[] = lines.map((line, k) => ({
-    x: p.cx, y: y + fs * 1.55 + k * fs * 1.65, text: line, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh",
+    x: p.cx, y: y + fs * 1.55 + k * fs * 1.65, text: line, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh", maxWidth: width - fs * 1.6,
   }));
   return { shapes, texts, box: { x, y, w: width, h } };
 }
@@ -202,6 +202,8 @@ export function unionBox(boxes: { x: number; y: number; w: number; h: number }[]
 
 export interface Inscription {
   fs: number;
+  /** The width its lines are wrapped to. */
+  width: number;
   lines: string[];
   /** Including the ornament above it and the finial below. */
   height: number;
@@ -214,7 +216,7 @@ export function inscriptionFor(ctx: SoilContext, text: string, maxWidth = ctx.ma
   const natural = ctx.textWidth(text, fs);
   const width = clamp(Math.sqrt(natural * fs * 12), Math.min(maxWidth, fs * 10), maxWidth);
   const lines = wrapWords(ctx, text, width, fs);
-  return { fs, lines, height: fs * 2.2 + lines.length * fs * 1.7 + fs * 1.3 };
+  return { fs, width, lines, height: fs * 2.2 + lines.length * fs * 1.7 + fs * 1.3 };
 }
 
 /**
@@ -228,6 +230,7 @@ export function drawInscription(p: SoilPlacement, ins: Inscription, top: number)
   const first = top + fs * 2.2 + fs * 0.95;
   const texts: SoilText[] = lines.map((line, k) => ({
     x: p.cx, y: first + k * fs * 1.7, text: line, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh",
+    maxWidth: Math.min(p.maxWidth, ins.width + fs * 2),
   }));
   const end = first + (lines.length - 1) * fs * 1.7 + fs * 0.45;
   shapes.push({ d: lozenge(p.cx, end + fs * 0.6, fs * 0.16, fs * 0.26), fill: "gold" });

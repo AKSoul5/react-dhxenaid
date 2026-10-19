@@ -48,7 +48,7 @@ export const pedestal: SoilStyleDef = {
       shapes.push({ d: rectPath(p.cx - w / 2, y, w, m.stepH, m.fs * 0.12), fill: "ivory", stroke: "gold", strokeWidth: p.W * 0.0006, opacity: 0.55 });
       // a fine highlight along each step's top edge
       shapes.push({ d: `M${fx(p.cx - w / 2 + m.fs * 0.35)} ${fx(y + m.fs * 0.28)}H${fx(p.cx + w / 2 - m.fs * 0.35)}`, stroke: "goldLight", strokeWidth: p.W * 0.0005 });
-      texts.push({ x: p.cx, y: y + m.stepH * 0.64, text: line, fontSize: m.fs, anchor: "middle", ink: "ink", font: "naskh" });
+      texts.push({ x: p.cx, y: y + m.stepH * 0.64, text: line, fontSize: m.fs, anchor: "middle", ink: "ink", font: "naskh", maxWidth: w - m.fs * 0.8 });
     });
     // a fine double rule under the widest step, in place of a heavy plinth
     const last = m.widths[m.widths.length - 1] ?? p.maxWidth;

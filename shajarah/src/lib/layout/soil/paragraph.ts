@@ -34,7 +34,7 @@ export const paragraph: SoilStyleDef = {
         { d: rectPath(box.x + inset, box.y + inset, box.w - 2 * inset, box.h - 2 * inset, p.W * 0.004), stroke: "line", strokeWidth: p.W * 0.0006 },
       ],
       texts: lines.map((text, k) => ({
-        x: p.cx, y: top + fs * 1.55 + k * lh, text, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh",
+        x: p.cx, y: top + fs * 1.55 + k * lh, text, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh", maxWidth: p.maxWidth - fs * 2,
       })),
       fontSize: fs,
       box,

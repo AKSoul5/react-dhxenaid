@@ -77,6 +77,13 @@ export interface SoilText {
    * name, so not held to the names' legibility floor.
    */
   annotation?: boolean;
+  /**
+   * The widest the text may be drawn (its panel, plaque, step or column):
+   * the renderer condenses a line that comes out wider (a font other than
+   * Amiri, which the widths are measured with). Otherwise the foundation's
+   * area holds it.
+   */
+  maxWidth?: number;
 }
 
 export interface SoilShape {
@@ -102,6 +109,8 @@ export interface SoilGeometry {
   fontSize: number;
   /** Everything the foundation occupies, below the ground line. */
   box: { x: number; y: number; w: number; h: number };
+  /** The width allotted to the foundation (set by the layout engine): no text is drawn beyond it. */
+  area?: { x: number; w: number };
   /** Ancestors inscribed (0 when a custom text is used). */
   count: number;
   custom: boolean;

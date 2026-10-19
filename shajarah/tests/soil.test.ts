@@ -174,6 +174,41 @@ describe("soil styles on real lineages", () => {
   });
 });
 
+describe("the lineage to آدم stays in the foundation's area", () => {
+  // Al-Kalali's 49 ancestors from نصر up to آدم عليه السلام in the soil,
+  // under a trunk from عبد كلال الأصغر: every style, theme and size. Each
+  // line within the width it was set for, and every text within the
+  // foundation's area (the renderer condenses a line that a wider font
+  // would push past it, so the widths here are the ones it holds to).
+  const tree = kalaliTree();
+  for (const style of SOIL_STYLE_ORDER) {
+    it(SOIL_STYLES[style].label, () => {
+      for (const preset of Object.keys(THEME_PRESETS)) {
+        for (const paper of ["A2", "A0", "2A0"] as const) {
+          for (const framed of [true, false]) {
+            const settings = { ...tree.settings, theme: { preset, frame: framed } } as TreeDTO["settings"];
+            const l = computePosterLayout({ ...tree, settings }, { ...layoutOptionsFor(resolveTheme(settings), paper), soilStyle: style });
+            const s = l.soil!;
+            const where = `${preset} ${paper}${framed ? " framed" : ""}`;
+            expect(s.area, where).toBeDefined();
+            const { x, w } = s.area!;
+            // the area keeps within the page's margin (and the frame's)
+            expect(x, where).toBeGreaterThanOrEqual(l.width * (framed ? 0.1 : 0.05) - 1e-6);
+            for (const t of s.texts) {
+              const b = textBox(l, t);
+              const width = b.x1 - b.x0;
+              if (t.maxWidth) expect(width, `${where}: "${t.text}" wider than its line`).toBeLessThanOrEqual(t.maxWidth + 1e-6);
+              expect(b.x0, `${where}: "${t.text}"`).toBeGreaterThanOrEqual(x - 1e-6);
+              expect(b.x1, `${where}: "${t.text}"`).toBeLessThanOrEqual(x + w + 1e-6);
+            }
+            expect(s.box.y + s.box.h, where).toBeLessThanOrEqual(l.frame.footerY - l.width * 0.05);
+          }
+        }
+      }
+    }, 60_000);
+  }
+});
+
 describe("soil styles on their own", () => {
   const ctxFor = (n: number, extra: Partial<SoilContext> = {}): SoilContext => {
     const entries = Array.from({ length: n }, (_, i) => ({ id: `a${i}`, label: ["محمد", "عبد الرحمن", "سالم بن", "ذو رعين"][i % 4], generation: 100 - i }));

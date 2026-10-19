@@ -2631,11 +2631,14 @@ function layoutAttempt(
 
   // ── Foundation: the ancient ancestors, in the chosen soil style ───────
   const soil: SoilInscription | null = useSoil
-    ? soilDef.layout({
-        ...soilFor(f, plan).ctx, cx: W / 2, groundY, trunkWidth, W,
-        // the gold thread joining the trunk's ancestors continues from just below the lowest one
-        threadFrom: shownTrunk.length ? labelBottom + trunkFont * 0.75 : groundY - f * 0.2,
-      })
+    ? {
+        ...soilDef.layout({
+          ...soilFor(f, plan).ctx, cx: W / 2, groundY, trunkWidth, W,
+          // the gold thread joining the trunk's ancestors continues from just below the lowest one
+          threadFrom: shownTrunk.length ? labelBottom + trunkFont * 0.75 : groundY - f * 0.2,
+        }),
+        area: { x: W / 2 - soilW / 2, w: soilW },
+      }
     : null;
 
   const gens = new Set<number>();

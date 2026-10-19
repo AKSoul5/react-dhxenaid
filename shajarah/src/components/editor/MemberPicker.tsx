@@ -2,6 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import { nasab } from "@/lib/genealogy";
+import { normalizeName } from "@/lib/nasab";
 import type { Gender, MemberDTO } from "@/lib/types";
 
 interface Props {
@@ -25,11 +26,12 @@ export function MemberPicker({ label, members, value, onChange, excludeGender, e
   const inputId = useId();
 
   const options = useMemo(() => {
-    const q = query.trim();
+    // (hamza forms, ى / ي, ة / ه, diacritics, spaces and case ignored: احمد finds أحمد)
+    const q = normalizeName(query.trim());
     return members
       .filter((m) => m.gender !== excludeGender && !excludeIds?.has(m.id))
       .map((m) => ({ m, label: nasab(members, m.id, 3) }))
-      .filter((o) => !q || o.label.includes(q))
+      .filter((o) => !q || normalizeName(o.label).includes(q))
       .sort((a, b) => Number(!!suggested?.ids.includes(b.m.id)) - Number(!!suggested?.ids.includes(a.m.id)))
       .slice(0, 40);
   }, [members, query, excludeGender, excludeIds, suggested]);

@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { forwardRef, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type SVGProps } from "react";
 import type { PosterLayout, PosterNode, SpouseHolder } from "@/lib/layout/botanical";
 import type { SoilInk } from "@/lib/layout/soil";
 import { textWidth } from "@/lib/layout/botanical";
@@ -655,8 +655,9 @@ function Foundation({ layout, pal, bark, click }: {
         />
       ))}
       {soil.texts.map((t, i) => (
-        <text
+        <FitText
           key={i}
+          max={t.maxWidth ?? roomIn(soil.area, t.x, t.anchor, layout.rtl)}
           x={t.x.toFixed(1)}
           y={t.y.toFixed(1)}
           fontSize={t.fontSize.toFixed(2)}
@@ -668,10 +669,51 @@ function Foundation({ layout, pal, bark, click }: {
           {...(t.memberId ? click(t.memberId) : {})}
         >
           {t.text}
-        </text>
+        </FitText>
       ))}
     </g>
   );
+}
+
+/** The width a text anchored at `x` has inside the foundation's area. */
+function roomIn(area: { x: number; w: number } | undefined, x: number, anchor: "start" | "middle" | "end", rtl: boolean): number | undefined {
+  if (!area) return undefined;
+  const left = x - area.x, right = area.x + area.w - x;
+  if (anchor === "middle") return 2 * Math.max(0, Math.min(left, right));
+  // "start" runs leftward in right-to-left text, rightward otherwise
+  return (anchor === "start") === rtl ? left : right;
+}
+
+/**
+ * A text that never runs wider than `max`: measured as drawn, and condensed
+ * to fit when it comes out wider (a font other than Amiri, which the layout
+ * measures with, or one still loading). Measured again once fonts load; an
+ * export copies the drawn poster, so it keeps the fit.
+ */
+function FitText({ max, ...props }: SVGProps<SVGTextElement> & { max?: number }) {
+  const ref = useRef<SVGTextElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !max || typeof el.getComputedTextLength !== "function") return;
+    const fit = () => {
+      el.removeAttribute("textLength");
+      el.removeAttribute("lengthAdjust");
+      if (el.getComputedTextLength() > max) {
+        el.setAttribute("textLength", max.toFixed(1));
+        el.setAttribute("lengthAdjust", "spacingAndGlyphs");
+      }
+    };
+    fit();
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    let live = true;
+    void fonts?.ready.then(() => live && fit());
+    fonts?.addEventListener?.("loadingdone", fit);
+    return () => {
+      live = false;
+      fonts?.removeEventListener?.("loadingdone", fit);
+    };
+  }, [max, props.children, props.fontSize, props.fontFamily, props.fontWeight]);
+  return <text ref={ref} {...props} />;
 }
 
 /** Basmala, the calligraphic title, subtitle and a fine divider. */

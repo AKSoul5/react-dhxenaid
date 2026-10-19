@@ -26,6 +26,7 @@ import { ConflictError, apiRepository, localRepository, type FamilyRepository } 
 import { readProjectFile, withNewIds } from "@/lib/project";
 import { openProjectFile } from "../projectFiles";
 import { mergePeople, spouseNamed } from "@/lib/merge";
+import { normalizeName } from "@/lib/nasab";
 
 interface Props {
   initialTree: TreeDTO;
@@ -386,8 +387,11 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   };
 
   const filtered = useMemo(() => {
-    const q = query.trim();
-    const list = q ? tree.members.filter((m) => m.name.includes(q) || nasab(tree.members, m.id, 3).includes(q)) : tree.members;
+    // (hamza forms, ى / ي, ة / ه, diacritics, spaces and case ignored: احمد finds أحمد)
+    const q = normalizeName(query.trim());
+    const list = q
+      ? tree.members.filter((m) => normalizeName(nasab(tree.members, m.id, 3)).includes(q) || normalizeName(m.laqab ?? "").includes(q))
+      : tree.members;
     return [...list].sort((a, b) => a.generation - b.generation || a.birthOrder - b.birthOrder).slice(0, 400);
   }, [tree.members, query]);
 

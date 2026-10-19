@@ -86,7 +86,7 @@ export const banner: SoilStyleDef = {
 
     if (m.kind === "prose") {
       m.lines.forEach((line, k) => {
-        texts.push({ x: p.cx, y: innerTop + head + fs * 1.15 + k * fs * 1.65, text: line, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh" });
+        texts.push({ x: p.cx, y: innerTop + head + fs * 1.15 + k * fs * 1.65, text: line, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh", maxWidth: m.width - 2 * (pad + rule) });
       });
     } else {
       // columns in reading order (right to left in Arabic), each read top to bottom
@@ -98,7 +98,7 @@ export const banner: SoilStyleDef = {
       m.entries.forEach((e, i) => {
         const c = Math.floor(i / m.rows), r = i % m.rows;
         const yName = innerTop + head + r * (m.nameStep! + m.sepStep!) + fs * 0.95;
-        texts.push({ x: colX(c), y: yName, text: e.label, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh", weight: 700, memberId: e.id });
+        texts.push({ x: colX(c), y: yName, text: e.label, fontSize: fs, anchor: "middle", ink: "ink", font: "naskh", weight: 700, memberId: e.id, maxWidth: m.colW + m.gutter * 0.5 });
         const isLast = r === m.rows - 1 || i === m.entries.length - 1;
         if (!isLast) seps.push(separatorMark(colX(c), yName + fs * 0.3 + m.sepStep! * 0.5, fs * 0.75));
       });
