@@ -17,6 +17,20 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const XLINK_NS = "http://www.w3.org/1999/xlink";
 /** Chrome's canvas area limit is ~268M px; stay well below it. */
 const MAX_CANVAS_PIXELS = 180_000_000;
+/** iPhone and iPad Safari: 16.7M px (4096²); a larger canvas silently stays blank. */
+const MOBILE_SAFARI_PIXELS = 16_700_000;
+/** Below this resolution an export is refused rather than made blurry. */
+const MIN_DPI = 72;
+
+/** The largest canvas this browser draws, in pixels. */
+function canvasPixelLimit(): number {
+  if (typeof navigator === "undefined") return MAX_CANVAS_PIXELS;
+  const ios = /iP(hone|ad|od)/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+  return ios ? MOBILE_SAFARI_PIXELS : MAX_CANVAS_PIXELS;
+}
+
+/** A canvas larger than the browser can draw: it stays blank, or has no context at all. */
+class CanvasTooLarge extends Error {}
 
 const FONT_FILES: { file: string; weight: number; range: string; family?: string }[] = [
   { family: "Aref Ruqaa", file: "aref-ruqaa-arabic-400-normal.woff2", weight: 400, range: "U+0600-06FF, U+0750-077F, U+FB50-FDFF, U+FE70-FEFF" },
@@ -176,7 +190,7 @@ function probeReady(img: HTMLImageElement, w: number, h: number, strip: number):
 /** The highest resolution at which `paper` still fits on one browser canvas. */
 export function maxDpi(paper: PaperSize): number {
   const { w, h } = PAPER_SIZES[paper];
-  return Math.floor(Math.sqrt(MAX_CANVAS_PIXELS / ((w / 25.4) * (h / 25.4))));
+  return Math.floor(Math.sqrt(canvasPixelLimit() / ((w / 25.4) * (h / 25.4))));
 }
 
 /**
@@ -216,11 +230,26 @@ function drawPart(poster: Awaited<ReturnType<typeof loadPoster>>, paper: PaperSi
   canvas.width = Math.max(1, Math.round((w / 25.4) * dpi));
   canvas.height = Math.max(1, Math.round((h / 25.4) * dpi));
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas is not available in this browser.");
+  if (!ctx) throw new CanvasTooLarge();
   ctx.fillStyle = "#f4ecd8";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // (a canvas past the browser's limit draws nothing and says nothing:
+  // its far corner, just filled, is read back to be sure)
+  if (ctx.getImageData(canvas.width - 1, canvas.height - 1, 1, 1).data[3] === 0) throw new CanvasTooLarge();
   ctx.drawImage(poster.img, x * unitsPerMm, y * unitsPerMm, w * unitsPerMm, h * unitsPerMm, 0, 0, canvas.width, canvas.height);
   return canvas;
+}
+
+/** Draws at `dpi`, or, where the browser cannot hold that, at the highest resolution it can (returned). */
+function drawFitting(poster: Awaited<ReturnType<typeof loadPoster>>, paper: PaperSize, dpi: number, x: number, y: number, w: number, h: number) {
+  for (let d = dpi; ; d = Math.floor(d * 0.8)) {
+    if (d < MIN_DPI) throw new Error(`This browser cannot draw ${paper} at a printable resolution. Please use a Tiled PDF, or export on a computer.`);
+    try {
+      return { canvas: drawPart(poster, paper, d, x, y, w, h), dpi: d };
+    } catch (e) {
+      if (!(e instanceof CanvasTooLarge)) throw e;
+    }
+  }
 }
 
 /**
@@ -232,7 +261,7 @@ async function rasterise(svg: SVGSVGElement, paper: PaperSize, dpi: number): Pro
   const poster = await loadPoster(svg, paper);
   try {
     const { w, h } = PAPER_SIZES[paper];
-    return { canvas: drawPart(poster, paper, used, 0, 0, w, h), dpi: used };
+    return drawFitting(poster, paper, used, 0, 0, w, h);
   } finally {
     poster.release();
   }
@@ -303,7 +332,9 @@ export async function exportTiledPdf(svg: SVGSVGElement, filename: string, paper
         if (r || c) pdf.addPage([S.w, S.h], "portrait");
         const x = c * (tileW - overlap), y = r * (tileH - overlap);
         const w = Math.min(tileW, P.w - x), h = Math.min(tileH, P.h - y);
-        const tile = drawPart(poster, paper, dpi, x, y, w, h);
+        // (at the resolution the first sheet could be drawn at, every sheet)
+        const { canvas: tile, dpi: d } = drawFitting(poster, paper, dpi, x, y, w, h);
+        dpi = d;
         pdf.addImage(tile.toDataURL("image/jpeg", 0.93), "JPEG", margin, margin, w, h, undefined, "FAST");
         // crop marks at the tile corners, and the tile's position
         pdf.setLineWidth(0.15);

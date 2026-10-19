@@ -1233,6 +1233,13 @@ undo.
   Tiled PDF has no such limit: each sheet is drawn from the vector poster
   on its own, at full resolution, and the menu shows how many sheets it
   takes.
+- **iPhone and iPad.** Safari there draws at most 16.7 million pixels, and
+  a larger canvas stays blank without any error. The menu uses that limit
+  on those devices (an A2 PNG or PDF at 207 DPI rather than 300; a Tiled
+  PDF keeps 300). In any browser, every export also reads back the far
+  corner of its canvas before drawing: a blank one is drawn again at a
+  lower resolution, and the file is named with the resolution used, so no
+  export is ever saved empty.
 - **SVG** is vector, with the fonts embedded as base64 and a physical size
   in mm. It opens unchanged in Illustrator, Inkscape or a print shop's
   software.
