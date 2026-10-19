@@ -187,6 +187,18 @@ describe("branch posters keep the person's whole ancestry", () => {
     expect(l.legibility.ok).toBe(true);
   });
 
+  it("every name in the foundation unless asked to shorten, on a branch poster too", () => {
+    const tree = kalaliTree();
+    const { ancestors } = lineagePath(tree.members, tree.lineage, tree.crownBaseId!);
+    const opts = { ...layoutOptionsFor(resolveTheme(tree.settings), "A2"), focusId: tree.crownBaseId! };
+    const all = computePosterLayout(tree, opts);
+    expect(all.soil!.texts.some((t) => t.text.includes("…"))).toBe(false);
+    expect(all.trunkLabels.length + all.soil!.count).toBe(ancestors.length);
+    // Style → Foundation names → Shorten long lineages still shortens it
+    const short = computePosterLayout(tree, { ...opts, soilShorten: true });
+    expect(short.soil!.texts.some((t) => t.text.includes("…"))).toBe(true);
+  });
+
   it("large family: a grandchild in the middle of the canopy", () => {
     const tree = generateSampleTree();
     const full = computePosterLayout(tree, layoutOptionsFor(resolveTheme(tree.settings), "A1"));

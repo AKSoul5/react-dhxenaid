@@ -1116,9 +1116,9 @@ function layoutAttempt(
   type Plan = { onTrunk: HNode[]; soil: HNode[] };
   // The foundation has a height budget. Its names are never set below the
   // legible size. A lineage too long for its budget takes the room it
-  // needs (the canopy taking less), or, with soilShorten (and always on a
-  // branch poster), leaves names out of its middle, shown as "…", keeping
-  // the nearest and the last ones.
+  // needs (the canopy taking less), or, with soilShorten, leaves names out
+  // of its middle, shown as "…", keeping the nearest and the last ones (on
+  // a branch poster too: every name is the default there as well).
   // A branch poster is about the descendants: trunk and foundation together
   // take at most LOWER_SHARE of the page (the trunk at most TRUNK_SHARE),
   // leaving the canopy at least 60%.
@@ -1133,12 +1133,11 @@ function layoutAttempt(
     const budget = soilBudget(f, p);
     const height = soilDef.height(full);
     if (height <= budget) return { ctx: full, height };
-    // Every name, unless asked to shorten (a branch poster always is: its
-    // foundation is context, and the canopy keeps its share). A style with
+    // Every name, unless asked to shorten. A style with
     // a column or a spine sets fewer names on it, the rest in its compact
     // inscription, and a banner sets more columns, until the foundation
     // fits its share, as far as that goes; then it takes the room it needs.
-    if (!opts.soilShorten && !branchMode) {
+    if (!opts.soilShorten) {
       const at = (k: number): SoilContext => ({ ...full, avail: full.avail * k });
       // (the font-size search asks again and again: the compaction found
       // for an arrangement at about this size is reused)

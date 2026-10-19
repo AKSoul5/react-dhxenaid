@@ -563,11 +563,13 @@ descendants; its ancestors are context. The trunk shows the nearest six
 ancestors, at most 20% of the
 content height, and trunk and foundation together take at most 30%, so the
 canopy has at least 70%. The foundation never sets names below the legible
-minimum to fit; on a branch poster a lineage too long for its share leaves
-names out of its middle, marked "…", keeping the nearest names and the last
-two (e.g. "… شيث بن آدم عليه السلام").
+minimum to fit. Like a whole-family poster, a branch poster keeps every name
+in the foundation by default (it takes the room it needs, the canopy the
+rest); with **Shorten long lineages (…)** chosen, a lineage too long for its
+share leaves names out of its middle, marked "…", keeping the nearest names
+and the last two (e.g. "… شيث بن آدم عليه السلام").
 
-**Every name in the foundation.** On a whole-family poster the foundation's
+**Every name in the foundation** (on whole-family and branch posters alike). On a whole-family poster the foundation's
 share is 40%, or 25% when the canopy holds more people than trunk and
 foundation. A lineage longer than that keeps every name: the foundation
 takes the room it needs and the canopy is set in what is left (with the
