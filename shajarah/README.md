@@ -368,8 +368,10 @@ line, so they are not drawn. To include them, select her and press
 (settings `familiesThrough`). Her husband is a cartouche on her line, and
 her children and their descendants grow from it on dotted lines, counted in
 generations through her; the key explains the dots ("عن طريق البنات").
-It works even with daughters hidden, and the other way round in a
-mother's-line tree.
+Hiding daughters (the **Show daughters** box off) hides their whole lines:
+her husband, her children and their descendants go with her, and come back
+when daughters are shown again (unless the poster is of her own branch). It
+works the other way round in a mother's-line tree.
 
 - **Adding a child to a daughter** (on her panel) shows her family this way
   at once, so the child appears from her on a dotted line. (Not for a wife
@@ -1009,6 +1011,26 @@ in, Shift + wheel scrolls sideways, Ctrl/⌘ + wheel (or a pinch) zooms at
 the pointer, and dragging pans; **＋ / － / Fit** zoom and fit the poster.
 It can be scrolled no more than half its size past the view, so it is
 never lost.
+
+## The order of brothers and sisters
+
+The canopy sets each family's children in birth order, the eldest at the
+start of its sweep (on the right on an Arabic poster). To change it:
+
+- **Drag a name on the poster** onto one of its brothers or sisters: while
+  dragging, the siblings are ringed in gold, the one it would take the
+  place of more strongly; let go and it takes that place, the others moving
+  up or down. (Dragging the background, or a name without siblings on the
+  poster, still pans; a short press still selects.)
+- **▲ / ▼** beside each child in a parent's *Children* list.
+- **Place among brothers and sisters** in a person's details: "1 of 5 —
+  eldest" … with the siblings listed in their present order.
+
+Each move is one change (undo puts it back) and renumbers all the siblings
+1, 2, 3 …, so repeated or skipped numbers (as old files and imports often
+have) never hide a move. Two things keep their place whatever the order:
+a branch chosen with **Center this branch** stays in the middle, and
+half-siblings stay together with their mother.
 
 ## Family outline (.txt)
 

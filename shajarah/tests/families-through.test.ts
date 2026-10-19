@@ -62,13 +62,23 @@ describe("a daughter's family on dotted lines", () => {
     expect(l.stats.unplaced).toBe(computePosterLayout(tree, opts).stats.unplaced - 11 - 2);
   });
 
-  it("shows her family even when daughters are hidden", () => {
-    const l = computePosterLayout(throughHer(tree, [amina.id]), { ...opts, showFemales: false });
+  it("hides her whole line with the daughters (and shows it again with them)", () => {
+    const shown = throughHer(tree, [amina.id]);
+    // (the people her family adds: her sons and their descendants)
+    const without = new Set(computePosterLayout(tree, opts).nodes.map((n) => n.member.id));
+    const theirs = new Set(computePosterLayout(shown, opts).nodes.map((n) => n.member.id).filter((id) => !without.has(id)));
+    expect(theirs.size).toBeGreaterThan(0);
+    const l = computePosterLayout(shown, { ...opts, showFemales: false });
     const drawn = new Set(l.nodes.map((n) => n.member.id));
-    expect(drawn.has(amina.id)).toBe(true);
+    expect(drawn.has(amina.id)).toBe(false);
     expect(drawn.has(layla.id)).toBe(false);
-    expect(l.nodes.some((n) => n.parentId === amina.id)).toBe(true);
+    expect([...drawn].filter((id) => theirs.has(id))).toEqual([]); // not her sons, nor theirs
+    expect(l.spouses).toHaveLength(0); // nor her husband
+    expect(l.familiesThrough).toEqual([]);
     expect(l.clarity.issues).toEqual([]);
+    // a poster of her own branch still shows her family
+    const hers = computePosterLayout(shown, { ...opts, showFemales: false, focusId: amina.id });
+    expect(hers.nodes.some((n) => n.parentId === amina.id)).toBe(true);
   });
 
   it("a mother with children from two husbands: each husband on her line with his own children", () => {

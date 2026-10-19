@@ -51,6 +51,36 @@ export function compareSiblings(a: MemberDTO, b: MemberDTO) {
 }
 
 /**
+ * A person and their brothers and sisters (the children of the same lineage
+ * parent, half-siblings included), eldest first. Only the person when their
+ * lineage parent is not recorded.
+ */
+export function siblingsInOrder(members: MemberDTO[], lineage: Lineage, id: string): MemberDTO[] {
+  const me = members.find((m) => m.id === id);
+  if (!me) return [];
+  const parent = lineageParentId(me, lineage);
+  if (!parent) return [me];
+  return members.filter((m) => lineageParentId(m, lineage) === parent).sort(compareSiblings);
+}
+
+/**
+ * The birth orders that put `id` at `position` (0 = eldest) among their
+ * brothers and sisters, the others keeping their order: every sibling
+ * renumbered 0, 1, 2 … (so repeated or skipped numbers are tidied too).
+ * Only the members whose number changes.
+ */
+export function moveAmongSiblings(
+  members: MemberDTO[], lineage: Lineage, id: string, position: number,
+): { id: string; birthOrder: number }[] {
+  const list = siblingsInOrder(members, lineage, id);
+  const from = list.findIndex((m) => m.id === id);
+  if (from < 0) return [];
+  const [me] = list.splice(from, 1);
+  list.splice(Math.max(0, Math.min(list.length, position)), 0, me);
+  return list.flatMap((m, i) => (m.birthOrder === i ? [] : [{ id: m.id, birthOrder: i }]));
+}
+
+/**
  * Generation number for every member: 0 for members without a lineage
  * parent, otherwise parent + 1. Iterative so very deep trees cannot blow the
  * stack, and cycle-safe (members caught in a cycle keep generation 0).

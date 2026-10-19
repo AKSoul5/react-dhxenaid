@@ -5,7 +5,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import { computePosterLayout } from "@/lib/layout/botanical";
 import { branchHeads, clearestPaper, rankBranches, smallestClearPaper, type BranchOption } from "@/lib/layout/branches";
 import { generationColor } from "@/lib/layout/palette";
-import { lineagePath, nasab } from "@/lib/genealogy";
+import { lineagePath, moveAmongSiblings, nasab, siblingsInOrder } from "@/lib/genealogy";
 import type { Gender, MemberDTO, TreeDTO } from "@/lib/types";
 import type { CreateMemberInput } from "@/lib/validation";
 import { ExportMenu } from "../poster/ExportMenu";
@@ -305,6 +305,23 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   // A daughter's own family (her children belong to their father's line):
   // the poster can show it through her, on dotted lines.
   const familiesThrough = tree.settings?.familiesThrough ?? [];
+  // A child moved among their brothers and sisters (by dragging on the
+  // poster, the arrows in a parent's list, or the place in the form): all of
+  // them renumbered 0, 1, 2 …, as one change.
+  const moveChild = (id: string, position: number) => {
+    const t = treeRef.current;
+    const changes = new Map(moveAmongSiblings(t.members, t.lineage, id, position).map((c) => [c.id, c.birthOrder]));
+    if (!changes.size) return;
+    const next = { ...t, members: t.members.map((m) => (changes.has(m.id) ? { ...m, birthOrder: changes.get(m.id)! } : m)) };
+    void mutate(() => repo.restore(next), { label: `Move ${t.members.find((m) => m.id === id)?.name}` });
+  };
+  const moveRef = useRef(moveChild);
+  moveRef.current = moveChild;
+  // (stable between edits, so the poster is not redrawn for nothing)
+  const reorder = useMemo(() => ({
+    siblingsOf: (id: string) => siblingsInOrder(tree.members, tree.lineage, id).map((m) => m.id),
+    onMove: (id: string, position: number) => moveRef.current(id, position),
+  }), [tree.members, tree.lineage]);
   const selectedHasOwnFamily = !!selected && tree.members.some((c) =>
     tree.lineage === "MATRILINEAL" ? c.fatherId === selected.id : c.motherId === selected.id);
   // only a name drawn in the canopy (not the trunk or the soil) can be centred
@@ -587,6 +604,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                     label: parent ? `${parent.name} as ${child?.name}'s ${role === "motherId" ? "mother" : "father"}` : `Clear ${child?.name}'s ${role === "motherId" ? "mother" : "father"}`,
                   });
                 }}
+                onMove={moveChild}
                 onMerge={(keepId, dropIds) => {
                   const keep = tree.members.find((m) => m.id === keepId);
                   const merged = dropIds.reduce((t, id) => mergePeople(t, keepId, id), treeRef.current);
@@ -609,6 +627,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                     member={selected}
                     busy={busy}
                     onSave={(input) => void mutate(() => repo.updateMember(selected.id, input), { label: `Edit ${selected.name}` })}
+                    onMove={(position) => moveChild(selected.id, position)}
                     onDelete={async () => {
                       const next = await mutate(() => repo.deleteMember(selected.id), { label: `Delete ${selected.name}` });
                       if (next) setPanel({ kind: "list" });
@@ -683,6 +702,9 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                       ┈ Show {selected.gender === "FEMALE" ? "her husband and children" : "his wife and children"} (dotted lines)
                     </button>
                   )
+                )}
+                {selectedHasOwnFamily && !showFemales && tree.lineage !== "MATRILINEAL" && selected.gender === "FEMALE" && (
+                  <p className="text-xs text-bark-500">Daughters are hidden, and their families with them: tick <b>Show daughters</b> to see hers.</p>
                 )}
                 {tree.settings?.focusId === selected.id ? (
                   <button type="button" className="btn-outline w-full" onClick={() => updateSettings({ focusId: null })}>
@@ -759,6 +781,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 lineageIds={lineageIds}
                 showIssues
                 onSelect={select}
+                reorder={reorder}
                 frameSrc={frameSrc}
                 className="block h-full w-full"
               />

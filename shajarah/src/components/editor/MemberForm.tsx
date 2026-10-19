@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
-import { nasab } from "@/lib/genealogy";
+import { nasab, siblingsInOrder } from "@/lib/genealogy";
 import type { Gender, MemberDTO, TreeDTO } from "@/lib/types";
 import type { CreateMemberInput } from "@/lib/validation";
 import { MemberPicker } from "./MemberPicker";
@@ -13,7 +13,6 @@ export interface MemberDraft {
   birthYear: string;
   deathYear: string;
   isDeceased: boolean;
-  birthOrder: string;
   notes: string;
   fatherId: string | null;
   motherId: string | null;
@@ -21,13 +20,13 @@ export interface MemberDraft {
 
 export const emptyDraft = (over: Partial<MemberDraft> = {}): MemberDraft => ({
   name: "", laqab: "", gender: "MALE", birthYear: "", deathYear: "", isDeceased: false,
-  birthOrder: "", notes: "", fatherId: null, motherId: null, ...over,
+  notes: "", fatherId: null, motherId: null, ...over,
 });
 
 const toDraft = (m: MemberDTO): MemberDraft => ({
   name: m.name, laqab: m.laqab ?? "", gender: m.gender,
   birthYear: m.birthYear?.toString() ?? "", deathYear: m.deathYear?.toString() ?? "",
-  isDeceased: m.isDeceased, birthOrder: m.birthOrder.toString(), notes: m.notes ?? "",
+  isDeceased: m.isDeceased, notes: m.notes ?? "",
   fatherId: m.fatherId, motherId: m.motherId,
 });
 
@@ -38,7 +37,6 @@ export function draftToInput(d: MemberDraft): CreateMemberInput {
     name: d.name.trim(), laqab: d.laqab.trim() || null, gender: d.gender,
     birthYear: num(d.birthYear), deathYear: num(d.deathYear),
     isDeceased: d.isDeceased || !!d.deathYear.trim(),
-    birthOrder: d.birthOrder.trim() === "" ? undefined : Number.parseInt(d.birthOrder, 10),
     notes: d.notes.trim() || null, fatherId: d.fatherId, motherId: d.motherId,
   };
 }
@@ -52,11 +50,13 @@ interface Props {
   onSave: (input: CreateMemberInput) => void;
   onCancel?: () => void;
   onDelete?: () => void;
+  /** Moves the member to `position` (0 = eldest) among their brothers and sisters, at once (not by Save). */
+  onMove?: (position: number) => void;
   /** Shown below the form (photos, documents, sources): saved on their own, not by Save. */
   attachments?: ReactNode;
 }
 
-export function MemberForm({ tree, member, initialDraft, busy, onSave, onCancel, onDelete, attachments }: Props) {
+export function MemberForm({ tree, member, initialDraft, busy, onSave, onCancel, onDelete, onMove, attachments }: Props) {
   const [d, setD] = useState<MemberDraft>(member ? toDraft(member) : (initialDraft ?? emptyDraft()));
   useEffect(() => {
     setD(member ? toDraft(member) : (initialDraft ?? emptyDraft()));
@@ -74,6 +74,9 @@ export function MemberForm({ tree, member, initialDraft, busy, onSave, onCancel,
     const ids = tree.marriages.filter((x) => x.spouseAId === p.id || x.spouseBId === p.id).map((x) => (x.spouseAId === p.id ? x.spouseBId : x.spouseAId));
     return ids.length ? { ids, note: `${as} of ${p.name}` } : undefined;
   };
+  // brothers and sisters, eldest first (a new member is added as the youngest)
+  const siblings = member ? siblingsInOrder(tree.members, tree.lineage, member.id) : [];
+  const place = siblings.findIndex((m) => m.id === member?.id);
   const yearError =
     num(d.birthYear) !== null && num(d.deathYear) !== null && num(d.deathYear)! < num(d.birthYear)!
       ? "Death year is before birth year."
@@ -113,7 +116,7 @@ export function MemberForm({ tree, member, initialDraft, busy, onSave, onCancel,
           <label htmlFor={id("laqab")} className="mb-1 block text-xs font-medium text-bark-700">Laqab / nickname</label>
           <input id={id("laqab")} className="input font-naskh" dir="auto" value={d.laqab} onChange={(e) => set("laqab", e.target.value)} placeholder="e.g. الملقب بلقمان" />
         </div>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           <div>
             <label htmlFor={id("born")} className="mb-1 block text-xs font-medium text-bark-700">Born</label>
             <input id={id("born")} className="input" inputMode="numeric" value={d.birthYear} onChange={(e) => set("birthYear", e.target.value.replace(/[^\d-]/g, ""))} placeholder="year" />
@@ -122,11 +125,22 @@ export function MemberForm({ tree, member, initialDraft, busy, onSave, onCancel,
             <label htmlFor={id("died")} className="mb-1 block text-xs font-medium text-bark-700">Died</label>
             <input id={id("died")} className="input" inputMode="numeric" value={d.deathYear} onChange={(e) => set("deathYear", e.target.value.replace(/[^\d-]/g, ""))} placeholder="year" />
           </div>
-          <div>
-            <label htmlFor={id("order")} className="mb-1 block text-xs font-medium text-bark-700" title="Order among siblings">Sibling #</label>
-            <input id={id("order")} className="input" inputMode="numeric" value={d.birthOrder} onChange={(e) => set("birthOrder", e.target.value.replace(/\D/g, ""))} placeholder="auto" />
-          </div>
         </div>
+        {onMove && siblings.length > 1 && (
+          <div>
+            <label htmlFor={id("order")} className="mb-1 block text-xs font-medium text-bark-700">Place among brothers and sisters</label>
+            <select id={id("order")} className="input" value={place} disabled={busy} onChange={(e) => onMove(Number(e.target.value))}>
+              {siblings.map((_, i) => (
+                <option key={i} value={i}>
+                  {i + 1} of {siblings.length}{i === 0 ? " — eldest" : i === siblings.length - 1 ? " — youngest" : ""}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 font-naskh text-xs text-bark-500" dir="auto">
+              {siblings.map((m) => m.name).join(" · ")}
+            </p>
+          </div>
+        )}
         <label className="flex items-center gap-2 text-sm text-bark-700">
           <input type="checkbox" checked={d.isDeceased} onChange={(e) => set("isDeceased", e.target.checked)} />
           Deceased (رحمه الله)

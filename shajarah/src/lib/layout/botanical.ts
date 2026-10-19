@@ -611,21 +611,23 @@ function layoutAttempt(
   // "Hide daughters" only applies where the line runs through fathers: in a
   // matrilineal tree the women ARE the line, and hiding them would detach
   // their children.
-  let visible = showFemales || tree.lineage === "MATRILINEAL"
-    ? tree.members
-    : tree.members.filter((m) => m.gender !== "FEMALE");
+  const hideDaughters = !showFemales && tree.lineage !== "MATRILINEAL";
+  let visible = hideDaughters ? tree.members.filter((m) => m.gender !== "FEMALE") : tree.members;
   const byMemberId = new Map(tree.members.map((m) => [m.id, m]));
-  // A daughter whose family is shown is drawn even when daughters are hidden.
-  const through = new Set((opts.familiesThrough ?? tree.settings?.familiesThrough ?? []).filter((id) => byMemberId.has(id)));
-  if (through.size) {
-    const shownNow = new Set(visible);
-    visible = tree.members.filter((m) => shownNow.has(m) || through.has(m.id));
-  }
   // Focus: one branch of the family on its own poster (for families too
   // large to draw clearly on one sheet): the person's ancestors and
   // descendants only, with the canopy starting at the person.
   const requestedFocus = opts.focusId !== undefined ? opts.focusId : (tree.settings?.focusId ?? null);
   const focusMember = requestedFocus ? byMemberId.get(requestedFocus) : undefined;
+  // Hiding daughters hides their whole lines: a daughter's family (her
+  // husband and children, on dotted lines) is shown only with daughters,
+  // unless the poster is of her own branch.
+  const through = new Set((opts.familiesThrough ?? tree.settings?.familiesThrough ?? [])
+    .filter((id) => byMemberId.has(id) && (!hideDaughters || id === focusMember?.id)));
+  if (through.size) {
+    const shownNow = new Set(visible);
+    visible = tree.members.filter((m) => shownNow.has(m) || through.has(m.id));
+  }
   let counted = tree.members;
   if (focusMember) {
     const { ancestors, descendants } = lineagePath(tree.members, tree.lineage, focusMember.id, through);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { compareSiblings, nasab } from "@/lib/genealogy";
+import { compareSiblings, lineageParentId, nasab } from "@/lib/genealogy";
 import { duplicateSpouses } from "@/lib/merge";
 import type { Gender, MemberDTO, TreeDTO } from "@/lib/types";
 import { MemberPicker } from "./MemberPicker";
@@ -22,12 +22,14 @@ interface Props {
   onSetParent: (childId: string, role: "fatherId" | "motherId", parentId: string | null) => void;
   /** Merges records of one person (each of `dropIds` into `keepId`), as one change. */
   onMerge: (keepId: string, dropIds: string[]) => void;
+  /** Moves a child to `position` (0 = eldest) among their brothers and sisters. */
+  onMove: (childId: string, position: number) => void;
 }
 
 /** Fast relationship entry: type a name, press Enter, and the child is linked. */
 export function RelationsPanel({
   tree, member, busy, onSelect, onQuickAddChild, onQuickAddParent, onAddSpouse, onNewSpouse, onRemoveMarriage,
-  onSetParent, onMerge,
+  onSetParent, onMerge, onMove,
 }: Props) {
   const [parentName, setParentName] = useState("");
   // the missing parent (the father first)
@@ -41,6 +43,9 @@ export function RelationsPanel({
   const children = tree.members
     .filter((m) => m.fatherId === member.id || m.motherId === member.id)
     .sort(compareSiblings);
+  // the children whose order is this person's to set (a wife's children
+  // are ordered among their father's)
+  const ordered = children.filter((c) => lineageParentId(c, tree.lineage) === member.id);
   const marriages = tree.marriages.filter((x) => x.spouseAId === member.id || x.spouseBId === member.id);
   const spouseIds = new Set(marriages.map((x) => (x.spouseAId === member.id ? x.spouseBId : x.spouseAId)));
   const byId = new Map(tree.members.map((m) => [m.id, m]));
@@ -141,26 +146,40 @@ export function RelationsPanel({
 
       <section>
         <h4 className="section-title">Children ({children.length})</h4>
-        {spouses.length > 0 && children.length > 0 ? (
-          // with spouses recorded: each child's other parent, set right here
-          <ul className="mb-2 space-y-1">
-            {children.map((c) => (
-              <li key={c.id} className="flex items-center gap-2">
-                <Chip m={c} onClick={() => onSelect(c.id)} />
-                <select
-                  className="input ms-auto w-40 py-0.5 font-naskh text-sm"
-                  dir="auto"
-                  aria-label={`${member.gender === "FEMALE" ? "Father" : "Mother"} of ${c.name}`}
-                  value={c[otherRole] ?? ""}
-                  disabled={busy}
-                  onChange={(e) => onSetParent(c.id, otherRole, e.target.value || null)}
-                >
-                  <option value="">{member.gender === "FEMALE" ? "father" : "mother"} not set</option>
-                  {spouses.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
-                  {c[otherRole] && !spouseIds.has(c[otherRole]!) && <option value={c[otherRole]!}>{byId.get(c[otherRole]!)?.name}</option>}
-                </select>
-              </li>
-            ))}
+        {(spouses.length > 0 || ordered.length > 1) && children.length > 0 ? (
+          // each child's place among them (eldest first), and with spouses
+          // recorded, each child's other parent, set right here
+          <ul className="mb-2 space-y-1" aria-label={`Children of ${member.name}, eldest first`}>
+            {children.map((c) => {
+              const at = ordered.indexOf(c);
+              return (
+                <li key={c.id} className="flex items-center gap-1">
+                  {ordered.length > 1 && (
+                    <span className="flex shrink-0 flex-col leading-none">
+                      <button type="button" className="px-1 text-[10px] text-bark-500 hover:text-bark-900 disabled:opacity-25" disabled={busy || at <= 0}
+                        aria-label={`Move ${c.name} earlier (elder)`} title="Earlier (elder)" onClick={() => onMove(c.id, at - 1)}>▲</button>
+                      <button type="button" className="px-1 text-[10px] text-bark-500 hover:text-bark-900 disabled:opacity-25" disabled={busy || at < 0 || at >= ordered.length - 1}
+                        aria-label={`Move ${c.name} later (younger)`} title="Later (younger)" onClick={() => onMove(c.id, at + 1)}>▼</button>
+                    </span>
+                  )}
+                  <Chip m={c} onClick={() => onSelect(c.id)} />
+                  {spouses.length > 0 && (
+                    <select
+                      className="input ms-auto w-40 py-0.5 font-naskh text-sm"
+                      dir="auto"
+                      aria-label={`${member.gender === "FEMALE" ? "Father" : "Mother"} of ${c.name}`}
+                      value={c[otherRole] ?? ""}
+                      disabled={busy}
+                      onChange={(e) => onSetParent(c.id, otherRole, e.target.value || null)}
+                    >
+                      <option value="">{member.gender === "FEMALE" ? "father" : "mother"} not set</option>
+                      {spouses.map((sp) => <option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                      {c[otherRole] && !spouseIds.has(c[otherRole]!) && <option value={c[otherRole]!}>{byId.get(c[otherRole]!)?.name}</option>}
+                    </select>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <div className="mb-2 flex flex-wrap gap-1.5">

@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, memo, type ReactNode } from "react";
+import { forwardRef, memo, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PosterLayout, PosterNode, SpouseHolder } from "@/lib/layout/botanical";
 import type { SoilInk } from "@/lib/layout/soil";
 import { textWidth } from "@/lib/layout/botanical";
@@ -29,6 +29,12 @@ interface Props {
   /** Mark the spots the relationship-clarity check flagged (editor only). */
   showIssues?: boolean;
   onSelect?: (memberId: string) => void;
+  /**
+   * Names dragged among their brothers and sisters (editor only): dropped on
+   * a sibling, a name takes that sibling's place in the birth order.
+   * `siblingsOf` gives a person and their siblings, eldest first.
+   */
+  reorder?: { siblingsOf: (id: string) => string[]; onMove: (id: string, position: number) => void };
   className?: string;
   /**
    * URL of the frame artwork (gold-foil border, corner arabesques and
@@ -114,7 +120,7 @@ function SatinGradient({ id, color }: { id: string; color: string }) {
  */
 export const TreePoster = memo(
   forwardRef<SVGSVGElement, Props>(function TreePoster(
-    { layout, meta, theme, selectedId, lineageIds, showIssues, onSelect, className, frameSrc },
+    { layout, meta, theme, selectedId, lineageIds, showIssues, onSelect, reorder, className, frameSrc },
     ref,
   ) {
     const { width: W, height: H, rtl } = layout;
@@ -126,7 +132,7 @@ export const TreePoster = memo(
       return rim ? { ...f, border: rim } : f;
     };
     const artwork = theme.frame && !!frameSrc && !pal.mono;
-    const click = (id: string) => (onSelect ? { onClick: () => onSelect(id), style: { cursor: "pointer" } } : {});
+    const click = (id: string) => (onSelect ? { onClick: () => onSelect(id), style: { cursor: "pointer" }, "data-member": id } : {});
     const tracing = !!selectedId && !!lineageIds && lineageIds.size > 0;
     const onLine = (id: string) => id === selectedId || !!lineageIds?.has(id);
 
@@ -251,6 +257,7 @@ export const TreePoster = memo(
               ))}
           </g>
         )}
+        {reorder && <ReorderLayer layout={layout} reorder={reorder} />}
         {showIssues && !layout.clarity.ok && !layout.tooDense && (
           <g data-ui="clarity" fill="none" stroke="#d32f2f" pointerEvents="none">
             {layout.clarity.issues.filter((i) => i.at).map((i, k) => (
@@ -262,6 +269,121 @@ export const TreePoster = memo(
     );
   }),
 );
+
+/**
+ * Dragging a name onto one of its brothers or sisters: while dragging, the
+ * siblings are ringed, the one it would take the place of more strongly, and
+ * the name follows the pointer. A short press is still a click (select);
+ * dragging anywhere else still pans the poster.
+ */
+function ReorderLayer({ layout, reorder }: { layout: PosterLayout; reorder: NonNullable<Props["reorder"]> }) {
+  const layer = useRef<SVGGElement>(null);
+  const boxes = useMemo(() => new Map([...layout.nodes, ...layout.stubs].map((n) => [n.id, n])), [layout]);
+  const [drag, setDrag] = useState<{ id: string; x: number; y: number; target: string | null; siblings: string[] } | null>(null);
+
+  useEffect(() => {
+    const svg = layer.current?.ownerSVGElement;
+    if (!svg) return;
+    let start: { id: string; x: number; y: number; siblings: string[] } | null = null;
+    let active: { target: string | null } | null = null;
+    let swallowClick = false;
+    // a name with brothers or sisters on the poster can be dragged
+    const draggable = (e: Event) => {
+      const id = (e.target as Element | null)?.closest?.("[data-member]")?.getAttribute("data-member");
+      if (!id || !boxes.has(id)) return null;
+      const siblings = reorder.siblingsOf(id);
+      return siblings.some((s) => s !== id && boxes.has(s)) ? { id, siblings } : null;
+    };
+    const toPoster = (e: PointerEvent) => {
+      const m = svg.getScreenCTM();
+      return m ? new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()) : null;
+    };
+    // (the viewport pans on mousedown / touchstart: not when it starts on a draggable name)
+    const hold = (e: Event) => {
+      if (!draggable(e)) return;
+      e.stopPropagation();
+      if (e.type === "mousedown") e.preventDefault(); // (no text selection while dragging)
+    };
+    const down = (e: PointerEvent) => {
+      swallowClick = false;
+      if (e.button !== 0) return;
+      const d = draggable(e);
+      start = d && { ...d, x: e.clientX, y: e.clientY };
+    };
+    const move = (e: PointerEvent) => {
+      if (!start) return;
+      if (!active && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 6) return;
+      active ??= { target: null };
+      const p = toPoster(e);
+      if (!p) return;
+      // the sibling nearest the pointer, within reach of its name
+      let target: string | null = null;
+      let best = Infinity;
+      for (const s of start.siblings) {
+        const b = boxes.get(s);
+        if (!b || s === start.id) continue;
+        const dist = Math.hypot(p.x - b.x, p.y - b.y);
+        if (dist < Math.max(b.w, b.h) * 0.75 + b.fontSize && dist < best) { best = dist; target = s; }
+      }
+      active.target = target;
+      setDrag({ id: start.id, x: p.x, y: p.y, target, siblings: start.siblings });
+    };
+    const up = () => {
+      if (start && active) {
+        swallowClick = true;
+        if (active.target) reorder.onMove(start.id, start.siblings.indexOf(active.target));
+      }
+      start = null;
+      active = null;
+      setDrag(null);
+    };
+    const click = (e: MouseEvent) => {
+      if (!swallowClick) return;
+      swallowClick = false;
+      e.stopPropagation();
+    };
+    svg.addEventListener("mousedown", hold);
+    svg.addEventListener("touchstart", hold);
+    svg.addEventListener("pointerdown", down);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    svg.addEventListener("click", click, true);
+    return () => {
+      svg.removeEventListener("mousedown", hold);
+      svg.removeEventListener("touchstart", hold);
+      svg.removeEventListener("pointerdown", down);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      svg.removeEventListener("click", click, true);
+    };
+  }, [boxes, reorder]);
+
+  const me = drag && boxes.get(drag.id);
+  return (
+    <g ref={layer} data-ui="reorder" pointerEvents="none">
+      {drag && me && (
+        <>
+          {drag.siblings.filter((s) => s !== drag.id).map((s) => boxes.get(s)).filter((b): b is PosterNode => !!b).map((b) => {
+            const on = b.id === drag.target;
+            const pad = b.fontSize * (on ? 0.45 : 0.3);
+            return (
+              <rect key={b.id} x={b.x - b.w / 2 - pad} y={b.y - b.h / 2 - pad} width={b.w + 2 * pad} height={b.h + 2 * pad} rx={b.fontSize * 0.6}
+                fill={on ? "#b08a2e22" : "none"} stroke={GOLD} strokeWidth={b.fontSize * (on ? 0.22 : 0.1)}
+                strokeDasharray={on ? undefined : `${b.fontSize * 0.4} ${b.fontSize * 0.3}`} />
+            );
+          })}
+          <rect x={me.x - me.w / 2} y={me.y - me.h / 2} width={me.w} height={me.h} rx={me.fontSize * 0.5} fill={PAPER} opacity={0.7} />
+          <text x={drag.x} y={drag.y} fontSize={me.fontSize} textAnchor="middle" dominantBaseline="central" fill={INK} opacity={0.85}
+            stroke={PAPER} strokeWidth={me.fontSize * 0.25} paintOrder="stroke">
+            {me.label}
+          </text>
+        </>
+      )}
+    </g>
+  );
+}
 
 function TrunkBadge({ label: l, pal, onClick }: { label: PosterLayout["trunkLabels"][number]; pal: Palette; onClick: object }) {
   return (
