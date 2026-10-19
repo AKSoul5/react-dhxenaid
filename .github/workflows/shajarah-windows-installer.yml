@@ -88,7 +88,7 @@ jobs:
           $global:LASTEXITCODE = 0
           $notes = (git log -1 --format=%B) -join "`n"
           gh release create "v$version" "dist/Shajarah-Setup-$version.exe" "dist/Shajarah-Setup-$version.exe.blockmap" dist/latest.yml `
-            --target $env:GITHUB_SHA --title "Shajarah $version" --notes $notes
+            --target $env:GITHUB_SHA --title "Shajarah $version" --notes $notes --latest
           if ($LASTEXITCODE -ne 0) { throw "Could not publish the release" }
           "version=$version" >> $env:GITHUB_OUTPUT
           "previous=$previous" >> $env:GITHUB_OUTPUT
@@ -112,9 +112,27 @@ jobs:
             Start-Process -FilePath $old.FullName -ArgumentList '/S' -Wait
             "installed: $(& $installed)"
             if (-not (& $installed).StartsWith($env:OLD.TrimStart('v'))) { throw "The previous version did not install" }
-            $p = Start-Process -FilePath $exe -ArgumentList '--update-test' -PassThru
-            if (-not $p.WaitForExit(300000)) { $p.Kill(); throw "The update check did not finish in 5 minutes" }
-            Get-Content (Join-Path $logs 'update-test.txt')
+            # GitHub takes a little while to report a new release as the
+            # latest (what the program asks): wait until it does
+            $clock = [Diagnostics.Stopwatch]::StartNew()
+            $latest = ""
+            while ($clock.Elapsed.TotalSeconds -lt 300) {
+              try {
+                $r = Invoke-WebRequest -Uri "https://github.com/$env:GITHUB_REPOSITORY/releases/latest" -Headers @{ Accept = "application/json" } -UseBasicParsing
+                $latest = ($r.Content | ConvertFrom-Json).tag_name
+              } catch { $latest = "" }
+              if ($latest -eq "v$env:NEW") { break }
+              Start-Sleep 10
+            }
+            "GitHub's latest release: $latest ($([int]$clock.Elapsed.TotalSeconds) s)"
+            # (and the check itself is tried again if it still saw no update)
+            for ($try = 1; $try -le 3; $try++) {
+              $p = Start-Process -FilePath $exe -ArgumentList '--update-test' -PassThru
+              if (-not $p.WaitForExit(300000)) { $p.Kill(); throw "The update check did not finish in 5 minutes" }
+              Get-Content (Join-Path $logs 'update-test.txt')
+              if ($p.ExitCode -eq 0) { break }
+              if ($try -lt 3) { "No update seen yet (try $try); trying again in 60 s"; Start-Sleep 60 }
+            }
             if ($p.ExitCode -ne 0) { throw "The update failed" }
             # the downloaded installer runs on its own once the program has quit
             $clock = [Diagnostics.Stopwatch]::StartNew()
