@@ -86,6 +86,10 @@ export interface LayoutOptions {
   hiddenIds?: string[];
   /** Primary lineage: the branch to centre in the canopy. Defaults to settings.centerBranchId. */
   centerBranchId?: string | null;
+  /** With no branch chosen, centre a son whose branch holds most of the canopy. Default true. */
+  autoCenter?: boolean;
+  /** How far (radians) above horizontal the canopy's sweep starts on each side. Default: SWEEP_LIFT, eased for a very crowded generation. */
+  sweepLift?: number;
   /** Where the canopy starts. Defaults to tree.crownBaseId, then automatic. */
   crownBaseId?: string | null;
   nodeShape?: NodeShape | "auto";
@@ -294,6 +298,8 @@ export interface PosterLayout {
   unplacedIds?: string[];
   /** The foundation keeps every name and so takes more than its share of the page (shortening it would give the canopy room). */
   soilOverShare?: boolean;
+  /** How far above horizontal the canopy's sweep started (radians; see SWEEP_LIFT). */
+  sweepLift?: number;
 }
 
 interface TNode {
@@ -338,6 +344,32 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // attempts nearest to clean. (More of it for each family shown through a
   // daughter: holders and dotted lines leave the most to untangle.)
   const untangleChecks = CHECKS + 3 * (opts.familiesThrough ?? tree.settings?.familiesThrough ?? []).length;
+  // The crown rises from the trunk (SWEEP_LIFT), unless the old wide sweep
+  // is plainly the better start: the search's first attempt (the names at
+  // full size) is made both ways when the lifted one is not clean and
+  // legible.
+  // (that first attempt is the search's own first one: it is not made again)
+  let firstAttempt: PosterLayout | undefined;
+  if (opts.sweepLift === undefined) {
+    const first = (o: LayoutOptions) => {
+      const l = layoutAttempt(tree, o, 1, false, false, false, { checks: 0 });
+      l.clarity = validateRelationships(l, tree);
+      return l;
+    };
+    firstAttempt = first(opts);
+    // (a family of up to LARGE_FAMILY names is laid out a second time
+    // instead when need be, see the end: that is cheap, and exact)
+    if (firstAttempt.nodes.length > LARGE_FAMILY && (firstAttempt.sweepLift ?? WIDE_SWEEP) > 0 && !(isClean(firstAttempt) && firstAttempt.legibility.ok)) {
+      const wide = first({ ...opts, sweepLift: WIDE_SWEEP });
+      // (only when the wide sweep is clean and legible at once, or the
+      // lifted names are too small and the wide ones are not: the few
+      // ambiguities of a lifted first attempt the search usually resolves)
+      if ((isClean(wide) && wide.legibility.ok) || (!firstAttempt.legibility.ok && wide.legibility.ok)) {
+        opts = { ...opts, sweepLift: WIDE_SWEEP };
+        firstAttempt = wide;
+      }
+    }
+  }
   const search = (dense: boolean) => {
     const attempt = (scale: number, final = false, strict = false, untangle = 0, trunk = 1) => {
       const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, trunk });
@@ -345,6 +377,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       return layout;
     };
     const tried = new Map<number, PosterLayout>();
+    if (!dense && firstAttempt) tried.set(1, firstAttempt);
     const at = (scale: number) => {
       const key = Math.round(scale * 1000) / 1000;
       if (!tried.has(key)) tried.set(key, attempt(key));
@@ -545,6 +578,15 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   }
   const result = best.layout;
   result.tooDense = result.clarity.issues.length > CLARITY_LIMIT;
+  // The lifted sweep (a crown rising from the trunk) never costs a clean,
+  // legible poster: when it does not give one, the old wide sweep is tried
+  // too, and the better of the two kept. (For a family of up to
+  // LARGE_FAMILY names; a larger one was decided on its first attempt, as
+  // laying it out twice would be slow.)
+  if (opts.sweepLift === undefined && result.nodes.length <= LARGE_FAMILY && (result.sweepLift ?? WIDE_SWEEP) > 0 && !(isClean(result) && result.legibility.ok)) {
+    const wide = computePosterLayout(tree, { ...opts, sweepLift: WIDE_SWEEP });
+    if (rank(wide) < rank(result)) return wide;
+  }
   return result;
 }
 
@@ -583,6 +625,23 @@ const BASE_OVAL = { w: 1, h: 0.66 };
 
 /** The least share of its father's span the primary lineage's branch takes, in the middle. */
 const CENTER_SHARE = 0.3;
+/** A son whose branch holds at least this share of the canopy (and twice his next brother's) is centred when no branch is chosen. */
+const DOMINANT_SHARE = 0.45;
+/**
+ * The canopy's sweep starts this far (radians, ~17°) above horizontal on
+ * each side: the crown rises from the trunk. (Measured on the sample
+ * families and a real one: names level with the canopy base or below fall
+ * from about 22% to 5%, with the same clarity, legibility and name sizes;
+ * a steeper sweep starts to cost name size.)
+ */
+const SWEEP_LIFT = 0.3;
+/** The full lift up to this many names in the canopy's most crowded generation; none (the old sweep) from LIFT_NONE_FROM. */
+const LIFT_FULL_UNTIL = 50;
+const LIFT_NONE_FROM = 100;
+/** Above this many names, the sweep is chosen on the layout's first attempt rather than by laying the family out twice. */
+const LARGE_FAMILY = 150;
+/** The old sweep: a little below horizontal on each side, the widest the canopy can be. */
+const WIDE_SWEEP = -0.12;
 
 /** The least share of its father's space a child gets (see partition). */
 const MIN_CHILD_SHARE = 0.1;
@@ -896,7 +955,14 @@ function layoutAttempt(
     }
     return demand;
   };
-  const ARC = Math.PI + 0.24; // the canopy's angular range (thetaStart - thetaEnd)
+  // How far above horizontal the canopy's sweep starts (see SWEEP_LIFT).
+  // (A generation crowded past LIFT_FULL_UNTIL names needs the whole width:
+  // the lift eases back to the old sweep, a little below horizontal, by
+  // LIFT_NONE_FROM; names stay legible and clean before the shape is tidy)
+  const widestRing = Math.max(0, ...[...crownNodes.reduce((m, n) => m.set(n.depth, (m.get(n.depth) ?? 0) + 1), new Map<number, number>()).values()]);
+  const crowding = clamp((widestRing - LIFT_FULL_UNTIL) / (LIFT_NONE_FROM - LIFT_FULL_UNTIL), 0, 1);
+  let lift = opts.sweepLift ?? SWEEP_LIFT + (WIDE_SWEEP - SWEEP_LIFT) * crowding;
+  let ARC = Math.PI - 2 * lift; // the canopy's angular range (thetaStart - thetaEnd)
   const RING_FILL = 0.85; // families leave a little room between them
   // Where each ring must be at least (as a fraction of the way from r0 to
   // the canopy's mean reach M), for its names to fit around it, and no
@@ -921,7 +987,7 @@ function layoutAttempt(
     };
     let sum = 0;
     for (let i = 0; i <= 16; i++) {
-      const th = -0.12 + (ARC * i) / 16;
+      const th = lift + (ARC * i) / 16;
       let lo = 0, hi = Math.max(rx, ry) * 2.5;
       for (let k = 0; k < 22; k++) {
         const mid = (lo + hi) / 2;
@@ -931,8 +997,10 @@ function layoutAttempt(
     }
     return sum / 17;
   };
-  const crownDims = (f: number) => {
-    const A = Math.max(crownNodes.reduce((sum, n) => sum + estArea(n, f), 0) * PACK, (f * 14) ** 2);
+  // (areaScale > 1: the crown must hold its names in a narrower sweep, see
+  // the choice of the lift below)
+  const crownDims = (f: number, areaScale = 1) => {
+    const A = Math.max(crownNodes.reduce((sum, n) => sum + estArea(n, f), 0) * PACK * areaScale, (f * 14) ** 2);
     const depthNeed = baseRFor(f) + f * 1.6 + Math.max(0, base.height - 1) * f * RING_GAP;
     // the rings' reach from the crown base: ~0.76·rx to the sides, ~1.7·ry upward
     const rx = Math.min(rxMax, Math.max(Math.sqrt(A / (EGG * ASPECT)), depthNeed / 0.76));
@@ -1038,11 +1106,11 @@ function layoutAttempt(
     const ctx = shortenSoil(full, lo);
     return { ctx, height: soilDef.height(ctx) };
   };
-  const totalFor = (f: number, p: Plan) => {
+  const totalFor = (f: number, p: Plan, areaScale = 1) => {
     const trunkH = trunkSection(p.onTrunk.length, f);
     if (branchMode && trunkH > avail * TRUNK_SHARE) return Infinity;
     const useSoil = p.soil.length > 0 || !!customSoil;
-    return 1.8 * crownDims(f).ry + baseRFor(f) + trunkH + (useSoil ? soilFor(f, p).height : f * 0.8);
+    return 1.8 * crownDims(f, areaScale).ry + baseRFor(f) + trunkH + (useSoil ? soilFor(f, p).height : f * 0.8);
   };
   const avail = contentBottom - contentTop;
   // Candidate arrangements, most faithful first.
@@ -1074,6 +1142,15 @@ function layoutAttempt(
   // On a branch poster the trunk is context: its nearest few ancestors
   if (branchMode && plans.some((p) => p.onTrunk.length <= BRANCH_TRUNK_NAMES)) {
     plans.splice(0, plans.length, ...plans.filter((p) => p.onTrunk.length <= BRANCH_TRUNK_NAMES));
+  }
+  // The crown rises as far as the page allows. A narrower sweep needs a
+  // crown larger by the arc it gives up; when that would not hold the names
+  // at the legible size, a lower lift is taken (down to the old wide sweep),
+  // before any name is set smaller.
+  if (opts.sweepLift === undefined) {
+    const fits = (L: number) => plans.some((p) => totalFor(minFont, p, (Math.PI - 2 * WIDE_SWEEP) / (Math.PI - 2 * L)) <= avail);
+    while (lift > WIDE_SWEEP + 1e-9 && !fits(lift)) lift = Math.max(WIDE_SWEEP, lift - 0.1);
+    ARC = Math.PI - 2 * lift;
   }
   let plan = plans.find((p) => totalFor(minFont, p) <= avail);
   let f: number;
@@ -1200,9 +1277,11 @@ function layoutAttempt(
     }
     return lo;
   };
-  // a little below horizontal on each side, not into the corner by the trunk
-  const thetaStart = Math.PI + 0.12;
-  const thetaEnd = -0.12;
+  // the sweep starts above horizontal on each side, so the crown rises
+  // from the trunk (its lowest names above the canopy base, never hanging
+  // level with it or below, as a flat-bottomed fan)
+  const thetaStart = Math.PI - lift;
+  const thetaEnd = lift;
   // reach() is called very often (ring packing): a lookup table over the
   // crown's angular range, interpolated, instead of a bisection per call
   const REACH_N = 720;
@@ -1357,7 +1436,18 @@ function layoutAttempt(
   // the way from the canopy base to the centred branch (empty when none is
   // set, or it is not in the canopy)
   const centerId = opts.centerBranchId !== undefined ? opts.centerBranchId : (tree.settings?.centerBranchId ?? null);
-  const centerNode = centerId ? (base.descendants() as HNode[]).find((n) => n !== base && n.data.member?.id === centerId) : undefined;
+  // Without a branch chosen (or one outside the canopy), a son whose
+  // branch holds most of the canopy is centred: it rises from the trunk as
+  // the crown, his brothers to either side, instead of swinging the tree
+  // to one side.
+  const dominant = (() => {
+    const kids = ((base.children ?? []) as HNode[]).map((k) => ({ k, size: k.descendants().length })).sort((a, b) => b.size - a.size);
+    const total = kids.reduce((sum, x) => sum + x.size, 0);
+    if (kids.length < 3 || !kids[0].k.children?.length) return undefined;
+    return kids[0].size >= total * DOMINANT_SHARE && kids[0].size >= kids[1].size * 2 ? kids[0].k : undefined;
+  })();
+  const centerNode = (centerId ? (base.descendants() as HNode[]).find((n) => n !== base && n.data.member?.id === centerId) : undefined)
+    ?? (opts.autoCenter === false ? undefined : dominant);
   const centerPath = new Set<HNode>(centerNode ? (centerNode.ancestors() as HNode[]).filter((n) => n !== base && n.depth > base.depth) : []);
   const centerIds = new Set([...centerPath].map((n) => n.data.member!.id));
   partition(base, 0.015, 0.985);
@@ -2756,6 +2846,7 @@ function layoutAttempt(
     generationsPresent: [...gens].sort((a, b) => a - b),
     unplacedIds,
     soilOverShare,
+    sweepLift: lift,
     legibility,
     overlaps,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },

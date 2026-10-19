@@ -364,6 +364,46 @@ is held in the page as a `data:` URL.
   order, split where the two sides weigh most alike. It works for any
   person in the canopy, at any depth: every branch on the way is centred
   in its father's space.
+- **Centred on its own when one branch is most of the tree:** with no
+  branch chosen, a son of the canopy base whose branch holds at least 45%
+  of the canopy (and twice his next brother's) is centred, so it rises from
+  the trunk as the crown instead of swinging the tree to one side. A branch
+  you centre yourself always wins.
+
+## The tree's shape
+
+The poster is meant to read as a tree in every theme: a trunk, and a crown
+rising from it. Three things see to it:
+
+- **The crown rises.** The canopy's sweep starts about 17° above horizontal
+  on each side, so its lowest names sit above where the trunk divides,
+  never level with it or hanging below as a flat-bottomed fan. (A
+  generation of more than 50 names needs the whole width: the lift eases
+  back by 100 names, so the names stay legible.)
+- **A large branch is centred** (above).
+- **Never at the cost of clarity or legibility:** when the rising crown
+  does not give a clean, legible poster, the old wide sweep is tried too,
+  and the better of the two is kept. (A family of more than 150 names is
+  not laid out twice, which would be slow: the choice is made on the
+  layout's first attempt, the wide sweep taken only when it is clean and
+  legible at once and the rising crown is not, or when only it keeps the
+  names legible.) The crown is also sized for the narrower sweep before
+  any name is placed.
+
+The shape is measured (`measureShape` in `src/lib/layout/shape.ts`):
+
+| Measure | Means | Tree-like |
+| --- | --- | --- |
+| droop | share of names level with the canopy base or below | at most 15% |
+| lean | how far the crown's weight sits to one side | under 0.2 of its half-width |
+| sides | share of names on the heavier side, beyond half | under 15% |
+| trunk | the trunk's share of the tree's height | over 12% |
+
+Tests hold every theme to these, with and without spouses and daughters'
+families, on a family with one dominant branch (built like a real one that
+came out disfigured) and on the sample families. On the old layout that
+family's names hung at the trunk's top; now droop is at most 7% and lean
+0.1 in every theme.
 
 ## A daughter's family, on dotted lines
 

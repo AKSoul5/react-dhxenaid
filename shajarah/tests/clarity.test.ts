@@ -109,10 +109,18 @@ describe("relationship clarity of the poster layouts", () => {
     });
   }
 
-  it("the large family on A2: clean only below the legible size, so A2 is flagged", () => {
-    const l = layoutOf(generateSampleTree(), "A2");
-    // never both: an ambiguity-free poster that claims legible text it does not have
-    expect(l.clarity.ok && l.legibility.ok).toBe(false);
+  it("the large family on A2: clean and legible, and truly so", () => {
+    // (it was clean only below the legible size until the crown rose from
+    // the trunk; the claim is checked independently, never just trusted)
+    const tree = generateSampleTree();
+    const l = layoutOf(tree, "A2");
+    expect(l.clarity.ok).toBe(true);
+    expect(l.legibility.ok).toBe(true);
+    expect(l.legibility.smallestTextMm).toBeGreaterThanOrEqual(l.legibility.minTextMm - 1e-9);
+    expect(l.overlaps).toBe(0);
+    const r = validateRelationships(l, tree);
+    expect(r.issues).toEqual([]);
+    expect(r.drawn).toBe(r.expected);
   });
 
   it("dense branches: ambiguities are reported, located, and fall with a larger poster", () => {
