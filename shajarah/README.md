@@ -982,6 +982,50 @@ the pointer, and dragging pans; **＋ / － / Fit** zoom and fit the poster.
 It can be scrolled no more than half its size past the view, so it is
 never lost.
 
+## Family outline (.txt)
+
+The whole family as plain text, to read, check, correct by hand, send in
+a message, or start a family from (`src/lib/outline.ts`). **Files →
+Download family outline** writes it; **Files → Import** (or, on the start
+page, **From a file**) reads it back, with the GEDCOM import's preview and
+undo.
+
+```
+عبدالله | لقب: الكبير | مواليد: 1320
+  محمد | زوجة: نورة بنت سعد; #1
+    خالد | أم: نورة بنت سعد
+    هند (بنت) | أم: #1 | زوج: فهد الشمري
+      سلمان | أب: فهد الشمري
+  سارة (بنت) #1
+```
+
+- One person per line, two spaces of indent per generation (a tab counts
+  as two), under their parent: a man's children under him, a daughter's
+  family under her (`أب:` / `father:` names their father).
+- `(بنت)` or `(F)` marks a woman, `(؟)` / `(?)` not known; men by default.
+- After ` | `: `زوجة` / `زوج` (several with `;`), `أم` / `أب` (the child's
+  other parent: one of the parent's spouses, or someone new), `مواليد`,
+  `وفاة`, `لقب`, `ملاحظة`, or in English `wife`, `husband`, `mother`,
+  `father`, `born`, `died`, `laqab`, `note`.
+- `#7` after a name labels that person, and `#7` in place of a name refers
+  to them: a cousin who married into the line is one person, not two.
+- Lines starting with `#` are comments. An Arabic family's outline is
+  written with the Arabic keys, so it reads in order in a right-to-left
+  editor; either set is read.
+- Written and read back, a family comes back the same: every person,
+  parent, marriage, year and laqab (tests/outline.test.ts, on a 656-person
+  family too).
+
+## Start page
+
+The start page shows what Shajarah makes (a poster of the sample family
+of three wives, `public/landing-poster.jpg`), the families on this
+computer (most recently edited first, each with its people and when it
+was last edited, and a delete that asks first), and three ways to start:
+type a new family, start from a file (a GEDCOM file or a family outline:
+a new family is created and the file imported into it), or open a saved
+project file.
+
 ## Print export
 
 - **Poster size.** Choose A3, A2, A1, A0 or any larger size in the header:

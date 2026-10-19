@@ -27,7 +27,7 @@ export function OpenProjectButton() {
   return (
     <div className="space-y-2">
       <input ref={input} type="file" accept={`${PROJECT_EXTENSION},application/json`} className="hidden" onChange={(e) => void open(e.target.files?.[0])} />
-      <button type="button" className="btn-outline w-full" disabled={busy} onClick={() => input.current?.click()}>
+      <button type="button" className="btn-outline w-full justify-center" disabled={busy} onClick={() => input.current?.click()}>
         {busy ? "Opening…" : "Open a project file (.shajarah)"}
       </button>
       {error && <p className="text-sm text-red-700">{error}</p>}

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { GEDCOM_MAX_CHARS, exportGedcom } from "@/lib/gedcom";
+import { exportOutline } from "@/lib/outline";
 import type { TreeDTO } from "@/lib/types";
 import { previewGedcom, type GedcomPreview } from "./gedcomPreview";
 import { PROJECT_EXTENSION } from "@/lib/project";
@@ -106,12 +107,15 @@ export function GedcomPanel({ tree, busy, filename, onImport, onOpenProject, ope
     setFile({ name: f.name, size: f.size, bytes: f.size > REFUSE_BYTES ? new ArrayBuffer(0) : await f.arrayBuffer() });
   };
 
-  const download = () => {
-    const url = URL.createObjectURL(new Blob([exportGedcom(tree)], { type: "text/x-gedcom;charset=utf-8" }));
-    const a = Object.assign(document.createElement("a"), { href: url, download: `${filename}.ged` });
+  const save = (text: string, type: string, name: string) => {
+    const url = URL.createObjectURL(new Blob([text], { type }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: name });
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
+  const download = () => save(exportGedcom(tree), "text/x-gedcom;charset=utf-8", `${filename}.ged`);
+  // (a byte-order mark, so Notepad and phones read the Arabic as UTF-8)
+  const downloadOutline = () => save(`\uFEFF${exportOutline(tree)}`, "text/plain;charset=utf-8", `${filename}-family.txt`);
 
   const p = status.kind === "ready" ? status.preview : null;
   return (
@@ -139,16 +143,17 @@ export function GedcomPanel({ tree, busy, filename, onImport, onOpenProject, ope
       </section>
 
       <section className="space-y-3 border-t border-parchment-200 pt-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-bark-500">Import a GEDCOM file</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-bark-500">Import a GEDCOM file or family outline</h2>
         <p className="text-gray-600">
           GEDCOM (.ged) is the file other genealogy programs export: Ancestry, MyHeritage, FamilySearch,
-          Gramps, MacFamilyTree… People already in this tree are matched by name and line and reused.
-          Nothing is saved until you press Import.
+          Gramps, MacFamilyTree… A family outline (.txt) is plain text, one name per line, indented under the
+          parent (see below). People already in this tree are matched by name and line and reused. Nothing is
+          saved until you press Import.
         </p>
         <input
           type="file"
-          accept=".ged,.gedcom,text/plain"
-          aria-label="GEDCOM file"
+          accept=".ged,.gedcom,.txt,text/plain"
+          aria-label="GEDCOM file or family outline"
           className="block w-full text-xs file:me-3 file:rounded-md file:border file:border-parchment-300 file:bg-parchment-50 file:px-3 file:py-1.5"
           onChange={(e) => void choose(e.target.files?.[0])}
         />
@@ -226,6 +231,22 @@ export function GedcomPanel({ tree, busy, filename, onImport, onOpenProject, ope
         </p>
         <button type="button" className="btn-outline" disabled={tree.members.length === 0} onClick={download}>
           Download GEDCOM ({tree.members.length} {tree.members.length === 1 ? "person" : "people"})
+        </button>
+      </section>
+
+      <section className="space-y-2 border-t border-parchment-200 pt-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-bark-500">Family outline (.txt)</h2>
+        <p className="text-gray-600">
+          The whole family as plain text: one person per line, indented under their parent, with wives, mothers,
+          years and laqab after a <code>|</code>. Easy to read, check, correct or send in a message, and it can be
+          imported back (above), here or into a new family.
+        </p>
+        <pre className="overflow-x-auto rounded-md bg-parchment-50 p-2 text-xs leading-relaxed" dir="rtl">{`عبدالله | زوجة: نورة بنت سعد
+  محمد | أم: نورة بنت سعد | مواليد: 1950
+  سارة (بنت) | زوج: فهد الشمري
+    سلمان | أب: فهد الشمري`}</pre>
+        <button type="button" className="btn-outline" disabled={tree.members.length === 0} onClick={downloadOutline}>
+          Download family outline (.txt)
         </button>
       </section>
     </div>

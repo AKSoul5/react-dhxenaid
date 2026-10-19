@@ -12,6 +12,7 @@ const config: Config = {
       },
       fontFamily: {
         naskh: ["Amiri", "Noto Naskh Arabic", "serif"],
+        ruqaa: ["Aref Ruqaa", "Amiri", "serif"],
       },
     },
   },

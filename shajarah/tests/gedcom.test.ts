@@ -184,7 +184,8 @@ describe("reading GEDCOM files", () => {
   });
 
   it("reports a file that is not GEDCOM instead of importing nothing silently", () => {
-    const r = parseGedcom("hello\nworld");
+    // (plain names, one per line, are a family outline: tests/outline.test.ts)
+    const r = parseGedcom('{"format": "shajarah-project", "tree": {}}');
     expect(r.people).toHaveLength(0);
     expect(r.warnings.join(" ")).toMatch(/does not look like a GEDCOM file/);
   });

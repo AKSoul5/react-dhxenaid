@@ -14,6 +14,7 @@
 import { childrenIndex, computeGenerations, lineageParentId } from "./genealogy";
 import { normalizeName, parseNasab, splitLaqab } from "./nasab";
 import type { CitationDTO, Gender, MarriageDTO, MediaDTO, MemberDTO, SourceDTO, TreeDTO } from "./types";
+import { looksLikeOutline, parseOutline } from "./outline";
 
 /** Largest file the server accepts (characters of text, about the same in bytes). */
 export const GEDCOM_MAX_CHARS = 20_000_000;
@@ -209,6 +210,13 @@ function factLine(label: string, ev: GNode | undefined): string | null {
 }
 
 export function parseGedcom(text: string): GedcomFile {
+  // a family outline (plain text, one person per line: src/lib/outline.ts)
+  // is read as the GEDCOM file it stands for
+  if (looksLikeOutline(text)) {
+    const o = parseOutline(text);
+    const file = parseGedcom(exportGedcom({ name: "outline", members: o.members, marriages: o.marriages }));
+    return { ...file, source: "Shajarah family outline", warnings: [...o.warnings, ...file.warnings] };
+  }
   const warnings: string[] = [];
   const records = parseLines(text, warnings);
   if (!records.some((r) => r.tag === "INDI")) {
