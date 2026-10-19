@@ -89,8 +89,14 @@ function makePalette(theme: PosterTheme, layout: PosterLayout): Palette {
         return { fill: c.fill, border: shade(c.fill, -0.35), text: c.text };
       }
       // Fathers (members with descendants) are ivory capsules with a gold
-      // rim, a step up from the leaves and capsules of childless members.
-      if (!n.terminal) return { fill: IVORY, border: GOLD, text: INK };
+      // rim, a step up from the leaves and capsules of childless members. A
+      // daughter whose children are of another family keeps her colour,
+      // with the gold rim.
+      if (!n.terminal && !n.childrenOutside) return { fill: IVORY, border: GOLD, text: INK };
+      if (n.childrenOutside) {
+        const base = female ? theme.female : theme.male;
+        return { fill: theme.metallic ? satin(n.member.gender) : base, border: GOLD, text: textOn(base) };
+      }
       if (theme.preset === "classic" && !female && n.shape === "leaf") {
         const tone = LEAF_TONES[hashString(n.id) % LEAF_TONES.length];
         return { fill: tone, border: shade(tone, -0.4), text: "#ffffff" };

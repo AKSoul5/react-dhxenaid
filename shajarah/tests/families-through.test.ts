@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { computePosterLayout } from "@/lib/layout/botanical";
 import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
+import { kalaliRealistic150 } from "@/lib/samples/kalali";
 import { nouriFamily } from "@/lib/samples/nouri";
-import type { TreeDTO } from "@/lib/types";
+import type { MemberDTO, TreeDTO } from "@/lib/types";
 
 // The Al-Nouri test family: Amina's and Layla's children belong to their
 // fathers' lines (Hassan, Sami), so a patrilineal poster leaves them out,
@@ -19,11 +20,14 @@ describe("a daughter's family on dotted lines", () => {
   };
   const theirs = new Set([...descendantsOf(amina.id), ...descendantsOf(layla.id)]);
   const opts = { ...layoutOptionsFor(resolveTheme(tree.settings), "A2"), showFemales: true };
+  // Noura's two children have no father recorded: always drawn from her,
+  // on dotted lines (they are not of the line either)
+  const NOURA = 2;
 
   it("is not drawn unless chosen", () => {
     const l = computePosterLayout(tree, opts);
     expect(l.nodes.some((n) => theirs.has(n.member.id))).toBe(false);
-    expect(l.branches.some((b) => b.dotted)).toBe(false);
+    expect(l.branches.filter((b) => b.dotted)).toHaveLength(NOURA);
   });
 
   it("draws their children and grandchildren from them, every line dotted, and stays clear", () => {
@@ -49,7 +53,7 @@ describe("a daughter's family on dotted lines", () => {
       for (const c of s.childIds) expect(l.edges.some((e) => e.parentId === s.id && e.childId === c)).toBe(true);
     }
     // every line of theirs dotted: to each husband and to each descendant
-    expect(l.branches.filter((b) => b.dotted)).toHaveLength(theirs.size + 2);
+    expect(l.branches.filter((b) => b.dotted)).toHaveLength(theirs.size + 2 + NOURA);
     expect(l.nodes.find((n) => n.member.id === amina.id)!.subLabel ?? null).toBeNull();
     // generations count through her: Ibrahim 0, Amina 1, her children 2
     const yusuf = l.nodes.find((n) => n.member.name === "Yusuf" && n.parentId === amina.id)!;
@@ -89,6 +93,29 @@ describe("a daughter's family on dotted lines", () => {
     expect(Math.abs(order.indexOf("Yusuf") - order.indexOf("Hamza"))).toBe(1);
     expect(l.clarity.issues).toEqual([]);
     expect(l.overlaps).toBe(0);
-    expect(l.branches.filter((b) => b.dotted).length).toBe(7 + 2);
+    expect(l.branches.filter((b) => b.dotted).length).toBe(7 + 2 + NOURA);
+  });
+});
+
+describe("a daughter's child whose father is not recorded", () => {
+  // (he was drawn from her on a solid line, as one of the line, and she
+  // turned ivory like the line's fathers)
+  it("hangs from her on a dotted line, counted from her, and she keeps her colour", () => {
+    const tree = kalaliRealistic150();
+    const settings = { ...tree.settings, showFemales: true };
+    const options = layoutOptionsFor(resolveTheme(settings), "A1");
+    const before = computePosterLayout({ ...tree, settings }, options);
+    const her = before.nodes.find((n) => n.member.gender === "FEMALE" && n.terminal && n.depth >= 2)!;
+    const son: MemberDTO = { ...her.member, id: "her-son", name: "قصي", gender: "MALE", fatherId: null, motherId: her.member.id, birthOrder: 0 };
+    const l = computePosterLayout({ ...tree, settings, members: [...tree.members, son] }, options);
+    const mother = l.nodes.find((n) => n.member.id === her.member.id)!;
+    const kid = l.nodes.find((n) => n.member.id === son.id)!;
+    expect(kid.parentId).toBe(her.member.id);
+    expect(mother.terminal).toBe(false);
+    expect(mother.childrenOutside).toBe(true);
+    expect(kid.generation).toBe(mother.generation + 1);
+    expect(l.branches.filter((b) => b.dotted)).toHaveLength(1);
+    // a father of the line is still drawn as one
+    expect(l.nodes.filter((n) => !n.terminal && n.member.gender === "MALE").every((n) => !n.childrenOutside)).toBe(true);
   });
 });

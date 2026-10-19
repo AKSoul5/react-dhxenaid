@@ -143,6 +143,11 @@ export interface PosterNode {
   subLabel: string | null;
   /** True for members without (visible) children. */
   terminal: boolean;
+  /**
+   * Her children belong to another family (a daughter's, on dotted lines):
+   * she keeps her own colour instead of the line's "has descendants" style.
+   */
+  childrenOutside?: boolean;
   /** Leaf orientation in degrees (leaf points along +x before rotation). */
   angle: number;
   /** Leaf blade size; w/h are the axis-aligned bounds used for collisions. */
@@ -660,24 +665,26 @@ function layoutAttempt(
   }
   const root = hierarchy<TNode>(rootT, (d) => d.children).count() as HNode;
 
-  // Families shown through a daughter: her children (drawn from her, not
-  // from their father) and all their descendants are relatives outside
-  // the lineage, on dotted lines. Their generations are counted from her.
+  // Families through a daughter: her children (drawn from her, not from
+  // their father) and all their descendants are relatives outside the
+  // lineage, on dotted lines. Their generations are counted from her. That
+  // includes a child whose father is not recorded: drawn from his mother,
+  // he is still not of the line.
   const dotted = new Set<string>();
   const generationOf = new Map<string, number>();
-  if (through.size) {
-    root.each((n) => {
-      const m = n.data.member;
-      const p = n.parent?.data.member;
-      if (!m || !p) return;
-      // (drawn from their mother in a father's-line tree, or the reverse)
-      const throughHer = through.has(p.id) && (tree.lineage === "MATRILINEAL" ? m.fatherId === p.id : m.motherId === p.id);
-      if (dotted.has(p.id) || throughHer) {
-        dotted.add(m.id);
-        generationOf.set(m.id, (generationOf.get(p.id) ?? p.generation) + 1);
-      }
-    });
-  }
+  root.each((n) => {
+    const m = n.data.member;
+    const p = n.parent?.data.member;
+    if (!m || !p) return;
+    // (drawn from their mother in a father's-line tree, or the reverse)
+    const throughHer = tree.lineage === "MATRILINEAL"
+      ? m.fatherId === p.id && m.motherId !== p.id
+      : m.motherId === p.id && m.fatherId !== p.id;
+    if (dotted.has(p.id) || throughHer) {
+      dotted.add(m.id);
+      generationOf.set(m.id, (generationOf.get(p.id) ?? p.generation) + 1);
+    }
+  });
   const genOf = (m: MemberDTO) => generationOf.get(m.id) ?? m.generation;
 
   const rtl = opts.rtl ?? ARABIC.test(root.data.member?.name ?? tree.title ?? "");
@@ -1311,6 +1318,7 @@ function layoutAttempt(
     const node: LiveNode = {
       id: m.id, member: m, x: p.x, y: p.y, tx: p.x, ty: p.y, depth,
       generation: genOf(m), w, h, fontSize: fs, shape, label, subLabel, terminal,
+      childrenOutside: !terminal && !dotted.has(m.id) && n.children!.every((c) => dotted.has(c.data.member!.id)),
       angle, leafLength, leafWidth, leafCount: n.value ?? 1,
       parentId: n.parent?.data.member?.id ?? null,
       mass: medallion ? 4 : 1, region, side,

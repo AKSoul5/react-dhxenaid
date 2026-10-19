@@ -6,7 +6,7 @@ import { computePosterLayout } from "@/lib/layout/botanical";
 import { branchHeads, clearestPaper, rankBranches, smallestClearPaper, type BranchOption } from "@/lib/layout/branches";
 import { generationColor } from "@/lib/layout/palette";
 import { lineagePath, nasab } from "@/lib/genealogy";
-import type { Gender, TreeDTO } from "@/lib/types";
+import type { Gender, MemberDTO, TreeDTO } from "@/lib/types";
 import type { CreateMemberInput } from "@/lib/validation";
 import { ExportMenu } from "../poster/ExportMenu";
 import { PosterViewport } from "../poster/PosterViewport";
@@ -170,7 +170,19 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
         ? marriages[0].spouseAId === selected.id ? marriages[0].spouseBId : marriages[0].spouseAId
         : null;
     const otherKey = parentKey === "fatherId" ? "motherId" : "fatherId";
-    void mutate(() => repo.createMember({ name, gender, [parentKey]: selected.id, [otherKey]: spouseId }), { label: `Add ${name}` });
+    // A daughter's child (a son's, in a mother's-line tree) by a husband
+    // from outside the line is of another family: the poster shows her
+    // family on dotted lines from then on. (Not a wife who married in, nor
+    // a daughter married to a cousin: their children are of the line.)
+    const line = tree.rootMemberId ? lineagePath(tree.members, tree.lineage, tree.rootMemberId).descendants : [];
+    const ofLine = (m: MemberDTO | undefined) => !!m && line.includes(m.id);
+    const daughterOfLine = (tree.lineage === "MATRILINEAL" ? selected.gender === "MALE" : selected.gender === "FEMALE") && ofLine(selected);
+    const through = tree.settings?.familiesThrough ?? [];
+    const showHerFamily = daughterOfLine && !ofLine(tree.members.find((m) => m.id === spouseId)) && !through.includes(selected.id);
+    void (async () => {
+      const next = await mutate(() => repo.createMember({ name, gender, [parentKey]: selected.id, [otherKey]: spouseId }), { label: `Add ${name}` });
+      if (next && showHerFamily) updateSettings({ familiesThrough: [...through, selected.id] });
+    })();
   };
 
   // Poster settings change on screen at once and are saved shortly after
