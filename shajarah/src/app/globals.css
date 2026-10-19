@@ -52,18 +52,18 @@
       focus:border-gilt-500 focus:ring-2 focus:ring-gilt-400/30;
   }
   .btn-primary {
-    @apply inline-flex items-center gap-1 rounded-md bg-bark-700 px-3 py-1.5 text-sm font-medium text-parchment-50
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-gilt-500 focus-visible:ring-offset-1 inline-flex items-center gap-1 rounded-md bg-bark-700 px-3 py-1.5 text-sm font-medium text-parchment-50
       hover:bg-bark-900 disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-outline {
-    @apply inline-flex items-center gap-1 rounded-md border border-parchment-300 bg-white px-3 py-1.5 text-sm
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-gilt-500 focus-visible:ring-offset-1 inline-flex items-center gap-1 rounded-md border border-parchment-300 bg-white px-3 py-1.5 text-sm
       text-bark-700 hover:bg-parchment-50 disabled:opacity-50;
   }
   .btn-ghost {
-    @apply inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-bark-700 hover:bg-parchment-100;
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-gilt-500 focus-visible:ring-offset-1 inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-bark-700 hover:bg-parchment-100;
   }
   .btn-danger {
-    @apply inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-700
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-gilt-500 focus-visible:ring-offset-1 inline-flex items-center rounded-md border border-red-200 px-3 py-1.5 text-sm text-red-700
       hover:bg-red-50 disabled:opacity-50;
   }
   .section-title {

@@ -46,7 +46,21 @@ export async function listTrees(): Promise<TreeSummary[]> {
   return trees.map((t) => ({
     id: t.id, name: t.name, title: t.title, memberCount: t._count.members,
     updatedAt: t.updatedAt.toISOString(),
+    pinned: !!(t.settings as { pinned?: unknown } | null)?.pinned,
   }));
+}
+
+/**
+ * Pins a family to the top of the start page's list (or unpins it). Its
+ * other settings stay as they are, and so does its "last edited" time:
+ * pinning is not an edit of the family.
+ */
+export async function setPinned(treeId: string, pinned: boolean): Promise<{ id: string; pinned: boolean }> {
+  const tree = await prisma.familyTree.findUnique({ where: { id: treeId }, select: { settings: true, updatedAt: true } });
+  if (!tree) throw new DomainError("Tree not found.", 404);
+  const settings = { ...((tree.settings as Record<string, unknown> | null) ?? {}), pinned };
+  await prisma.familyTree.update({ where: { id: treeId }, data: { settings: settings as Prisma.InputJsonValue, updatedAt: tree.updatedAt } });
+  return { id: treeId, pinned };
 }
 
 /** The whole tree, with its version (see TreeDTO.version). */

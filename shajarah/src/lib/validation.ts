@@ -59,6 +59,7 @@ export const updateTreeSchema = createTreeSchema.partial().extend({
       familiesThrough: z.array(z.string()).max(1000).optional(),
       seed: z.number().int().optional(),
       theme: themeSchema.optional(),
+      pinned: z.boolean().optional(),
     })
     .nullable()
     .optional(),

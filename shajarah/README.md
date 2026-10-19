@@ -1018,13 +1018,24 @@ undo.
 
 ## Start page
 
-The start page shows what Shajarah makes (a poster of the sample family
-of three wives, `public/landing-poster.jpg`), the families on this
-computer (most recently edited first, each with its people and when it
-was last edited, and a delete that asks first), and three ways to start:
-type a new family, start from a file (a GEDCOM file or a family outline:
-a new family is created and the file imported into it), or open a saved
-project file.
+- **Hero:** what Shajarah makes (a poster of the sample family of three
+  wives, `public/landing-poster.jpg`), the Arabic and English tagline, and
+  the two ways in: start a family, or see the demo.
+- **Your families**, straight after it for a returning user: a card for
+  each (a gold monogram, the family's name, its people and when it was
+  last edited, the poster's title), searchable by name or poster title
+  (hamza forms, diacritics, spaces and case are ignored), sorted by when
+  last edited, by name or by size. A family can be pinned (☆/★) to stay at
+  the top: stored as `settings.pinned`, set by `POST /api/trees/:id/pin`,
+  which leaves the family's "last edited" time as it was. Each card can be
+  deleted after asking. (A first-time visitor sees what Shajarah does in
+  four lines here instead.)
+- **Start another family**, apart from the list: three cards of the same
+  shape, each with its action at the bottom: create a new family, import
+  one from a GEDCOM file or family outline (created and imported in one
+  step, removed again if the import fails), or open a saved project.
+- Keyboard focus is shown on every button, card and field; the page fits
+  a phone's width.
 
 ## Print export
 

@@ -92,6 +92,8 @@ export interface PosterSettings {
   posterSize?: PaperSize;
   seed?: number;
   theme?: Partial<PosterTheme>;
+  /** Kept at the top of the start page's list of families. */
+  pinned?: boolean;
 }
 
 export interface TreeDTO {
@@ -160,4 +162,5 @@ export interface TreeSummary {
   title: string | null;
   memberCount: number;
   updatedAt: string;
+  pinned: boolean;
 }
