@@ -1772,10 +1772,13 @@ function layoutAttempt(
         h.dir = norm(sub(G, P));
       }
       const reach = Math.max(0, Math.min(...group.flatMap((h) => h.kids.map((k) => (k.x - P.x) * h.dir.x + (k.y - P.y) * h.dir.y))));
-      const fits = (h: Holder, J: Vec, also: { h: Holder; from: Vec }[], linesToo = true) => {
+      // (holders placed in this pass are judged where they are going, J,
+      // not where they were)
+      const at = (q: { h: Holder; J?: Vec }) => (q.J ? { ...q.h, x: q.J.x, y: q.J.y } : q.h);
+      const fits = (h: Holder, J: Vec, also: { h: Holder; from: Vec; J?: Vec }[], linesToo = true) => {
         const pad = h.fontSize * 0.25;
         const me = { x: J.x, y: J.y, w: h.w + pad * 2, h: h.h + pad * 2 };
-        const others = [...obstacles, ...also.map((q) => q.h)];
+        const others = [...obstacles, ...also.map(at)];
         if (others.some((o) => Math.abs(o.x - J.x) < (o.w + h.w) / 2 + pad && Math.abs(o.y - J.y) < (o.h + h.h) / 2 + pad)) return false;
         if (!linesToo) return true;
         // the partner's line to it, and its lines to the children
@@ -1783,7 +1786,7 @@ function layoutAttempt(
         for (const k of h.kids) if (others.some((o) => o !== k && lineHits(J, k, o, [me, k]))) return false;
         // and no line already drawn to another holder runs under it, nor any
         // other line (as drawn last time round)
-        if (also.some((q) => lineHits(q.from, q.h, me, [q.h]))) return false;
+        if (also.some((q) => lineHits(q.from, at(q), me, [at(q)]))) return false;
         const mine = new Set(h.kids.map((k) => k.id));
         for (const d of drawn) {
           if (mine.has(d.id) || d.id === h.id) continue;
@@ -1798,7 +1801,7 @@ function layoutAttempt(
       };
       const TS = [0.45, 0.38, 0.52, 0.31, 0.6, 0.25, 0.68, 0.2, 0.76, 0.84, 0.9, 0.14];
       const DEGS = [0, 8, -8, 16, -16, 24, -24, 32, -32, 42, -42];
-      const spot = (h: Holder, ts: number[], also: { h: Holder; from: Vec }[], linesToo = true, shared = true) => {
+      const spot = (h: Holder, ts: number[], also: { h: Holder; from: Vec; J?: Vec }[], linesToo = true, shared = true) => {
         // towards her children, turned a little either way, or towards one of them
         const dirs = [...DEGS.map((deg) => turned(h.dir, deg)), ...h.kids.map((k) => norm(sub(k, P)))];
         for (const t of ts) for (const d of dirs) {
@@ -1858,10 +1861,19 @@ function layoutAttempt(
       for (const h of group) {
         const J = got?.find((g) => g.h === h)?.J;
         h.clear = !!J;
-        // (no room anywhere: towards her children, but never on the partner's name)
-        const at = J ?? (reach * 0.45 > edge(h.dir, partnerBox.w + h.w, partnerBox.h + h.h) ? add(P, scale(h.dir, reach * 0.45)) : beyond(h, h.dir, 1.15));
-        h.x = at.x;
-        h.y = at.y;
+        // (no room anywhere: towards her children, never on the partner's
+        // name, and not on another spouse's holder)
+        const others = [...placed, ...(got ?? [])].filter((q) => q.h !== h).map(at);
+        const onOther = (c: Vec) => others.some((o) => Math.abs(o.x - c.x) < (o.w + h.w) / 2 && Math.abs(o.y - c.y) < (o.h + h.h) / 2);
+        let to = J ?? (reach * 0.45 > edge(h.dir, partnerBox.w + h.w, partnerBox.h + h.h) ? add(P, scale(h.dir, reach * 0.45)) : beyond(h, h.dir, 1.15));
+        if (!J && onOther(to)) {
+          search: for (const t of [1.15, 1.6, 2.2, 3]) for (const deg of DEGS) {
+            const c = beyond(h, turned(h.dir, deg), t);
+            if (!onOther(c)) { to = c; break search; }
+          }
+        }
+        h.x = to.x;
+        h.y = to.y;
         placed.push({ h, from: P });
       }
     }

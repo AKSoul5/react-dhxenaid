@@ -111,3 +111,22 @@ describe("branch posters of a dense family with every add-on are clear on some p
     }, FULL ? 600_000 : 60_000);
   }
 });
+
+describe("a man's wives never sit on each other", () => {
+  // (each was once judged against where the others had been, not where
+  // they were going, and two wives could be placed on one spot)
+  it("no two spouses' holders overlap, at any of three sizes", () => {
+    const { tree } = stressFamily({ size: 300, seed: 3 });
+    const settings = { ...tree.settings, showFemales: true, familiesThrough: [], theme: { motherNames: true } };
+    for (const paper of ["A1", "A0", "4A0"] as const) {
+      const { spouses } = computePosterLayout({ ...tree, settings }, layoutOptionsFor(resolveTheme(settings), paper));
+      const several = spouses.filter((s) => spouses.some((o) => o !== s && o.partnerId === s.partnerId));
+      expect(several.length).toBeGreaterThan(10);
+      for (const a of spouses) for (const b of spouses) {
+        if (a === b) continue;
+        const onEachOther = Math.abs(a.x - b.x) < (a.w + b.w) / 2 && Math.abs(a.y - b.y) < (a.h + b.h) / 2;
+        expect(onEachOther, `${paper}: ${a.label} / ${b.label}`).toBe(false);
+      }
+    }
+  }, 120_000);
+});
