@@ -767,15 +767,24 @@ second, gold ring around the name and bold type; a daughter heading a
 main branch keeps her colour in the medallion too. Only the line of
 fathers on the trunk is ivory. The key shows each of these.
 
-**The trunk in proportion.** When the canopy's names have to be set
-smaller to keep their lines clear, the trunk's names are set smaller with
-them (to no less than 55% of their size) and the height that frees goes to
-the canopy. This is tried once the size is chosen and kept only when the
-poster stays clean, as legible and crosses no more, so it never makes a
-poster worse; then larger names are tried again. A family with a 12-name
-trunk had its canopy names at 7.5–14.7 (depending on the theme) under
-trunk names 2–5.6 times as large; now 16–18.5 in every theme, the trunk
-1.15–1.5 times (tests/themes.test.ts).
+**The trunk in proportion.** The names on the branches matter as much as
+those on the trunk, so the trunk's names are set at most 1.15 times the
+canopy's typical name (its median), never below the legible size. The
+height that frees goes to the canopy, whose names are then tried larger
+again. Each step is kept only when the poster stays clean, as legible and
+crosses no more, so it never makes a poster worse. (A poster already too
+small to read keeps its canopy size: the larger paper the editor
+recommends is the answer there.)
+
+| Family (2A0 unless noted) | Branch names before → after | Trunk names before → after | Trunk ÷ branches |
+|---|---|---|---|
+| A 164-person family with a 12-name trunk, Refined / Luxe / Heritage / Emerald | 14.6–15.0 → 14.6–15.0 | 19.2–20.1 → 16.8–17.3 | 1.29–1.36 → 1.15 |
+| the same, Classic / Print mono | 14.3 → 17.7 | 35.7 → 20.4 | 2.50 → 1.15 |
+| one dominant branch (tests/shape.test.ts) | 17.0 → 22.4 | 47.3 → 25.7 | 2.78 → 1.15 |
+| Al-Kalali filled, A1 | 13.5 → 14.9 | 17.0 → 17.1 | 1.26 → 1.15 |
+
+(sizes in poster points; tests/themes.test.ts and tests/shape.test.ts hold
+every theme under 1.3.)
 
 **Filling the page.** A canopy of 30 names or more spreads to the page's
 width, so the names keep their size instead of being set smaller to clear

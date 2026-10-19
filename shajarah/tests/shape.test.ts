@@ -100,6 +100,10 @@ describe("a family with one dominant branch, in every theme", () => {
         // the large branch is centred: it rises from the trunk as the crown
         const a = l.nodes.find((x) => x.member.id === ahmad.id)!;
         expect(Math.abs(a.x - l.origin.x) / l.width, where).toBeLessThan(0.01);
+        // the trunk's names in proportion to the branches' (they once stood
+        // nearly three times as large)
+        const median = l.nodes.map((x) => x.fontSize).sort((x, y) => x - y)[l.nodes.length >> 1];
+        expect(Math.max(...l.trunkLabels.map((t) => t.fontSize)) / median, where).toBeLessThan(1.3);
       }
     }, 120_000);
   }

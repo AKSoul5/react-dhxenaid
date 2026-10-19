@@ -371,8 +371,8 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
   }
   const search = (dense: boolean) => {
-    const attempt = (scale: number, final = false, strict = false, untangle = 0, trunk = 1) => {
-      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, trunk });
+    const attempt = (scale: number, final = false, strict = false, untangle = 0, trunk = 1, fit?: number) => {
+      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, trunk, fit });
       layout.clarity = validateRelationships(layout, tree);
       return layout;
     };
@@ -477,7 +477,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
     return { layout, chosen, strict, attempt, tried, dense };
   };
-  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number, t?: number) => PosterLayout; untangle?: number };
+  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number, t?: number, fit?: number) => PosterLayout; untangle?: number };
   let best: Found = search(false);
   const searches = [best as Found & { tried: Map<number, PosterLayout> }];
   // Dense packing, a second try for a family whose generations do not fit
@@ -576,6 +576,45 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       }
     }
   }
+  // Proportion: the names on the branches matter as much as those on the
+  // trunk, so the trunk's are set at most TRUNK_TO_CANOPY times the
+  // canopy's typical name. The height that frees goes to the canopy, whose
+  // names may then be set larger again. Kept only when clean, as legible
+  // and crossing no more: it never makes a poster worse.
+  const trunkRatio = (l: PosterLayout) => {
+    if (l.trunkLabels.length < 2 || !l.nodes.length) return 0;
+    const sizes = l.nodes.map((n) => n.fontSize).sort((a, b) => a - b);
+    return Math.max(...l.trunkLabels.map((t) => t.fontSize)) / sizes[Math.floor(sizes.length / 2)];
+  };
+  if (isClean(best.layout) && trunkRatio(best.layout) > TRUNK_TO_CANOPY * PROPORTION_SLACK) {
+    const before = best.layout;
+    const better = (l: PosterLayout) => isClean(l) && (l.legibility.ok || !before.legibility.ok) && l.clarity.clearCrossings <= before.clarity.clearCrossings;
+    let fitted = false;
+    for (const k of [1, 0.95, 0.9]) {
+      const scale = best.chosen * k;
+      let l = best.attempt(scale, false, best.strict, best.untangle ?? 0, 1, TRUNK_TO_CANOPY);
+      // (a few ambiguities left: untangled)
+      if (!isClean(l) && !best.untangle && l.overlaps === 0 && l.clarity.issues.length <= 2) l = best.attempt(scale, false, best.strict, untangleChecks, 1, TRUNK_TO_CANOPY);
+      if (better(l)) {
+        best = { ...best, layout: l, chosen: scale };
+        fitted = true;
+        break;
+      }
+    }
+    // (not for a poster already too small to read: the search found no
+    // larger names clean, and the larger paper recommended is the answer)
+    if (fitted && best.chosen < 0.99 && before.legibility.ok) {
+      const base = best.chosen;
+      for (const k of [1.6, 1.3, 1.1]) {
+        const scale = Math.min(1, base * k);
+        const l = best.attempt(scale, false, best.strict, best.untangle ?? 0, 1, TRUNK_TO_CANOPY);
+        if (better(l)) {
+          best = { ...best, layout: l, chosen: scale };
+          break;
+        }
+      }
+    }
+  }
   const result = best.layout;
   result.tooDense = result.clarity.issues.length > CLARITY_LIMIT;
   // The lifted sweep (a crown rising from the trunk) never costs a clean,
@@ -617,6 +656,10 @@ const BALANCE_BELOW = 0.85;
 const BALANCE_RATIO = 1.5;
 /** The least the trunk's names follow the canopy's when those are set smaller (see trunkFontFor). */
 const TRUNK_FOLLOW_MIN = 0.55;
+/** The trunk's names are at most this many times the canopy's typical name. */
+const TRUNK_TO_CANOPY = 1.15;
+/** A trunk this much past TRUNK_TO_CANOPY is set in proportion. */
+const PROPORTION_SLACK = 1.05;
 /** Canopies of at least this many names are as wide as the page allows. */
 const WIDE_CANOPY = 30;
 
@@ -664,7 +707,7 @@ export const CLARITY_LIMIT = 5;
 
 function layoutAttempt(
   tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true, strictFamilies = false, dense = false,
-  budget: { checks: number; trunk?: number } = { checks: CHECKS },
+  budget: { checks: number; trunk?: number; fit?: number } = { checks: CHECKS },
 ): PosterLayout {
   const W = opts.width ?? 2400;
   const H = opts.height ?? Math.round(W * Math.SQRT2);
@@ -1022,7 +1065,27 @@ function layoutAttempt(
   // bark (never two staggered columns: the trunk reads as one solid form).
   // budget.trunk < 1 sets the trunk's names smaller with the canopy's (see
   // the balancing in computePosterLayout).
-  const trunkFontFor = (f: number) => Math.max(floorFor(f), f * 0.95 * clamp(budget.trunk ?? 1, TRUNK_FOLLOW_MIN, 1));
+  // budget.fit: the trunk's names at most this many times the canopy's
+  // typical name (its median, at the size the canopy is actually set),
+  // never below the legible size (see the proportion step in
+  // computePosterLayout).
+  const canopyTypical = new Map<number, number>();
+  const canopyTypicalFor = (f: number) => {
+    let v = canopyTypical.get(f);
+    if (v === undefined) {
+      const fl = f * fontScale;
+      const sizes = crownNodes.map((n) => {
+        const d = n.depth - base.depth, med = isMedallion(n, d, "crown");
+        const fs = fontFor(d, med, fl);
+        return isLeaf(n) && !med ? Math.max(floorFor(fl), fs * 0.9) : fs;
+      }).sort((a, b) => a - b);
+      v = sizes.length ? sizes[sizes.length >> 1] : f;
+      canopyTypical.set(f, v);
+    }
+    return v;
+  };
+  const trunkFontFor = (f: number) =>
+    Math.max(floorFor(f), Math.min(f * 0.95 * clamp(budget.trunk ?? 1, TRUNK_FOLLOW_MIN, 1), budget.fit ? canopyTypicalFor(f) * budget.fit : Infinity));
   const stepFor = (f: number) => trunkFontFor(f) * 1.75;
   const trunkSection = (count: number, f: number) => {
     // a bare trunk (no ancestors above the canopy base) still stands tall

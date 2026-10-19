@@ -1,7 +1,8 @@
 // Every theme sets a family's names at about the same size, with the trunk
 // in proportion to the canopy. (A family with a 12-name trunk once had its
 // canopy names at a fifth of their size in one theme and two fifths in the
-// next, under trunk names two to five times as large.)
+// next, under trunk names two to five times as large; the trunk's names are
+// now at most about 1.15 times the canopy's typical name.)
 import { describe, expect, it } from "vitest";
 import { computeGenerations } from "@/lib/genealogy";
 import { computePosterLayout } from "@/lib/layout/botanical";
@@ -51,7 +52,7 @@ describe("names across the themes", () => {
       const sizes = l.nodes.map((x) => x.fontSize).sort((a, b) => a - b);
       const median = sizes[Math.floor(sizes.length / 2)];
       medians.set(preset, median);
-      expect(Math.max(...l.trunkLabels.map((t) => t.fontSize)) / median).toBeLessThan(1.6);
+      expect(Math.max(...l.trunkLabels.map((t) => t.fontSize)) / median).toBeLessThan(1.3);
     }, 60_000);
   }
   it("about the same size in every theme", () => {
