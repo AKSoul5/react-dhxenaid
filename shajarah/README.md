@@ -658,11 +658,27 @@ in `settings.posterSize`.
 | --- | --- |
 | Refined ivory (default) | fine gold rule on ivory, satin-silver leaves for sons, soft-gold capsules for daughters, ivory medallions, one muted colour per main branch, basmala and Ruqaa title |
 | Luxe | the same tree inside the Canva gold-foil frame, with the verse and hadith medallions |
-| Heritage | ivory roundels with gold rims, gold scalloped medallions, basmala, verse and hadith medallions |
+| Heritage | ivory and gold ovals with gold rims, gold scalloped medallions, basmala, verse and hadith medallions |
 | Silver & Gold | metallic silver (male) and gold (female) ovals, framed ancestor badges |
-| Classic botanical | green leaves, generation-coloured forks, names carved in the bark |
+| Classic botanical | green leaves for sons, rose for daughters, names carved in the bark |
 | Parchment & Emerald | emerald and gold leaves on parchment |
-| Minimal black & white | white circles, fine line branches, like hand-drawn family charts |
+| Minimal black & white | white ovals, fine line branches, like hand-drawn family charts |
+
+Every preset but the black-and-white one colours each main branch
+(lineage colours), so a line can be followed from the trunk to its
+youngest names. (Colouring the names by generation instead is under
+**Colour nodes by**.)
+
+**Identifiers.** A son and a daughter keep their colours whatever else is
+true of them: a parent (someone with descendants on the poster) has a
+second, gold ring around the name and bold type; a daughter heading a
+main branch keeps her colour in the medallion too. Only the line of
+fathers on the trunk is ivory. The key shows each of these.
+
+**Filling the page.** A canopy of 30 names or more spreads to the page's
+width, so the names keep their size instead of being set smaller to clear
+their lines. (A tree saved with its own style keeps it: choose the preset
+again under **Style** to take up a preset's new look.)
 
 Options:
 

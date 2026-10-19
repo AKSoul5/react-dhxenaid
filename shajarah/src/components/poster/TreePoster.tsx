@@ -81,15 +81,10 @@ function makePalette(theme: PosterTheme, layout: PosterLayout): Palette {
         const c = generationColor(n.generation - layout.generationOffset);
         return { fill: c.fill, border: shade(c.fill, -0.35), text: c.text };
       }
-      // Fathers (members with descendants) are ivory capsules with a gold
-      // rim, a step up from the leaves and capsules of childless members. A
-      // daughter whose children are of another family keeps her colour,
-      // with the gold rim.
-      if (!n.terminal && !n.childrenOutside) return { fill: IVORY, border: GOLD, text: INK };
-      if (n.childrenOutside) {
-        const base = female ? theme.female : theme.male;
-        return { fill: theme.metallic ? satin(n.member.gender) : base, border: GOLD, text: textOn(base) };
-      }
+      // A parent keeps the son's or daughter's colour (who they are stays
+      // readable); having descendants is shown by a second, gold ring and
+      // bold type (see PersonNode). Only the line of fathers on the trunk
+      // is ivory.
       if (theme.preset === "classic" && !female && n.shape === "leaf") {
         const tone = LEAF_TONES[hashString(n.id) % LEAF_TONES.length];
         return { fill: tone, border: shade(tone, -0.4), text: "#ffffff" };
@@ -370,6 +365,8 @@ function Medallion({ node, pal, onClick, strong, ring }: { node: PosterNode; pal
   const rx = node.w / 2, ry = node.h / 2;
   const fs = node.fontSize;
   const inset = fs * 0.22;
+  // a daughter heading a branch keeps her colour (sons' medallions are ivory)
+  const own = !strong && node.member.gender === "FEMALE" ? pal.fill(node) : null;
   return (
     <g transform={`translate(${node.x.toFixed(1)} ${node.y.toFixed(1)})`} {...onClick}>
       <title>{node.label}</title>
@@ -378,14 +375,14 @@ function Medallion({ node, pal, onClick, strong, ring }: { node: PosterNode; pal
       ) : (
         <>
           {strong && <path d={scallopPath(0, 0, rx + ry * 0.07, ry * 1.07, 28, 0.025)} fill="none" stroke={GOLD} strokeWidth={fs * 0.05} />}
-          <ellipse rx={rx} ry={ry} fill={IVORY} stroke={ring ?? GOLD} strokeWidth={fs * (ring ? 0.12 : 0.09)} />
+          <ellipse rx={rx} ry={ry} fill={own?.fill ?? IVORY} stroke={ring ?? GOLD} strokeWidth={fs * (ring ? 0.12 : 0.09)} />
           <ellipse rx={rx - inset} ry={ry - inset} fill="none" stroke={GOLD} strokeWidth={fs * 0.03} />
         </>
       )}
-      <text y={nameY(node)} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight={700} fill={pal.ink}>
+      <text y={nameY(node)} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight={700} fill={own && !pal.mono ? own.text : pal.ink}>
         {node.label}
       </text>
-      <SubLines node={node} y={fs * 0.6} fontSize={fs * 0.68} fill={pal.ink} opacity={0.8} />
+      <SubLines node={node} y={fs * 0.6} fontSize={fs * 0.68} fill={own && !pal.mono ? own.text : pal.ink} opacity={0.8} />
     </g>
   );
 }
@@ -480,9 +477,20 @@ function PersonNode({
     default:
       body = <rect x={-node.w / 2} y={-node.h / 2} width={node.w} height={node.h} rx={node.h / 2} fill={fill} stroke={border} strokeWidth={sw} />;
   }
+  // a parent: a second, gold ring just outside the name (the key's "له ذرية")
+  const ring = node.terminal ? null : (() => {
+    const g = fs * 0.16, stroke = pal.mono ? "#111111" : GOLD, w = sw * 1.1;
+    switch (node.shape) {
+      case "leaf": return null;
+      case "circle": return <circle r={node.w / 2 + g} fill="none" stroke={stroke} strokeWidth={w} />;
+      case "oval": return <ellipse rx={node.w / 2 + g} ry={node.h / 2 + g} fill="none" stroke={stroke} strokeWidth={w} />;
+      default: return <rect x={-node.w / 2 - g} y={-node.h / 2 - g} width={node.w + 2 * g} height={node.h + 2 * g} rx={node.h / 2 + g} fill="none" stroke={stroke} strokeWidth={w} />;
+    }
+  })();
   return (
     <g transform={`translate(${node.x.toFixed(1)} ${node.y.toFixed(1)})${leaf ? ` rotate(${node.angle.toFixed(1)})` : ""}`} {...onClick}>
       <title>{node.label}</title>
+      {ring}
       {body}
       <g transform={flip ? "rotate(180)" : undefined}>
         <text y={nameY(node)} textAnchor="middle" dominantBaseline="central" fontSize={fs} fontWeight={node.terminal ? 400 : 700} fill={text}>
@@ -638,7 +646,16 @@ function Footer({ layout, theme, pal, meta }: { layout: PosterLayout; theme: Pos
       : pill(x, maleFill, rim(theme.male)),
   });
   if (byGender && layout.nodes.some((n) => n.member.gender === "FEMALE")) items.push({ label: rtl ? "بنت" : "Daughter", swatch: (x) => pill(x, femaleFill, rim(theme.female)) });
-  if (byGender) items.push({ label: rtl ? "له ذرية" : "Has descendants", swatch: (x) => pill(x, pal.mono ? "#fff" : IVORY, pal.line) });
+  // (a parent: the same colours, with a second gold ring)
+  items.push({
+    label: rtl ? "له ذرية" : "Has descendants",
+    swatch: (x) => (
+      <g>
+        <rect x={x - fs * 0.14} y={y - fs * 0.59} width={sw + fs * 0.28} height={fs * 1.18} rx={fs * 0.59} fill="none" stroke={pal.mono ? "#111" : GOLD} strokeWidth={fs * 0.09} />
+        {pill(x, byGender ? maleFill : pal.mono ? "#fff" : "#e8e0cc", byGender ? rim(theme.male) : pal.line)}
+      </g>
+    ),
+  });
   if (layout.trunkLabels.length) items.push({ label: rtl ? "سلسلة الآباء" : "Ancestral line", swatch: (x) => pill(x, pal.mono ? "#fff" : IVORY, pal.line) });
   if (theme.branchColors && !pal.mono && new Set(layout.nodes.map((n) => n.lineage).filter((x) => x != null)).size >= 2) {
     items.push({

@@ -140,10 +140,7 @@ export interface PosterNode {
   subLabel: string | null;
   /** True for members without (visible) children. */
   terminal: boolean;
-  /**
-   * Her children belong to another family (a daughter's, on dotted lines):
-   * she keeps her own colour instead of the line's "has descendants" style.
-   */
+  /** Her children belong to another family (a daughter's, on dotted lines). */
   childrenOutside?: boolean;
   /** Leaf orientation in degrees (leaf points along +x before rotation). */
   angle: number;
@@ -522,6 +519,8 @@ const BRANCH_TRUNK_NAMES = 6;
 
 /** Least height of a trunk without ancestors, below the canopy base, as a share of the content height. */
 const BARE_TRUNK = 0.1;
+/** Canopies of at least this many names are as wide as the page allows. */
+const WIDE_CANOPY = 30;
 
 /** The canopy base's oval, as fractions of its round space's radius (wider than tall). */
 const BASE_OVAL = { w: 1, h: 0.66 };
@@ -1029,6 +1028,12 @@ function layoutAttempt(
 
   // Spare height lets the canopy breathe, then the whole is centred.
   let { rx, ry } = denseCrown ?? crownDims(f);
+  // A canopy of more than a few dozen names spreads to the page's width:
+  // the rings are longer, so the names keep their size (instead of being
+  // set smaller to clear their lines) and the poster is filled, not a
+  // narrow tree in a wide frame. (A small family keeps its natural width,
+  // or its few names would sit at the ends of long bare stalks.)
+  if (crownNodes.length >= WIDE_CANOPY) rx = Math.max(rx, Math.min(rxMax, ry * 1.7));
   let slack = avail - (totalFor(f, plan) - 1.8 * crownDims(f).ry + 1.8 * ry);
   // A small family's canopy spreads out (up to twice its natural height)
   // and its trunk grows taller, rather than floating in empty paper. A
