@@ -202,6 +202,12 @@ describe("the lineage to آدم stays in the foundation's area", () => {
               expect(b.x1, `${where}: "${t.text}"`).toBeLessThanOrEqual(x + w + 1e-6);
             }
             expect(s.box.y + s.box.h, where).toBeLessThanOrEqual(l.frame.footerY - l.width * 0.05);
+            // on the larger papers every one of the 49 is there, none left out for room
+            if (paper !== "A2") {
+              expect(s.texts.some((t) => t.text.includes("…")), `${where}: names left out`).toBe(false);
+              const read = s.texts.map((t) => t.text).join(" ");
+              for (const name of ["نصر", "يريم", "قحطان", "نوح", "أنوش", "شيث", "آدم"]) expect(read, `${where}: ${name}`).toContain(name);
+            }
           }
         }
       }

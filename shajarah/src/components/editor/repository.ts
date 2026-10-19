@@ -200,7 +200,7 @@ export function localRepository(initial: TreeDTO): FamilyRepository {
       return commit({ ...tree, marriages: tree.marriages.filter((x) => x.id !== id) });
     },
     async importNasab(text) {
-      const { members, newRootId } = applyNasabLines(tree.members, tree.lineage, text, () => `local-${Date.now()}-${seq++}`);
+      const { members, newRootId } = applyNasabLines(tree.members, tree.lineage, text, () => `local-${Date.now()}-${seq++}`, tree.rootMemberId);
       const rootMemberId =
         newRootId && (!tree.rootMemberId || members.find((m) => m.id === tree.rootMemberId)?.fatherId)
           ? newRootId

@@ -17,7 +17,7 @@ export function NasabImport({ tree, busy, onImport, onCancel }: Props) {
   // Simulate the lines in order, so later lines see people added by earlier ones.
   const preview = useMemo(() => {
     let n = 0;
-    return applyNasabLines(tree.members, tree.lineage, text, () => `preview-${n++}`).results;
+    return applyNasabLines(tree.members, tree.lineage, text, () => `preview-${n++}`, tree.rootMemberId).results;
   }, [text, tree.members, tree.lineage]);
 
   return (

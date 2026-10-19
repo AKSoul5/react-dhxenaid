@@ -139,7 +139,12 @@ first:
   must agree before a line joins, so a lone «محمد» never links strangers,
   with one exception: a line whose oldest name is the family's founder
   (the only person of that name without a father) joins him, so every
-  son's line can be pasted ending in the same patriarch.
+  son's line can be pasted ending in the same patriarch. And the other
+  way: a line beginning with the tree's oldest ancestor grows the tree
+  upward from him. With a tree starting at «عبدكلال», pasting «عبد كلال بن
+  نصر بن سهل … بن آدم عليه السلام» puts the 47 older names above him (no
+  second عبد كلال), and آدم becomes the tree's root. To set them all in the
+  foundation, select عبد كلال and press **🪵 Start the trunk here**.
 - A preview shows how many names are reused and how many are new. It warns
   when a line fits in two places equally well.
 - After an import, **Undo this import** in the member list removes exactly

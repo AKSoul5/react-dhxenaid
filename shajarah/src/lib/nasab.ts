@@ -119,9 +119,11 @@ export interface NasabPlan {
  * The anchor reusing the most members wins. At least two consecutive names
  * must agree, so a lone common name like "محمد" never joins lines by chance,
  * except at the very top: a line ending in the family's founder (the only
- * member of that name without a father) joins him.
+ * member of that name without a father) joins him, and a line beginning
+ * with the tree's oldest ancestor (`rootId`, or the only member of that
+ * name without a father) grows the tree upward from him.
  */
-export function planNasabImport(members: MemberDTO[], lineage: Lineage, entries: NasabEntry[]): NasabPlan {
+export function planNasabImport(members: MemberDTO[], lineage: Lineage, entries: NasabEntry[], rootId?: string | null): NasabPlan {
   const none: NasabPlan = {
     matched: [], ancestorsToCreate: [], adoptedRootId: null, descendantsToCreate: entries, ambiguous: false,
   };
@@ -188,6 +190,18 @@ export function planNasabImport(members: MemberDTO[], lineage: Lineage, entries:
         matched: [founders[0]], ancestorsToCreate: [], adoptedRootId: null, descendantsToCreate: entries.slice(1), ambiguous: false,
       };
     }
+    // And the other way: a line beginning with the tree's oldest ancestor
+    // ("عبد كلال بن نصر بن … بن آدم" above a tree that starts at عبد كلال)
+    // puts the older names above him. (The tree's root when it has one, so
+    // an in-law of the same name without a father is never taken for him;
+    // else the only member of that name without a father.)
+    const tops = members.filter((m) => !lineageParentId(m, lineage) && normalizeName(m.name) === keys[keys.length - 1]);
+    const top = rootId ? tops.find((m) => m.id === rootId) : tops.length === 1 ? tops[0] : undefined;
+    if (top) {
+      return {
+        matched: [top], ancestorsToCreate: entries.slice(0, -1), adoptedRootId: top.id, descendantsToCreate: [], ambiguous: false,
+      };
+    }
   }
   if (!best || (best.score < 2 && entries.length > 1)) return none;
   const matched = [...best.up, best.anchor, ...best.down];
@@ -220,9 +234,11 @@ export function applyNasabLines(
   lineage: Lineage,
   text: string,
   newId: () => string,
+  rootId?: string | null,
 ): { members: MemberDTO[]; results: NasabLineResult[]; newRootId: string | null } {
   let list = [...members];
   let newRootId: string | null = null;
+  let root = rootId ?? null;
   const results: NasabLineResult[] = [];
   const make = (e: NasabEntry, fatherId: string | null, gender: Gender): MemberDTO => ({
     id: newId(), name: e.name, laqab: e.laqab, gender, birthYear: null, deathYear: null,
@@ -232,7 +248,7 @@ export function applyNasabLines(
   for (const line of splitNasabLines(text)) {
     const { entries, gender } = parseNasab(line);
     if (!entries.length) continue;
-    const plan = planNasabImport(list, lineage, entries);
+    const plan = planNasabImport(list, lineage, entries, root);
     let parentId: string | null = null;
     let top: string | null = null;
     for (const e of plan.ancestorsToCreate) {
@@ -244,6 +260,7 @@ export function applyNasabLines(
     if (plan.adoptedRootId) {
       list = list.map((m) => (m.id === plan.adoptedRootId ? { ...m, fatherId: parentId } : m));
       newRootId = top;
+      if (root === plan.adoptedRootId || !root) root = top;
     }
     parentId = plan.matched.at(-1)?.id ?? null;
     plan.descendantsToCreate.forEach((e, i) => {

@@ -109,6 +109,37 @@ describe("applyNasabLines", () => {
     expect(plan.matched).toEqual([]);
   });
 
+  it("grows the tree upward from its oldest ancestor: a line beginning with him puts the older names above him", () => {
+    // the tree starts at عبدكلال (written without a space); the pasted
+    // lineage begins «عبد كلال بن نصر …» and reaches آدم عليه السلام
+    const tree = [m("root", "عبدكلال"), m("a", "محمد", "root"), m("b", "علي", "a"), m("inlaw", "نصر")];
+    const line = "عبد كلال بن نصر بن سهل بن عريب بن عبد كلال بن عريب بن فهد بن زيد بن مثوب بن ذي حرث بن الحارث بن مالك بن غيدان بن حجر بن يريم بن زيد بن سهل بن عمرو بن قيس بن معاوية بن جشم بن عبد شمس بن وائل بن الغوث بن قطن بن عريب بن زهير بن أيمن بن الهميسع بن حمير بن سبأ بن يشجب بن يعرب بن قحطان بن عابر بن شالخ بن أرفخشذ بن سام بن نوح عليه السلام بن لامك بن متوشلخ بن أخنوخ بن يرد بن مهلائيل بن قينان بن أنوش بن شيث بن آدم عليه السلام";
+    let n = 0;
+    const { members, newRootId } = applyNasabLines(tree, "PATRILINEAL", line, () => `n${n++}`, "root");
+    const byId = new Map(members.map((x) => [x.id, x]));
+    const up: string[] = [];
+    for (let cur = byId.get("root")!; cur.fatherId; ) {
+      cur = byId.get(cur.fatherId)!;
+      up.push(cur.name);
+    }
+    expect(up).toHaveLength(47);
+    expect(up[0]).toBe("نصر");
+    // one new record only for the older عبد كلال (بن عريب), none for him
+    expect(members.filter((x) => normalizeName(x.name) === normalizeName("عبد كلال")).map((x) => x.id === "root" || up.includes(x.name))).toEqual([true, true]);
+    expect(up.at(-1)).toBe("آدم");
+    expect(byId.get(newRootId!)!.name).toBe("آدم");
+    expect(byId.get(newRootId!)!.laqab).toBe("عليه السلام");
+    expect(members.filter((x) => x.fatherId === "root").map((x) => x.id)).toEqual(["a"]); // his family stays his
+    expect(byId.get("inlaw")!.fatherId).toBeNull();
+  });
+
+  it("does not grow upward from someone of that name who is not the tree's oldest ancestor", () => {
+    const tree = [m("root", "خالد"), m("a", "سعد", "root"), m("inlaw", "محمد")];
+    const plan = planNasabImport(tree, "PATRILINEAL", parseNasab("محمد بن عمر").entries, "root");
+    expect(plan.adoptedRootId).toBeNull();
+    expect(plan.matched).toEqual([]);
+  });
+
   it("flags a genuinely ambiguous line", () => {
     const tree = [m("r", "علي"), m("a", "محمد", "r"), m("b", "سالم", "a"), m("c", "محمد", "r"), m("d", "سالم", "c")];
     const { results } = applyNasabLines(tree, "PATRILINEAL", "عمر بن سالم بن محمد", () => "x");

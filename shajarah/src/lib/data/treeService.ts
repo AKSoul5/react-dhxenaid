@@ -389,7 +389,7 @@ export async function importNasab(treeId: string, input: ImportNasabInput, versi
       for (const line of lines) {
         const { entries, gender } = parseNasab(line);
         if (entries.length === 0) continue;
-        const plan = planNasabImport(members, tree.lineage, entries);
+        const plan = planNasabImport(members, tree.lineage, entries, rootMemberId);
         // 1. older ancestors above an existing root
         let parentId: string | null = null;
         let top: string | null = null;
