@@ -361,14 +361,22 @@ is held in the page as a `data:` URL.
 - **Primary lineage:** under *Poster tiers*, "🎯 Center this branch in the
   tree" places the selected person's branch straight above the trunk
   (settings `centerBranchId`), with his brothers to either side in birth
-  order, split where the two sides weigh most alike. It works for any
-  person in the canopy, at any depth: every branch on the way is centred
-  in its father's space.
-- **Centred on its own when one branch is most of the tree:** with no
-  branch chosen, a son of the canopy base whose branch holds at least 45%
-  of the canopy (and twice his next brother's) is centred, so it rises from
-  the trunk as the crown instead of swinging the tree to one side. A branch
-  you centre yourself always wins.
+  order. It works for any person in the canopy, at any depth: every branch
+  on the way is centred in its father's space.
+- **The largest branch is always centred:** with no branch chosen, the son
+  of the canopy base whose branch holds the most people rises straight
+  from the trunk as the crown (unless two branches are equally large).
+  His own largest son carries straight on above him, as a tree's main stem
+  carries on above its side branches. The other brothers go to the right
+  and left in birth order, split so each side holds as many names as the
+  other. A branch you centre yourself always wins.
+  - Never at the cost of a clean poster: if that arrangement leaves a few
+    lines unclear, the poster is laid out again with only the centred
+    branch held in the middle and its brothers split by the room their
+    families need, and the better of the two is kept.
+  - On the sample families and a 218-person family in every theme, the
+    share of names on the heavier side fell from 7–9% to 0–3% in most
+    cases, every poster clean (tests/shape.test.ts).
 
 ## The tree's shape
 
@@ -1184,7 +1192,10 @@ undo.
   editor; either set is read.
 - Written and read back, a family comes back the same: every person,
   parent, marriage, year and laqab (tests/outline.test.ts, on a 656-person
-  family too).
+  family too). That includes a lineage down from آدم عليه السلام, whose
+  deepest lines are indented 170 spaces and more: a line's length is
+  measured without its indent (such an outline was once refused as "No
+  people (INDI records) found").
 
 ## Start page
 

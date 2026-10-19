@@ -41,6 +41,16 @@ describe("family outline", () => {
     expect(text.split("\n").filter((l) => l && !l.startsWith("#"))).toHaveLength(kalaliTree().members.length);
   });
 
+  it("a lineage down from آدم (deep indents, long lines) is still read as an outline, not refused as GEDCOM", () => {
+    // (once refused: a line over 200 characters, counting its indent, was taken for code)
+    const tree = kalaliTree();
+    const deepest = tree.members.reduce((a, m) => (m.generation > a.generation ? m : a));
+    const text = exportOutline({ ...tree, members: tree.members.map((m) => (m.id === deepest.id ? { ...m, notes: "ملاحظة ".repeat(8).trim() } : m)) });
+    expect(Math.max(...text.split("\n").map((l) => l.length))).toBeGreaterThan(200);
+    expect(looksLikeOutline(text)).toBe(true);
+    expect(parseGedcom(text).people).toHaveLength(tree.members.length);
+  });
+
   it("a 656-person family with several wives, remarried daughters and their families: the same people, parents and marriages", () => {
     roundTrip(stressFamily({ size: 300, seed: 4 }).tree);
   });

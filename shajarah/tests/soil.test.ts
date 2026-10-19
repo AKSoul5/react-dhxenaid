@@ -246,9 +246,18 @@ describe("every name in the foundation, unless asked to shorten", () => {
       expect(all.legibility.ok).toBe(true);
       // shortening still works when chosen, for a style whose foundation is
       // over its share: names left out, the foundation kept smaller
+      // (the two posters are laid out separately, and their names can come
+      // out at slightly different sizes: the foundation measured in lines
+      // of its own type)
       const short = at(true);
-      if (short.soil!.texts.some((t) => t.text.includes("…") || t.text === "⋮")) expect(short.soil!.box.h).toBeLessThan(all.soil!.box.h);
-      else expect(short.soil!.box.h).toBeCloseTo(all.soil!.box.h, 3);
+      const lines = (l: typeof all) => l.soil!.box.h / l.soil!.fontSize;
+      if (short.soil!.texts.some((t) => t.text.includes("…") || t.text === "⋮")) {
+        expect(short.soil!.count).toBeLessThan(all.soil!.count);
+        expect(lines(short)).toBeLessThan(lines(all));
+      } else {
+        expect(short.soil!.texts.map((t) => t.text)).toEqual(all.soil!.texts.map((t) => t.text));
+        expect(lines(short)).toBeCloseTo(lines(all), 1);
+      }
     }, 60_000);
   }
   it("shortening, when chosen, leaves names out of a column too long for its share", () => {

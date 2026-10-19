@@ -174,7 +174,9 @@ export interface OutlineFamily {
 export function looksLikeOutline(text: string): boolean {
   if (/^﻿?\s*0\s+(HEAD|@)/m.test(text)) return false;
   const rows = text.split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"));
-  return rows.length > 0 && rows.every((l) => l.length <= 200 && !/[{}<>=]/.test(l));
+  // (a line's length without its indent: a lineage down from آدم is
+  // indented 170 spaces and more)
+  return rows.length > 0 && rows.every((l) => l.trim().length <= 500 && !/[{}<>=]/.test(l));
 }
 
 const year = (v: string): number | null => {

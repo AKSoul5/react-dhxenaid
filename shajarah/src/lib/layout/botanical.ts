@@ -86,8 +86,12 @@ export interface LayoutOptions {
   hiddenIds?: string[];
   /** Primary lineage: the branch to centre in the canopy. Defaults to settings.centerBranchId. */
   centerBranchId?: string | null;
-  /** With no branch chosen, centre a son whose branch holds most of the canopy. Default true. */
+  /** With no branch chosen, centre the son whose branch holds the most people. Default true. */
   autoCenter?: boolean;
+  /** The centred branch's own largest sub-branch rises straight on above it. Default true. */
+  centerLead?: boolean;
+  /** How a centred branch's brothers are split between its two sides: so each side holds as many names (default), or by the room their families need. */
+  centerSides?: "names" | "room";
   /** How far (radians) above horizontal the canopy's sweep starts on each side. Default: SWEEP_LIFT, eased for a very crowded generation. */
   sweepLift?: number;
   /** Where the canopy starts. Defaults to tree.crownBaseId, then automatic. */
@@ -300,6 +304,8 @@ export interface PosterLayout {
   soilOverShare?: boolean;
   /** How far above horizontal the canopy's sweep started (radians; see SWEEP_LIFT). */
   sweepLift?: number;
+  /** The centred line, from the canopy base's son up (the branch chosen or the largest one, and its leaders); empty when none. */
+  centerLine?: string[];
 }
 
 interface TNode {
@@ -371,8 +377,8 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
   }
   const search = (dense: boolean) => {
-    const attempt = (scale: number, final = false, strict = false, untangle = 0, trunk = 1, fit?: number) => {
-      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, trunk, fit });
+    const attempt = (scale: number, final = false, strict = false, untangle = 0, fit?: number) => {
+      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, fit });
       layout.clarity = validateRelationships(layout, tree);
       return layout;
     };
@@ -397,8 +403,11 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       // (legible sizes only: smaller names would be thinner than their lines)
       const legibleScale = clamp((full.legibility.minTextMm / Math.max(1e-6, full.legibility.smallestTextMm)) * 1.02, 0.35, 1);
       if (!isClean(full) && legibleScale < 0.999) {
-        at(legibleScale);
-        at((1 + legibleScale) / 2);
+        const lo = at(legibleScale), mid = at((1 + legibleScale) / 2);
+        // (clean at the smaller size, not at the middle one: two sizes
+        // between, for the largest clean one)
+        if (isClean(lo) && !isClean(mid)) bisect(legibleScale, (1 + legibleScale) / 2);
+        else if (isClean(mid)) bisect((1 + legibleScale) / 2, 1);
       }
       chosen = [...tried.entries()].filter(([, l]) => l.legibility.ok).sort((a, b) => rank(a[1]) - rank(b[1]) || b[0] - a[0])[0]?.[0] ?? 1;
       return { layout: at(chosen), chosen, strict: false, attempt, tried, dense };
@@ -477,7 +486,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
     return { layout, chosen, strict, attempt, tried, dense };
   };
-  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number, t?: number, fit?: number) => PosterLayout; untangle?: number };
+  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number, fit?: number) => PosterLayout; untangle?: number };
   let best: Found = search(false);
   const searches = [best as Found & { tried: Map<number, PosterLayout> }];
   // Dense packing, a second try for a family whose generations do not fit
@@ -488,11 +497,15 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // its paper tells the editor to recommend a larger one.)
   // (Not for a clean poster whose names are too small: the larger paper
   // the editor then recommends is the answer.)
-  if (!isClean(best.layout) && best.layout.ringLoad > 1) {
+  // (also when the names came out at less than half their size: dense
+  // packing often holds them larger, and the larger clean one is kept)
+  const medianName = (l: PosterLayout) => l.nodes.map((n) => n.fontSize).sort((a, b) => a - b)[l.nodes.length >> 1] ?? 0;
+  const small = isClean(best.layout) && best.layout.legibility.ok && best.chosen < UPWARD_BELOW;
+  if ((!isClean(best.layout) || small) && best.layout.ringLoad > 1) {
     const dense = search(true);
     searches.push(dense);
     const d = dense.layout, b = best.layout;
-    if (d.legibility.ok && (isClean(d) || (!isClean(b) && rank(d) < rank(b)))) best = dense;
+    if (small ? isClean(d) && d.legibility.ok && medianName(d) > medianName(b) : d.legibility.ok && (isClean(d) || (!isClean(b) && rank(d) < rank(b)))) best = dense;
   }
   // Untangling: the attempts nearest to clean (no overlapping names, a few
   // ambiguities; legible ones first, then the largest) are laid out again,
@@ -536,44 +549,18 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       }
     }
   }
-  // Balance: when the canopy's names had to be set smaller to clear their
-  // lines, the trunk's are set smaller with them, and the height that frees
-  // goes to the canopy (a trunk of names two to five times the canopy's
-  // took the height the canopy needed: a column with a small tree on it).
-  // Tried once the size is chosen, at it or a little below, and kept only
-  // when clean and as legible: it never makes a poster worse.
-  // (only where the trunk is out of proportion: a few names on it, set
-  // half again as large as the canopy's typical name, or more)
-  const outOfProportion = (l: PosterLayout) => {
-    if (l.trunkLabels.length < 2 || !l.nodes.length) return false;
-    const sizes = l.nodes.map((n) => n.fontSize).sort((a, b) => a - b);
-    return Math.max(...l.trunkLabels.map((t) => t.fontSize)) >= sizes[Math.floor(sizes.length / 2)] * BALANCE_RATIO;
-  };
-  if (best.chosen < BALANCE_BELOW && isClean(best.layout) && outOfProportion(best.layout)) {
-    const trunk = clamp(best.chosen, TRUNK_FOLLOW_MIN, 1);
-    let balanced = false;
-    for (const k of [1, 0.95, 0.9]) {
-      const scale = best.chosen * k;
-      const l = best.attempt(scale, false, best.strict, best.untangle ?? 0, trunk);
-      // (and crossing no more than before)
-      if (isClean(l) && (l.legibility.ok || !best.layout.legibility.ok) && l.clarity.clearCrossings <= best.layout.clarity.clearCrossings) {
-        best = { ...best, layout: l, chosen: scale };
-        balanced = true;
-        break;
-      }
-    }
-    // with the trunk's height given back, the canopy may take larger names
-    // again (the trunk following them)
-    if (balanced && best.chosen < UPWARD_BELOW) {
-      const base = best.chosen;
-      for (const k of [2, 1.75, 1.5, 1.25]) {
-        const scale = Math.min(1, base * k);
-        const l = best.attempt(scale, false, best.strict, best.untangle ?? 0, clamp(scale, TRUNK_FOLLOW_MIN, 1));
-        if (isClean(l) && (l.legibility.ok || !best.layout.legibility.ok) && l.clarity.clearCrossings <= best.layout.clarity.clearCrossings) {
-          best = { ...best, layout: l, chosen: scale };
-          break;
-        }
-      }
+  // Larger names, nearly clean: the search settles on the largest clean
+  // size it met, but a larger one only one or two ambiguities away is
+  // often clean once untangled (a centred branch's brothers can leave a
+  // line or two under a cousin's name). Tried for the largest such size.
+  if (isClean(best.layout) && best.layout.legibility.ok) {
+    const near = searches
+      .flatMap((sr) => [...sr.tried.entries()].map(([scale, l]) => ({ sr, scale, l })))
+      .filter(({ scale, l }) => scale > best.chosen * 1.1 && l.overlaps === 0 && l.legibility.ok && l.clarity.issues.length <= 2)
+      .sort((a, b) => b.scale - a.scale)[0];
+    if (near) {
+      const l = near.sr.attempt(near.scale, false, false, untangleChecks);
+      if (isClean(l) && l.legibility.ok) best = { layout: l, chosen: near.scale, strict: false, attempt: near.sr.attempt, untangle: untangleChecks };
     }
   }
   // Proportion: the names on the branches matter as much as those on the
@@ -592,9 +579,9 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     let fitted = false;
     for (const k of [1, 0.95, 0.9]) {
       const scale = best.chosen * k;
-      let l = best.attempt(scale, false, best.strict, best.untangle ?? 0, 1, TRUNK_TO_CANOPY);
+      let l = best.attempt(scale, false, best.strict, best.untangle ?? 0, TRUNK_TO_CANOPY);
       // (a few ambiguities left: untangled)
-      if (!isClean(l) && !best.untangle && l.overlaps === 0 && l.clarity.issues.length <= 2) l = best.attempt(scale, false, best.strict, untangleChecks, 1, TRUNK_TO_CANOPY);
+      if (!isClean(l) && !best.untangle && l.overlaps === 0 && l.clarity.issues.length <= 2) l = best.attempt(scale, false, best.strict, untangleChecks, TRUNK_TO_CANOPY);
       if (better(l)) {
         best = { ...best, layout: l, chosen: scale };
         fitted = true;
@@ -607,7 +594,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       const base = best.chosen;
       for (const k of [1.6, 1.3, 1.1]) {
         const scale = Math.min(1, base * k);
-        const l = best.attempt(scale, false, best.strict, best.untangle ?? 0, 1, TRUNK_TO_CANOPY);
+        const l = best.attempt(scale, false, best.strict, best.untangle ?? 0, TRUNK_TO_CANOPY);
         if (better(l)) {
           best = { ...best, layout: l, chosen: scale };
           break;
@@ -617,6 +604,17 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   }
   const result = best.layout;
   result.tooDense = result.clarity.issues.length > CLARITY_LIMIT;
+  // The balanced centring (a leader up the centred branch, its brothers
+  // split by names) never costs a clean, legible poster either: a poster it
+  // leaves a few ambiguities short of clean is laid out again with the
+  // centred branch alone and its brothers split by the room they need, and
+  // the better of the two kept. (Not for one only too small to read: that
+  // is the paper's size, which the arrangement does not change.)
+  if (opts.centerLead === undefined && opts.centerSides === undefined && result.centerLine?.length
+    && !isClean(result) && result.overlaps === 0 && result.clarity.issues.length <= 4) {
+    const plain = computePosterLayout(tree, { ...opts, centerLead: false, centerSides: "room" });
+    if (rank(plain) < rank(result)) return plain;
+  }
   // The lifted sweep (a crown rising from the trunk) never costs a clean,
   // legible poster: when it does not give one, the old wide sweep is tried
   // too, and the better of the two kept. (For a family of up to
@@ -650,12 +648,8 @@ const BRANCH_TRUNK_NAMES = 6;
 const BARE_TRUNK = 0.1;
 /** Below this size, larger sizes are tried for a clean layout too (see search). */
 const UPWARD_BELOW = 0.5;
-/** Below this size the trunk's names are set smaller with the canopy's (see the balancing in computePosterLayout). */
-const BALANCE_BELOW = 0.85;
-/** A trunk name this many times the canopy's typical name is out of proportion. */
-const BALANCE_RATIO = 1.5;
-/** The least the trunk's names follow the canopy's when those are set smaller (see trunkFontFor). */
-const TRUNK_FOLLOW_MIN = 0.55;
+/** Generations above the centred branch whose largest sub-branch is held straight on (see the leader). */
+const LEAD_STEPS = 1;
 /** The trunk's names are at most this many times the canopy's typical name. */
 const TRUNK_TO_CANOPY = 1.15;
 /** A trunk this much past TRUNK_TO_CANOPY is set in proportion. */
@@ -668,8 +662,6 @@ const BASE_OVAL = { w: 1, h: 0.66 };
 
 /** The least share of its father's span the primary lineage's branch takes, in the middle. */
 const CENTER_SHARE = 0.3;
-/** A son whose branch holds at least this share of the canopy (and twice his next brother's) is centred when no branch is chosen. */
-const DOMINANT_SHARE = 0.45;
 /**
  * The canopy's sweep starts this far (radians, ~17°) above horizontal on
  * each side: the crown rises from the trunk. (Measured on the sample
@@ -707,7 +699,7 @@ export const CLARITY_LIMIT = 5;
 
 function layoutAttempt(
   tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true, strictFamilies = false, dense = false,
-  budget: { checks: number; trunk?: number; fit?: number } = { checks: CHECKS },
+  budget: { checks: number; fit?: number } = { checks: CHECKS },
 ): PosterLayout {
   const W = opts.width ?? 2400;
   const H = opts.height ?? Math.round(W * Math.SQRT2);
@@ -1063,8 +1055,6 @@ function layoutAttempt(
   };
   // Trunk: the ancestors in one centred column, one per row, inside the
   // bark (never two staggered columns: the trunk reads as one solid form).
-  // budget.trunk < 1 sets the trunk's names smaller with the canopy's (see
-  // the balancing in computePosterLayout).
   // budget.fit: the trunk's names at most this many times the canopy's
   // typical name (its median, at the size the canopy is actually set),
   // never below the legible size (see the proportion step in
@@ -1085,7 +1075,7 @@ function layoutAttempt(
     return v;
   };
   const trunkFontFor = (f: number) =>
-    Math.max(floorFor(f), Math.min(f * 0.95 * clamp(budget.trunk ?? 1, TRUNK_FOLLOW_MIN, 1), budget.fit ? canopyTypicalFor(f) * budget.fit : Infinity));
+    Math.max(floorFor(f), Math.min(f * 0.95, budget.fit ? canopyTypicalFor(f) * budget.fit : Infinity));
   const stepFor = (f: number) => trunkFontFor(f) * 1.75;
   const trunkSection = (count: number, f: number) => {
     // a bare trunk (no ancestors above the canopy base) still stands tall
@@ -1465,14 +1455,16 @@ function layoutAttempt(
     const c = kids.findIndex((k) => centerPath.has(k));
     if (c >= 0) {
       const mid = (u0 + u1) / 2;
-      const half = ((u1 - u0) * Math.max(CENTER_SHARE, weights[c] / newTotal)) / 2;
+      const half = ((u1 - u0) * Math.max(chosenPath.has(kids[c]) ? CENTER_SHARE : 0, weights[c] / newTotal)) / 2;
       const others = kids.map((_, i) => i).filter((i) => i !== c);
-      const otherTotal = others.reduce((sum, i) => sum + weights[i], 0);
+      // (sides weighed by their names, what the eye sees)
+      const side = opts.centerSides === "room" ? (i: number) => weights[i] : (i: number) => kids[i].descendants().length;
+      const otherTotal = others.reduce((sum, i) => sum + side(i), 0);
       let cut = 0, best = Infinity, acc = 0;
       for (let k = 0; k <= others.length; k++) {
         const diff = Math.abs(otherTotal - 2 * acc);
         if (diff < best) { best = diff; cut = k; }
-        if (k < others.length) acc += weights[others[k]];
+        if (k < others.length) acc += side(others[k]);
       }
       const spread = (from: number, to: number, list: number[]) => {
         const total = list.reduce((sum, i) => sum + weights[i], 0) || 1;
@@ -1498,19 +1490,33 @@ function layoutAttempt(
   // the way from the canopy base to the centred branch (empty when none is
   // set, or it is not in the canopy)
   const centerId = opts.centerBranchId !== undefined ? opts.centerBranchId : (tree.settings?.centerBranchId ?? null);
-  // Without a branch chosen (or one outside the canopy), a son whose
-  // branch holds most of the canopy is centred: it rises from the trunk as
+  // Without a branch chosen (or one outside the canopy), the son whose
+  // branch holds the most people is centred: it rises from the trunk as
   // the crown, his brothers to either side, instead of swinging the tree
-  // to one side.
+  // to one side. (Not when two branches are equally large: no one branch
+  // is the crown then.)
   const dominant = (() => {
     const kids = ((base.children ?? []) as HNode[]).map((k) => ({ k, size: k.descendants().length })).sort((a, b) => b.size - a.size);
-    const total = kids.reduce((sum, x) => sum + x.size, 0);
     if (kids.length < 3 || !kids[0].k.children?.length) return undefined;
-    return kids[0].size >= total * DOMINANT_SHARE && kids[0].size >= kids[1].size * 2 ? kids[0].k : undefined;
+    return kids[0].size > kids[1].size ? kids[0].k : undefined;
   })();
   const centerNode = (centerId ? (base.descendants() as HNode[]).find((n) => n !== base && n.data.member?.id === centerId) : undefined)
     ?? (opts.autoCenter === false ? undefined : dominant);
-  const centerPath = new Set<HNode>(centerNode ? (centerNode.ancestors() as HNode[]).filter((n) => n !== base && n.depth > base.depth) : []);
+  // The centred branch keeps a leader: its own largest sub-branch rises
+  // straight on, the smaller ones to either side, as a tree's main stem
+  // carries on above its side branches. (LEAD_STEPS generations: further
+  // up, holding the line straight cost names their legible size. Not past
+  // a tie: two equal sub-branches share the middle between them.)
+  let leadNode = centerNode;
+  for (let step = 0; opts.centerLead !== false && leadNode?.children && step < LEAD_STEPS; step++) {
+    const ks = (leadNode.children as HNode[]).filter((k) => k.children).map((k) => ({ k, size: k.descendants().length })).sort((a, b) => b.size - a.size);
+    if (!ks.length || (ks[1] && ks[1].size >= ks[0].size)) break;
+    leadNode = ks[0].k;
+  }
+  const centerPath = new Set<HNode>(leadNode ? (leadNode.ancestors() as HNode[]).filter((n) => n !== base && n.depth > base.depth) : []);
+  // (a branch the editor chose takes at least CENTER_SHARE of its father's
+  // span; the largest one, centred unasked, only its own share)
+  const chosenPath = new Set<HNode>(centerNode && centerNode !== dominant ? centerNode.ancestors() as HNode[] : []);
   const centerIds = new Set([...centerPath].map((n) => n.data.member!.id));
   partition(base, 0.015, 0.985);
 
@@ -2168,7 +2174,15 @@ function layoutAttempt(
             if (J) break;
           }
           h.clear = !!J;
-          const to = J ?? beyond(h, h.dir, 1.2);
+          let to = J ?? beyond(h, h.dir, 1.2);
+          // (no room anywhere: at least not on another spouse's holder)
+          const onOther = (c: Vec) => placed.some((q) => Math.abs(q.h.x - c.x) < (q.h.w + h.w) / 2 && Math.abs(q.h.y - c.y) < (q.h.h + h.h) / 2);
+          if (!J && onOther(to)) {
+            search: for (const t of [1.2, 1.6, 2.1, 2.8, 3.6, 4.6, 6]) for (const deg of [0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180]) {
+              const c = beyond(h, turned(h.dir, deg), t);
+              if (!onOther(c)) { to = c; break search; }
+            }
+          }
           h.x = to.x;
           h.y = to.y;
           placed.push({ h, from: P });
@@ -2196,7 +2210,9 @@ function layoutAttempt(
         const onOther = (c: Vec) => others.some((o) => Math.abs(o.x - c.x) < (o.w + h.w) / 2 && Math.abs(o.y - c.y) < (o.h + h.h) / 2);
         let to = J ?? (reach * 0.45 > edge(h.dir, partnerBox.w + h.w, partnerBox.h + h.h) ? add(P, scale(h.dir, reach * 0.45)) : beyond(h, h.dir, 1.15));
         if (!J && onOther(to)) {
-          search: for (const t of [1.15, 1.6, 2.2, 3]) for (const deg of DEGS) {
+          // (all the way round, further out, if need be)
+          const round = [...DEGS, 55, -55, 70, -70, 90, -90, 120, -120, 150, -150, 180];
+          search: for (const t of [1.15, 1.6, 2.2, 3, 4, 5.5]) for (const deg of round) {
             const c = beyond(h, turned(h.dir, deg), t);
             if (!onOther(c)) { to = c; break search; }
           }
@@ -2909,6 +2925,7 @@ function layoutAttempt(
     unplacedIds,
     soilOverShare,
     sweepLift: lift,
+    centerLine: [...centerPath].sort((a, b) => a.depth - b.depth).map((n) => n.data.member!.id),
     legibility,
     overlaps,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },

@@ -1,5 +1,6 @@
 // The order of brothers and sisters: the poster follows it (eldest at the
-// start of the canopy's sweep, half-siblings together by mother), and moving
+// start of the canopy's sweep, half-siblings together by mother; a centred
+// branch takes the middle, its brothers in order around it), and moving
 // one renumbers them all 0, 1, 2 … so the change always shows.
 import { describe, expect, it } from "vitest";
 import { moveAmongSiblings, siblingsInOrder } from "@/lib/genealogy";
@@ -37,9 +38,17 @@ describe("the order of brothers and sisters", () => {
   ];
   for (const [name, t] of families) {
     it(`${name}: the poster follows it`, () => {
-      const order = posterOrder(computePosterLayout(t, { width: 2400, showFemales: true }));
+      const l = computePosterLayout(t, { width: 2400, showFemales: true });
+      const order = posterOrder(l);
       expect(order.size).toBeGreaterThan(0);
-      for (const ids of order.values()) expect(ids).toEqual(expected(t, ids));
+      const centred = new Set(l.centerLine ?? []);
+      for (const ids of order.values()) {
+        const rest = ids.filter((id) => !centred.has(id));
+        expect(rest).toEqual(expected(t, ids).filter((id) => !centred.has(id)));
+        // the centred one in the middle: brothers on both sides when there are two or more
+        const c = ids.findIndex((id) => centred.has(id));
+        if (c >= 0 && rest.length >= 2) expect(c > 0 && c < ids.length - 1).toBe(true);
+      }
     }, 30_000);
   }
 

@@ -136,8 +136,11 @@ describe("legibility and poster size", () => {
     const a2 = layoutOf(families.large, "A2");
     const a0 = layoutOf(families.large, "A0");
     const minUnits = (l: PosterLayout) => Math.min(...l.nodes.map((n) => n.fontSize));
-    // in poster units the A0 layout may use smaller type, because it prints larger
-    expect(minUnits(a0)).toBeLessThanOrEqual(minUnits(a2) + 1e-6);
+    // in poster units the A0 layout may use smaller type, because it prints
+    // larger (never larger type: at most the same, within rounding of the
+    // size search, when both come out clean near full size)
+    expect(minUnits(a0)).toBeLessThanOrEqual(minUnits(a2) * 1.02);
+    expect(a0.legibility.smallestTextMm).toBeGreaterThanOrEqual(a2.legibility.smallestTextMm);
     expect(a0.legibility.ok).toBe(true);
   });
 });

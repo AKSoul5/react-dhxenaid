@@ -118,6 +118,34 @@ describe("what the shape check catches", () => {
   });
 });
 
+describe("the largest branch rises from the trunk, its brothers either side", () => {
+  // (asked for: the branch with the most people always in the middle, the
+  // smaller ones to the right and left, never one side heavy)
+  const families: [string, TreeDTO][] = [
+    ["one dominant branch", dominantBranchFamily()], ["marriages", F.marriagesFamily()], ["Abdullah", F.abdullahFamily()], ["Shaalan", F.shaalanFamily()],
+  ];
+  for (const [name, tree] of families) {
+    it(name, () => {
+      const l = computePosterLayout(tree, { ...layoutOptionsFor(resolveTheme(tree.settings), "A1"), showFemales: true });
+      const heads = l.nodes.filter((n) => n.depth === 1);
+      const size = (id: string) => {
+        const kids = new Map<string, string[]>();
+        for (const n of l.nodes) if (n.parentId) kids.set(n.parentId, [...(kids.get(n.parentId) ?? []), n.id]);
+        const count = (x: string): number => 1 + (kids.get(x) ?? []).reduce((a, k) => a + count(k), 0);
+        return count(id);
+      };
+      const largest = [...heads].sort((a, b) => size(b.id) - size(a.id))[0];
+      expect(l.centerLine?.[0], name).toBe(largest.id);
+      expect(Math.abs(largest.x - l.origin.x) / l.width, name).toBeLessThan(0.01);
+      // brothers on both sides, and neither side much heavier
+      const others = heads.filter((n) => n !== largest);
+      expect(others.some((n) => n.x < largest.x) && others.some((n) => n.x > largest.x), name).toBe(true);
+      expect(measureShape(l).sides, name).toBeLessThan(0.1);
+      expect(l.clarity.issues).toEqual([]);
+    }, 120_000);
+  }
+});
+
 describe("the sample families, in every theme", () => {
   const families: [string, TreeDTO][] = [
     ["small", F.smallFamily()], ["marriages", F.marriagesFamily()], ["names", F.namesFamily()],
