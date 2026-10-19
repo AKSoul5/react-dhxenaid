@@ -103,7 +103,9 @@ jobs:
         run: |
           $exe = Join-Path $env:LOCALAPPDATA 'Programs\Shajarah\Shajarah.exe'
           $logs = Join-Path $env:APPDATA 'Shajarah\logs'
-          $installed = { (Get-Item $exe).VersionInfo.ProductVersion }
+          # (the update's installer removes the old program before copying the
+          # new one: in between there is no Shajarah.exe)
+          $installed = { if (Test-Path $exe) { "$((Get-Item $exe).VersionInfo.ProductVersion)" } else { "" } }
           try {
             gh release download $env:OLD --pattern 'Shajarah-Setup-*.exe' --dir previous
             $old = Get-ChildItem previous -Filter 'Shajarah-Setup-*.exe' | Select-Object -First 1
@@ -116,6 +118,8 @@ jobs:
             if ($p.ExitCode -ne 0) { throw "The update failed" }
             # the downloaded installer runs on its own once the program has quit
             $clock = [Diagnostics.Stopwatch]::StartNew()
+            Start-Sleep 5
+            while ((Get-Process -Name 'Shajarah-Setup*' -ErrorAction SilentlyContinue) -and $clock.Elapsed.TotalSeconds -lt 300) { Start-Sleep 3 }
             while (-not (& $installed).StartsWith($env:NEW) -and $clock.Elapsed.TotalSeconds -lt 300) { Start-Sleep 5 }
             "installed after the update: $(& $installed) ($([int]$clock.Elapsed.TotalSeconds) s)"
             if (-not (& $installed).StartsWith($env:NEW)) { throw "The update did not install" }
@@ -126,7 +130,7 @@ jobs:
             if ($p.ExitCode -ne 0) { throw "The updated program failed its smoke test" }
           } catch {
             Get-Content (Join-Path $logs 'shajarah.log') -Tail 60 -ErrorAction SilentlyContinue
-            "Withdrawing v$env:NEW: $_"
+            "Withdrawing v${env:NEW}: $_"
             gh release delete "v$env:NEW" --yes --cleanup-tag
             throw
           }

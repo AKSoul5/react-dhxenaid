@@ -273,6 +273,11 @@ export interface PosterLayout {
    * branch) instead of circling dozens of places.
    */
   tooDense: boolean;
+  /**
+   * How full the fullest generation ring is: its names' extents (and the
+   * corridors between them) over its length. Above 1 they stand in rows.
+   */
+  ringLoad: number;
   /** Set when the poster shows one branch only (see LayoutOptions.focusId). */
   focus: { id: string; label: string } | null;
   /** People whose children are drawn from them on dotted lines (see LayoutOptions.familiesThrough). */
@@ -317,60 +322,182 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // hidden under another name, no ambiguous crossings). Ambiguity means the
   // names are too crowded, so the next attempt gives each one more room.
   const badness = (l: PosterLayout) => l.overlaps * 10 + l.clarity.issues.length;
-  const attempt = (scale: number, final = false, strict = false) => {
-    const layout = layoutAttempt(tree, opts, scale, final, strict);
-    layout.clarity = validateRelationships(layout, tree);
-    return layout;
-  };
   const isClean = (l: PosterLayout) => l.overlaps === 0 && l.clarity.ok;
-  const tried = new Map<number, PosterLayout>();
-  const at = (scale: number) => {
-    const key = Math.round(scale * 1000) / 1000;
-    if (!tried.has(key)) tried.set(key, attempt(key));
-    return tried.get(key)!;
-  };
-  // the largest clean scale in (lo, hi], given that lo is clean
-  const bisect = (lo: number, hi: number) => {
-    for (let i = 0; i < 2; i++) {
-      const mid = (lo + hi) / 2;
-      if (isClean(at(mid))) lo = mid; else hi = mid;
+  // nothing clean: no overlapping names first, then legible text, then the
+  // fewest ambiguities (and the editor recommends a larger size)
+  const rank = (l: PosterLayout) => (l.overlaps > 0 ? 2e6 : 0) + (l.legibility.ok ? 0 : 1e6) + badness(l);
+  // The size is searched for without the untangling (each attempt is then
+  // quick); the untangling, the slow part, is spent afterwards on the few
+  // attempts nearest to clean. (More of it for each family shown through a
+  // daughter: holders and dotted lines leave the most to untangle.)
+  const untangleChecks = CHECKS + 3 * (opts.familiesThrough ?? tree.settings?.familiesThrough ?? []).length;
+  const search = (dense: boolean) => {
+    const attempt = (scale: number, final = false, strict = false, untangle = 0) => {
+      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle });
+      layout.clarity = validateRelationships(layout, tree);
+      return layout;
+    };
+    const tried = new Map<number, PosterLayout>();
+    const at = (scale: number) => {
+      const key = Math.round(scale * 1000) / 1000;
+      if (!tried.has(key)) tried.set(key, attempt(key));
+      return tried.get(key)!;
+    };
+    // the largest clean scale in (lo, hi], given that lo is clean
+    const bisect = (lo: number, hi: number) => {
+      for (let i = 0; i < 2; i++) {
+        const mid = (lo + hi) / 2;
+        if (isClean(at(mid))) lo = mid; else hi = mid;
+      }
+      return lo;
+    };
+    let chosen = 1;
+    const full = at(1);
+    if (dense) {
+      // (legible sizes only: smaller names would be thinner than their lines)
+      const legibleScale = clamp((full.legibility.minTextMm / Math.max(1e-6, full.legibility.smallestTextMm)) * 1.02, 0.35, 1);
+      if (!isClean(full) && legibleScale < 0.999) {
+        at(legibleScale);
+        at((1 + legibleScale) / 2);
+      }
+      chosen = [...tried.entries()].filter(([, l]) => l.legibility.ok).sort((a, b) => rank(a[1]) - rank(b[1]) || b[0] - a[0])[0]?.[0] ?? 1;
+      return { layout: at(chosen), chosen, strict: false, attempt, tried, dense };
     }
-    return lo;
-  };
-  let chosen = 1;
-  const full = at(1);
-  // a crowded canopy first gets its names set a fifth smaller (when that
-  // stays legible), so each has more room
-  if (full.clarity.issues.length > CLARITY_LIMIT) at(0.8);
-  if (!isClean(full)) {
-    // the smallest scale at which the names are still legible
-    const legibleScale = clamp((full.legibility.minTextMm / Math.max(1e-6, full.legibility.smallestTextMm)) * 1.02, 0.35, 1);
-    if (legibleScale < 0.999 && isClean(at(legibleScale))) chosen = bisect(legibleScale, 1);
-    else if (isClean(at(0.35))) chosen = bisect(0.35, legibleScale); // clean only below legible size
-    else {
-      // nothing is clean: prefer no overlapping names, then legible text,
-      // then the fewest ambiguities (and the editor recommends a larger size)
-      const rank = (l: PosterLayout) => (l.overlaps > 0 ? 2e6 : 0) + (l.legibility.ok ? 0 : 1e6) + badness(l);
-      chosen = [...tried.entries()].sort((a, b) => rank(a[1]) - rank(b[1]) || b[0] - a[0])[0][0];
+    // a crowded canopy first gets its names set a fifth smaller (when that
+    // stays legible), so each has more room
+    if (full.clarity.issues.length > CLARITY_LIMIT) at(0.8);
+    if (!isClean(full)) {
+      // the smallest scale at which the names are still legible (on a
+      // larger paper the names can be smaller beside their lines, which is
+      // what a larger paper is for)
+      const legibleScale = clamp((full.legibility.minTextMm / Math.max(1e-6, full.legibility.smallestTextMm)) * 1.02, 0.2, 1);
+      // and a size below it, to tell whether only illegible names would do
+      const below = Math.min(0.35, legibleScale * 0.8);
+      if (legibleScale < 0.999 && isClean(at(legibleScale))) chosen = bisect(legibleScale, 1);
+      else if (isClean(at(below))) {
+        chosen = bisect(below, legibleScale); // clean only below legible size?
+        // The count of ambiguities does not fall evenly with the names' size:
+        // before settling for illegible names, a few more sizes around the
+        // most nearly clean legible one.
+        if (!at(chosen).legibility.ok) {
+          const legible = [...tried.entries()].filter(([, l]) => l.legibility.ok && l.overlaps === 0)
+            .sort((a, b) => badness(a[1]) - badness(b[1]) || b[0] - a[0]);
+          const near = legible[0]?.[0];
+          if (near !== undefined && badness(legible[0][1]) <= 1) {
+            for (const k of [-1, 1]) {
+              const sc = clamp(near + k * 0.015, 0.2, 1);
+              const l = at(sc);
+              if (isClean(l) && l.legibility.ok) {
+                chosen = sc;
+                break;
+              }
+            }
+          }
+        }
+      } else {
+        chosen = [...tried.entries()].sort((a, b) => rank(a[1]) - rank(b[1]) || b[0] - a[0])[0][0];
+        // nearly clean: a few sizes either side of the best (the count of
+        // ambiguities does not fall evenly with the names' size)
+        const near = at(chosen);
+        if (near.overlaps === 0 && near.legibility.ok && near.clarity.issues.length <= 2) {
+          for (const k of [1, -1]) {
+            const sc = clamp(chosen + k * 0.01, 0.2, 1);
+            const l = at(sc);
+            if (isClean(l) && l.legibility.ok) {
+              chosen = sc;
+              break;
+            }
+          }
+        }
+      }
     }
+    // A clean layout can still have lines crossing (at a clear angle, so the
+    // check accepts them): typically many childless brothers and sisters
+    // crowding the first ring push a father off his sector. Strict family
+    // packing (fathers hold their place, every name keeps to its family's
+    // side) is tried then, and kept only when it is clean, as legible and
+    // crosses less. (Not by default: in dense canopies fathers must give way.)
+    let strict = false;
+    let layout = at(chosen);
+    if (isClean(layout) && layout.clarity.clearCrossings > 0) {
+      const alt = attempt(chosen, false, true);
+      if (isClean(alt) && alt.clarity.clearCrossings < layout.clarity.clearCrossings && (alt.legibility.ok || !layout.legibility.ok)) {
+        strict = true;
+        layout = alt;
+      } else {
+        // or another clean, as legible size without crossings
+        const calm = [...tried.entries()]
+          .filter(([, l]) => isClean(l) && !l.clarity.clearCrossings && (l.legibility.ok || !layout.legibility.ok))
+          .sort((a, b) => b[0] - a[0])[0];
+        if (calm) {
+          chosen = calm[0];
+          layout = calm[1];
+        }
+      }
+    }
+    return { layout, chosen, strict, attempt, tried, dense };
+  };
+  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number) => PosterLayout; untangle?: number };
+  let best: Found = search(false);
+  const searches = [best as Found & { tried: Map<number, PosterLayout> }];
+  // Dense packing, a second try for a family whose generations do not fit
+  // around their rings side by side (rows of names hide each other's
+  // lines): the canopy is sized for its fullest rings, which sit further
+  // out, and everything comes out smaller. Kept when it does better.
+  // (Clean comes first, as always: a clean poster with names too small for
+  // its paper tells the editor to recommend a larger one.)
+  // (Not for a clean poster whose names are too small: the larger paper
+  // the editor then recommends is the answer.)
+  if (!isClean(best.layout) && best.layout.ringLoad > 1) {
+    const dense = search(true);
+    searches.push(dense);
+    const d = dense.layout, b = best.layout;
+    if (d.legibility.ok && (isClean(d) || (!isClean(b) && rank(d) < rank(b)))) best = dense;
   }
-  // A clean layout can still have lines crossing (at a clear angle, so the
-  // check accepts them): typically many childless brothers and sisters
-  // crowding the first ring push a father off his sector. Strict family
-  // packing (fathers hold their place, every name keeps to its family's
-  // side) is tried then, and kept only when it is clean, as legible and
-  // crosses less. (Not by default: in dense canopies fathers must give way.)
-  let strict = false;
-  const plain = at(chosen);
-  if (isClean(plain) && plain.clarity.clearCrossings > 0) {
-    const alt = attempt(chosen, false, true);
-    if (isClean(alt) && alt.clarity.clearCrossings < plain.clarity.clearCrossings && (alt.legibility.ok || !plain.legibility.ok)) {
-      strict = true;
-      tried.set(-1, alt);
+  // Untangling: the attempts nearest to clean (no overlapping names, a few
+  // ambiguities; legible ones first, then the largest) are laid out again,
+  // untangled. One that comes out clean and legible is taken; failing that,
+  // a clean one at a larger size than the best so far (it needs less of a
+  // larger paper), or a better one when nothing so far is clean.
+  if (!(isClean(best.layout) && best.layout.legibility.ok)) {
+    const near = searches
+      .flatMap((sr) => [...sr.tried.entries()].map(([scale, l]) => ({ sr, scale, l })))
+      .filter(({ scale, l }) => l.overlaps === 0 && l.clarity.issues.length > 0 && l.clarity.issues.length <= 4
+        && (l.legibility.ok || !isClean(best.layout) || scale > best.chosen))
+      .sort((a, b) => Number(b.l.legibility.ok) - Number(a.l.legibility.ok)
+        || a.l.clarity.issues.length - b.l.clarity.issues.length || b.scale - a.scale)
+      // (two legible ones; one illegible one, which can only lower the
+      // larger paper recommended)
+      .filter((c, i, all) => i < 2 && (c.l.legibility.ok || !all.slice(0, i).some((x) => !x.l.legibility.ok))
+        // (a second only when it is down to one ambiguity)
+        && (i === 0 || c.l.clarity.issues.length === 1));
+    for (const { sr, scale, l: before } of near) {
+      // (half as much for an illegible one)
+      const checks = before.legibility.ok ? untangleChecks : Math.ceil(untangleChecks / 2);
+      const l = sr.attempt(scale, false, false, checks);
+      const found = { layout: l, chosen: scale, strict: false, attempt: sr.attempt, untangle: checks };
+      const b = best.layout;
+      if (isClean(l) && l.legibility.ok) {
+        best = found;
+        break;
+      }
+      if (isClean(l) ? !isClean(b) || (!b.legibility.ok && scale > best.chosen) : !isClean(b) && rank(l) < rank(b)) best = found;
+    }
+    // one ambiguity left on a legible poster: a few sizes either side
+    const one = near.find((c) => c.l.legibility.ok && c.l.clarity.issues.length === 1);
+    if (one && !(isClean(best.layout) && best.layout.legibility.ok)) {
+      for (const k of [-1, 1, -2, 2]) {
+        const scale = clamp(one.scale + k * 0.015, 0.2, 1);
+        const l = one.sr.attempt(scale, false, false, untangleChecks);
+        if (isClean(l) && l.legibility.ok) {
+          best = { layout: l, chosen: scale, strict: false, attempt: one.sr.attempt, untangle: untangleChecks };
+          break;
+        }
+      }
     }
   }
   // decorative foliage is only grown for the chosen layout
-  const result = opts.foliage ? attempt(chosen, true, strict) : strict ? tried.get(-1)! : plain;
+  const result = opts.foliage ? best.attempt(best.chosen, true, best.strict, best.untangle ?? 0) : best.layout;
   result.tooDense = result.clarity.issues.length > CLARITY_LIMIT;
   return result;
 }
@@ -404,11 +531,19 @@ const CENTER_SHARE = 0.3;
 /** The least share of its father's space a child gets (see partition). */
 const MIN_CHILD_SHARE = 0.1;
 
+/** The most relationship checks the untangling makes for one poster, over all its attempts (it redraws every line each time). */
+const CHECKS = 30;
+/** The most moves the untangling checks for one issue. */
+const MOVES = 12;
+
 /** Most ambiguous connections a poster may have before it counts as too dense for its paper. */
 export const CLARITY_LIMIT = 5;
 
 
-function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true, strictFamilies = false): PosterLayout {
+function layoutAttempt(
+  tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true, strictFamilies = false, dense = false,
+  budget = { checks: CHECKS },
+): PosterLayout {
   const W = opts.width ?? 2400;
   const H = opts.height ?? Math.round(W * Math.SQRT2);
   const seed = opts.seed ?? tree.settings?.seed ?? 7;
@@ -482,6 +617,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     overlaps: 0,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },
     tooDense: false,
+    ringLoad: 0,
     focus: null,
     familiesThrough: [...through],
     generationOffset: 0, generationsPresent: [], stats,
@@ -637,13 +773,88 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // Generations are drawn on rings, so a deep family also needs radial
   // room: every ring a clear gap from the next, a name's height plus space
   // for the lines between them, however few names the family has.
+  // (a generation growing from spouses' holders needs room for them too)
+  const holderRoom = new Set<number>();
+  {
+    const matri = tree.lineage === "MATRILINEAL";
+    const partners = new Map<string, Set<string>>();
+    for (const c of tree.members) {
+      const lineParent = matri ? c.motherId : c.fatherId, other = matri ? c.fatherId : c.motherId;
+      if (lineParent && other) partners.set(lineParent, (partners.get(lineParent) ?? new Set()).add(other));
+    }
+    base.each((n) => {
+      const id = n.data.member?.id;
+      if (n.children && id && (through.has(id) || (opts.motherNames && (partners.get(id)?.size ?? 0) > 1))) holderRoom.add(n.depth - base.depth + 1);
+    });
+  }
   const RING_GAP = 3.6;
+  /** Dense packing grows the canopy until its outermost ring is at most this far out (1 = its rim). */
+  const DENSE_TOP = 1;
+  // Every generation's names must also fit around their own ring, side by
+  // side (a crowded generation in two or three rows hides the lines to the
+  // back rows behind the front ones). A name's extent across its ray, plus
+  // a corridor each side for the lines that pass between neighbours (it
+  // narrows with smaller names, never below what the lines need).
+  // (lines keep their width when the names are set smaller, so the corridor does too)
+  const corridorFor = (_fName: number, f: number) => f * 0.6;
+  const extentOf = (n: HNode, fName: number, f: number) => {
+    const a = estArea(n, fName);
+    const d = n.depth - base.depth;
+    const fs = fontFor(d, isMedallion(n, d, "crown"), fName);
+    // a label's mean extent across a ray (its width at the top, its height on the sides)
+    const h = Math.min(Math.sqrt(a), fs * 1.8);
+    return 0.64 * (a / h + h) + 2 * corridorFor(fName, f);
+  };
+  const ringDemand = (fName: number, f: number) => {
+    const demand: number[] = [];
+    for (const n of crownNodes) {
+      const d = n.depth - base.depth;
+      demand[d] = (demand[d] ?? 0) + extentOf(n, fName, f);
+    }
+    return demand;
+  };
+  const ARC = Math.PI + 0.24; // the canopy's angular range (thetaStart - thetaEnd)
+  const RING_FILL = 0.85; // families leave a little room between them
+  // Where each ring must be at least (as a fraction of the way from r0 to
+  // the canopy's mean reach M), for its names to fit around it, and no
+  // closer than a ring gap to the one inside it.
+  const ringChain = (demand: number[], r0: number, M: number, f: number) => {
+    const span = Math.max(1, M - r0);
+    const t = [0];
+    for (let d = 1; d <= Math.max(1, base.height); d++) {
+      const need = ((demand[d] ?? 0) / (ARC * RING_FILL) - r0) / span;
+      const room = holderRoom.has(d) ? (f * 3.2) / span : 0;
+      t.push(Math.max(need, d === 1 ? room : t[d - 1] + (f * 2.6) / span + room));
+    }
+    return t;
+  };
+  // the canopy's mean reach from the canopy base, for an egg of rx × ry
+  const meanReachFor = (rx: number, ry: number) => {
+    const cy = 0, oy = 0.8 * ry;
+    const inside = (x: number, y: number) => {
+      const ny = (y - cy) / ry;
+      const k = 1 + 0.13 * Math.max(-1, Math.min(1, ny));
+      return Math.abs(x / (rx * k)) ** 2.4 + Math.abs(ny) ** 2.4 <= 1;
+    };
+    let sum = 0;
+    for (let i = 0; i <= 16; i++) {
+      const th = -0.12 + (ARC * i) / 16;
+      let lo = 0, hi = Math.max(rx, ry) * 2.5;
+      for (let k = 0; k < 22; k++) {
+        const mid = (lo + hi) / 2;
+        if (inside(Math.cos(th) * mid, oy - Math.sin(th) * mid)) lo = mid; else hi = mid;
+      }
+      sum += lo * 0.95;
+    }
+    return sum / 17;
+  };
   const crownDims = (f: number) => {
     const A = Math.max(crownNodes.reduce((sum, n) => sum + estArea(n, f), 0) * PACK, (f * 14) ** 2);
     const depthNeed = baseRFor(f) + f * 1.6 + Math.max(0, base.height - 1) * f * RING_GAP;
     // the rings' reach from the crown base: ~0.76·rx to the sides, ~1.7·ry upward
     const rx = Math.min(rxMax, Math.max(Math.sqrt(A / (EGG * ASPECT)), depthNeed / 0.76));
-    return { rx, ry: Math.max(A / (EGG * rx), depthNeed / 1.7) };
+    const ry = Math.max(A / (EGG * rx), depthNeed / 1.7);
+    return { rx, ry };
   };
   const baseText = base.data.member ? labelOf(base.data.member) : { label: "", subLabel: null };
   // The canopy base's space: a circle of radius baseRFor, which sets the
@@ -760,7 +971,46 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   }
   // A retry (fontScale < 1) keeps the canopy the same size and sets the
   // canopy's names smaller, so each gets more room around it.
+  // Dense packing (a second try, see computePosterLayout): the canopy is
+  // made larger until every generation fits around its ring in one row,
+  // and the names smaller to make room for it on the page, but never
+  // below the legible size (a larger paper gives the rest).
+  let denseCrown: { rx: number; ry: number } | null = null;
+  if (dense) {
+    const grow = (fd: number) => {
+      let { rx, ry } = crownDims(fd);
+      const cap = (avail - (totalFor(fd, plan!) - 1.8 * ry)) / 1.8;
+      const demand = ringDemand(fd, fd);
+      const r0d = baseRFor(fd) + fd * 1.6;
+      for (let i = 0; i < 80; i++) {
+        const t = ringChain(demand, r0d, meanReachFor(rx, ry), fd);
+        if (t[t.length - 1] <= DENSE_TOP) return { rx, ry, fits: true };
+        if (ry * 1.05 > cap) return { rx, ry, fits: false };
+        rx = Math.min(rxMax, rx * 1.05);
+        ry *= 1.05;
+      }
+      return { rx, ry, fits: false };
+    };
+    if (!grow(f).fits && f > minFont) {
+      if (grow(minFont).fits) {
+        let lo = minFont, hi = f;
+        for (let i = 0; i < 12; i++) {
+          const mid = (lo + hi) / 2;
+          if (grow(mid).fits) lo = mid; else hi = mid;
+        }
+        f = lo;
+      } else {
+        f = minFont;
+      }
+    }
+    const g = grow(f);
+    denseCrown = { rx: g.rx, ry: g.ry };
+  }
   const fl = f * fontScale;
+  // The finest line. When the names are set smaller to give each more
+  // room, the lines are finer too (down to half), or they would crowd
+  // each other where the names no longer do.
+  const lineMin = Math.max(W * 0.0018, f * 0.1) * Math.max(0.5, Math.min(1, fontScale));
   const trunkZigzag = false;
   const shownTrunk = plan.onTrunk;
   const ancient = plan.soil;
@@ -768,8 +1018,8 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   const useSoil = ancient.length > 0 || !!customSoil;
 
   // Spare height lets the canopy breathe, then the whole is centred.
-  let { rx, ry } = crownDims(f);
-  let slack = avail - totalFor(f, plan);
+  let { rx, ry } = denseCrown ?? crownDims(f);
+  let slack = avail - (totalFor(f, plan) - 1.8 * crownDims(f).ry + 1.8 * ry);
   // A small family's canopy spreads out (up to twice its natural height)
   // and its trunk grows taller, rather than floating in empty paper. A
   // branch poster's canopy stops at CANOPY_GROWTH × its natural height, or
@@ -879,26 +1129,15 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // canopy for that; a retry with smaller names keeps the canopy's size).
   let meanCrownReach = 0;
   for (let i = 0; i <= 32; i++) meanCrownReach += (reach(thetaEnd + ((thetaStart - thetaEnd) * i) / 32) * 0.95) / 33;
-  // (a generation growing from spouses' holders needs room for them too)
-  const holderRoom = new Set<number>();
-  {
-    const matri = tree.lineage === "MATRILINEAL";
-    const partners = new Map<string, Set<string>>();
-    for (const c of tree.members) {
-      const lineParent = matri ? c.motherId : c.fatherId, other = matri ? c.fatherId : c.motherId;
-      if (lineParent && other) partners.set(lineParent, (partners.get(lineParent) ?? new Set()).add(other));
-    }
-    base.each((n) => {
-      const id = n.data.member?.id;
-      if (n.children && id && (through.has(id) || (opts.motherNames && (partners.get(id)?.size ?? 0) > 1))) holderRoom.add(n.depth - base.depth + 1);
-    });
-  }
   const ringT: number[] = (() => {
+    // evenly paced, but a crowded generation further out, where its ring
+    // is long enough for its names (crownDims sized the canopy for it)
     const span = Math.max(1, meanCrownReach - r0);
     const gap = (f * 2.6) / span;
     const room = (d: number) => (holderRoom.has(d) ? (f * 3.2) / span : 0);
+    const need = ringChain(ringDemand(fl, f), r0, meanCrownReach, f);
     const t = [0];
-    for (let d = 1; d <= maxDepth; d++) t.push(Math.max(d / maxDepth, (d === 1 ? 0 : t[d - 1] + gap) + room(d)));
+    for (let d = 1; d <= maxDepth; d++) t.push(Math.max(d / maxDepth, dense ? need[d] ?? 0 : 0, (d === 1 ? 0 : t[d - 1] + gap) + room(d)));
     const top = t[maxDepth];
     return top > 1 ? t.map((v) => v / top) : t;
   })();
@@ -913,7 +1152,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     const fs = fontFor(d, isMedallion(n, d, "crown"), fl);
     // a label's mean extent across a ray (its width at the top, its height on the sides)
     const h = Math.min(Math.sqrt(a), fs * 1.8);
-    return 0.64 * (a / h + h) + fl * 1.2;
+    return 0.64 * (a / h + h) + 2 * corridorFor(fl, f);
   };
   const ringNeed = new Map<HNode, Map<number, number>>();
   const needOf = (n: HNode): Map<number, number> => {
@@ -1103,6 +1342,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     return r;
   };
 
+  let ringLoad = 0;
   // ── 4b. Ring packing ────────────────────────────────────────────────
   // Names on the same generation ring are spaced along the ring, keeping
   // the family order (the partition's DFS order). With the order the same
@@ -1136,7 +1376,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       // angular half-width of a label at angle th (its extent across the ray)
       const half = (n: LiveNode, th: number) =>
         // (+ a corridor so neighbouring lines stay clearly apart)
-        (Math.abs((n.w / 2) * Math.sin(th)) + Math.abs((n.h / 2) * Math.cos(th)) + f * 0.6) / Math.max(1, radiusAt(th));
+        (Math.abs((n.w / 2) * Math.sin(th)) + Math.abs((n.h / 2) * Math.cos(th)) + corridorFor(fl, f)) / Math.max(1, radiusAt(th));
       const target = ring.map((n) => n.ray!);
       // 1-D packing along the ring: neighbours pushed apart, kept in order,
       // with a gentle pull back to their targets. (Any overlap left is then
@@ -1180,6 +1420,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         for (let i = 0; i < th.length; i++) th[i] = clamp(th[i] + (target[i] - th[i]) * pull[i], bounds[i][0], bounds[i][1]);
         if (!moved) break;
       }
+      ringLoad = Math.max(ringLoad, ring.reduce((a, n, i) => a + 2 * half(n, th[i]), 0) / (hi - lo));
       ring.forEach((n, i) => {
         n.ray = th[i];
         placed.push({ n, half: half(n, th[i]) });
@@ -1385,6 +1626,14 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   };
   relax(nodes, constrain, undefined, onPage);
 
+  // Line widths (the pipe model, with fine twigs: a single leaf's stalk is
+  // only 1.5 × the minimum line, so neighbouring twigs stay clearly apart).
+  const totalLeaves = Math.max(1, base.value ?? 1);
+  const bs = opts.branchScale ?? 1;
+  const wMin = lineMin;
+  const wK = Math.min((trunkWidth * 0.8 - wMin) / Math.sqrt(totalLeaves), W * 0.016) * bs;
+  const widthOf = (leaves: number) => wMin * 1.5 + wK * (Math.sqrt(leaves) - 1);
+
   // ── 5b. Connections, and clearing them of unrelated names ─────────────
   // Each connection is a gentle cubic from parent to child that stays
   // close to the straight line, so it remains inside its sub-branch's
@@ -1400,7 +1649,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // the children she bore him growing from it; and the husbands of a
   // daughter whose family is shown, on her dotted line. Children whose
   // other parent is not recorded grow from the partner directly.
-  type Holder = SpouseHolder & { anchorOf: LiveNode; kids: LiveNode[]; dir: Vec; clear: boolean };
+  type Holder = SpouseHolder & { anchorOf: LiveNode; kids: LiveNode[]; dir: Vec; clear: boolean; pin?: Vec };
   const holders: Holder[] = [];
   const holderOf = new Map<string, Holder>();
   {
@@ -1445,6 +1694,25 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       }
     }
   }
+  // The width of each drawn line at its start and end, as section 6 draws
+  // it (the clarity check judges lines by their width).
+  const nodeWidths = (node: LiveNode) => {
+    if (dotted.has(node.member.id)) {
+      const w = Math.max(wMin * 2.2, node.shape === "leaf" ? widthOf(1) : widthOf(node.leafCount) * 0.8);
+      return { w0: w, w1: w };
+    }
+    if (node.shape === "leaf") return { w0: widthOf(1), w1: Math.max(wMin * 0.8, node.fontSize * 0.14) };
+    const w = widthOf(node.leafCount);
+    return { w0: node.depth === 1 && !holderOf.has(node.id) ? w * 1.15 : w, w1: w * 0.7 };
+  };
+  const holderWidths = (h: Holder) => {
+    const w = widthOf(h.kids.reduce((a, k) => a + (k.shape === "leaf" ? 1 : k.leafCount), 0));
+    if (h.dotted) {
+      const wd = Math.max(wMin * 2.2, w * 0.8);
+      return { w0: wd, w1: wd };
+    }
+    return { w0: h.anchorOf.region === "crown" && h.anchorOf.depth === 1 ? w * 1.15 : w, w1: w * 0.85 };
+  };
   // Where a line to a child starts: its parent's name, or for a main limb
   // the canopy base (or the trunk, for a side branch).
   const startOf = (node: LiveNode): Vec => {
@@ -1456,6 +1724,13 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // nearer the partner, wherever it and the lines to and from it are clear
   // of every other name and holder.
   const placeHolders = () => {
+    if (!holders.length) return;
+    // the lines as last drawn, sampled once for this placement
+    const drawn = [...curveOf, ...holderCurve].map(([id, c]) => {
+      const pts = sample(c, 20);
+      const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y);
+      return { id, pts, bb: [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)] };
+    });
     type Rect = { x: number; y: number; w: number; h: number; id?: string };
     const obstacles: Rect[] = [...nodes, ...trunkLabels.map((l) => ({ ...l, id: l.member.id }))];
     const bb = baseBoxOf();
@@ -1494,15 +1769,23 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         // the partner's line to it, and its lines to the children
         if (others.some((o) => o !== partnerBox && lineHits(P, J, o, [partnerBox, me]))) return false;
         for (const k of h.kids) if (others.some((o) => o !== k && lineHits(J, k, o, [me, k]))) return false;
-        // and no line already drawn to another holder runs under it
-        return !also.some((q) => lineHits(q.from, q.h, me, [q.h]));
+        // and no line already drawn to another holder runs under it, nor any
+        // other line (as drawn last time round)
+        if (also.some((q) => lineHits(q.from, q.h, me, [q.h]))) return false;
+        const mine = new Set(h.kids.map((k) => k.id));
+        for (const d of drawn) {
+          if (mine.has(d.id) || d.id === h.id) continue;
+          if (d.bb[1] < me.x - me.w / 2 || d.bb[0] > me.x + me.w / 2 || d.bb[3] < me.y - me.h / 2 || d.bb[2] > me.y + me.h / 2) continue;
+          if (d.pts.some((p) => within(p, me))) return false;
+        }
+        return true;
       };
       const turned = (d: Vec, deg: number) => {
         const a = (deg * Math.PI) / 180;
         return { x: d.x * Math.cos(a) - d.y * Math.sin(a), y: d.x * Math.sin(a) + d.y * Math.cos(a) };
       };
-      const TS = [0.45, 0.38, 0.52, 0.31, 0.6, 0.25, 0.68, 0.2, 0.76, 0.84, 0.9];
-      const DEGS = [0, 8, -8, 16, -16, 24, -24, 32, -32];
+      const TS = [0.45, 0.38, 0.52, 0.31, 0.6, 0.25, 0.68, 0.2, 0.76, 0.84, 0.9, 0.14];
+      const DEGS = [0, 8, -8, 16, -16, 24, -24, 32, -32, 42, -42];
       const spot = (h: Holder, ts: number[], also: { h: Holder; from: Vec }[], linesToo = true, shared = true) => {
         // towards her children, turned a little either way, or towards one of them
         const dirs = [...DEGS.map((deg) => turned(h.dir, deg)), ...h.kids.map((k) => norm(sub(k, P)))];
@@ -1523,6 +1806,17 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         }
         return got;
       };
+      // a holder the untangling placed stays there (still judged: clear
+      // only while it overlaps nothing)
+      if (group.every((h) => h.pin)) {
+        for (const h of group) {
+          h.clear = fits(h, h.pin!, placed, false);
+          h.x = h.pin!.x;
+          h.y = h.pin!.y;
+          placed.push({ h, from: P });
+        }
+        continue;
+      }
       // all at one distance; failing that, each where it finds room
       let got: { h: Holder; from: Vec; J: Vec }[] | null = null;
       for (const t of TS) if ((got = tryAt([t]))) break;
@@ -1580,9 +1874,180 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     return { ...c, c1, c2 };
   };
   const holderCurve = new Map<string, Cubic>();
+  // ── Lines that bend around names ──────────────────────────────────────
+  // Every line is first drawn the usual way. A line that then passes behind
+  // another name, crosses an unrelated line or runs along one (as the
+  // clarity check judges them) tries a few other shapes: arriving more or
+  // less along the child's ray, leaving more or less along the father's
+  // growth, or bowed to either side. It keeps the shape with the fewest
+  // such problems, judged against all the other lines; a poster without
+  // such problems is drawn exactly as before.
+  type LineBox = { id: string; x: number; y: number; w: number; h: number; leaf: boolean };
+  let grid = new Map<string, LineBox[]>();
+  const CELL = Math.max(40, f * 6);
+  let boxById = new Map<string, LineBox>();
+  const indexBoxes = () => {
+    grid = new Map();
+    boxById = new Map();
+    const boxes: LineBox[] = [
+      ...nodes.map((n) => ({ id: n.id, x: n.x, y: n.y, w: n.w, h: n.h, leaf: n.shape === "leaf" })),
+      ...trunkLabels.map((l) => ({ id: l.member.id, x: l.x, y: l.y, w: l.w, h: l.h, leaf: false })),
+      ...holders.map((h) => ({ id: h.id, x: h.x, y: h.y, w: h.w, h: h.h, leaf: false })),
+    ];
+    const bb = baseBoxOf();
+    if (bb && base.data.member) boxes.push({ id: base.data.member.id, ...bb, leaf: false });
+    for (const b of boxes) {
+      boxById.set(b.id, b);
+      for (let gx = Math.floor((b.x - b.w / 2) / CELL); gx <= Math.floor((b.x + b.w / 2) / CELL); gx++) {
+        for (let gy = Math.floor((b.y - b.h / 2) / CELL); gy <= Math.floor((b.y + b.h / 2) / CELL); gy++) {
+          const k = `${gx},${gy}`;
+          grid.set(k, [...(grid.get(k) ?? []), b]);
+        }
+      }
+    }
+  };
+  const inBox = (p: Vec, b: LineBox) => Math.abs(p.x - b.x) <= b.w / 2 && Math.abs(p.y - b.y) <= b.h / 2;
+  /** Names a line passes behind (its own parent's and child's aside). */
+  const hitsOf = (pts: Vec[], own: Set<string>, firstOnly = false) => {
+    const ownBoxes: LineBox[] = [];
+    const hitBoxes: LineBox[] = [];
+    for (const id of own) { const b = boxById.get(id); if (b) ownBoxes.push(b); }
+    for (const p of pts) {
+      const cell = grid.get(`${Math.floor(p.x / CELL)},${Math.floor(p.y / CELL)}`);
+      if (!cell) continue;
+      let underOwn = false;
+      for (const o of ownBoxes) if (inBox(p, o)) { underOwn = true; break; }
+      if (underOwn) continue;
+      for (const b of cell) {
+        if (own.has(b.id) || hitBoxes.includes(b)) continue;
+        // (the clarity check's test, a little stricter)
+        const dx = (p.x - b.x) / (b.w / 2), dy = (p.y - b.y) / (b.h / 2);
+        if (b.leaf ? dx * dx + dy * dy < 0.7 : Math.abs(dx) < 1 && Math.abs(dy) < 0.95) {
+          hitBoxes.push(b);
+          if (firstOnly) return 1;
+        }
+      }
+    }
+    return hitBoxes.length;
+  };
+  // [arrive, follow (null: the usual), bow sideways (a share of the length)]
+  const SHAPES: [number, number | null, number][] = [
+    [0.4, null, 0], [0.7, null, 0], [0.95, null, 0], [0.15, null, 0], [0.4, 0.1, 0], [0.95, 0.1, 0], [0.7, 0.9, 0],
+    [0.4, null, 0.12], [0.4, null, -0.12], [0.7, null, 0.22], [0.7, null, -0.22], [0.95, 0.1, 0.3], [0.95, 0.1, -0.3],
+    [0.95, 0.1, 0.45], [0.95, 0.1, -0.45],
+  ];
+  type Line = { id: string; from: string; to: string; pts: Vec[]; bb: number[]; w: number };
+  const bbOf = (pts: Vec[]) => {
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    return [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  };
+  /** How a line is drawn, for each shape: its inputs, kept from the first drawing. */
+  const lineSpec = new Map<string, { P: Vec; C: Vec; gP: Vec; rayDir: Vec; follow: number; reach0: number; leaf: boolean; organicOn: boolean; node: LiveNode }>();
+  const shapeCurve = (id: string, [arrive, followAlt, bow]: [number, number | null, number]): { c: Cubic; e0: Vec } => {
+    const sp = lineSpec.get(id)!;
+    const L = len(sub(sp.C, sp.P)) || 1;
+    const dv = scale(sub(sp.C, sp.P), 1 / L);
+    const follow = followAlt ?? sp.follow;
+    const s0 = norm(add(scale(sp.gP, follow), scale(dv, 1 - follow)));
+    const e0 = norm(add(scale(dv, 1 - arrive), scale(sp.rayDir, arrive)));
+    const side = scale({ x: -dv.y, y: dv.x }, L * bow);
+    const raw = { p0: sp.P, c1: add(add(sp.P, scale(s0, L * (sp.leaf ? sp.reach0 - 0.03 : sp.reach0))), side), c2: add(sub(sp.C, scale(e0, L * 0.3)), side), p1: sp.C };
+    return { c: sp.organicOn ? organic(sp.node, raw) : raw, e0 };
+  };
+  /** Bends the given lines (the ones the clarity check found a problem with) where another shape does better. */
+  const refineLines = (targets: Set<string>) => {
+    // every drawn connection, as the clarity check sees it
+    const lines = new Map<string, Line>();
+    for (const n of growingNodes) {
+      const from = holderOf.get(n.id)?.id ?? parentIdOf(n);
+      const pts = sample(curveOf.get(n.id)!, 24);
+      lines.set(n.id, { id: n.id, from, to: n.id, pts, bb: bbOf(pts), w: nodeWidths(n).w0 });
+    }
+    for (const h of holders) {
+      const pts = sample(holderCurve.get(h.id)!, 24);
+      lines.set(h.id, { id: h.id, from: h.partnerId, to: h.id, pts, bb: bbOf(pts), w: holderWidths(h).w0 });
+    }
+    const segGrid = new Map<string, Set<string>>();
+    const cellsOf = (pts: Vec[]) => {
+      const keys = new Set<string>();
+      for (const p of pts) keys.add(`${Math.floor(p.x / CELL)},${Math.floor(p.y / CELL)}`);
+      return keys;
+    };
+    const addLine = (l: Line) => { for (const k of cellsOf(l.pts)) segGrid.set(k, (segGrid.get(k) ?? new Set()).add(l.id)); };
+    const dropLine = (l: Line) => { for (const k of cellsOf(l.pts)) segGrid.get(k)?.delete(l.id); };
+    for (const l of lines.values()) addLine(l);
+    // (two lines touch within half their widths and a little: the check's test)
+    const touchMax = widthOf(totalLeaves) * 1.2 + 2;
+    const costOf = (l: Line, pts: Vec[], firstOnly = false) => {
+      let cost = hitsOf(pts, new Set([l.from, l.to]), firstOnly);
+      if (firstOnly && cost) return cost;
+      const others = new Set<string>();
+      for (const k of cellsOf(pts)) for (const id of segGrid.get(k) ?? []) if (id !== l.id) others.add(id);
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+      const bx0 = Math.min(...xs) - touchMax, bx1 = Math.max(...xs) + touchMax, by0 = Math.min(...ys) - touchMax, by1 = Math.max(...ys) + touchMax;
+      for (const id of others) {
+        const o = lines.get(id)!;
+        if (o.bb[0] > bx1 || o.bb[1] < bx0 || o.bb[2] > by1 || o.bb[3] < by0) continue;
+        // a line and its continuation meet at the person between them
+        if (o.to === l.from || o.from === l.to) continue;
+        const siblings = o.from === l.from;
+        const a = siblings ? pts.slice(Math.floor(pts.length / 2)) : pts;
+        const b = siblings ? o.pts.slice(Math.floor(o.pts.length / 2)) : o.pts;
+        const [ox0, ox1, oy0, oy1] = siblings ? bbOf(b) : o.bb;
+        const touch = (l.w + o.w) / 2 + 2;
+        let crossed = false;
+        for (let i = 1; i < a.length && !crossed; i++) {
+          const p = a[i - 1], q = a[i];
+          // (segments clear of the other line's bounds cannot cross it)
+          if (Math.max(p.x, q.x) < ox0 || Math.min(p.x, q.x) > ox1 || Math.max(p.y, q.y) < oy0 || Math.min(p.y, q.y) > oy1) continue;
+          for (let j = 1; j < b.length; j++) {
+            const r = b[j - 1], t = b[j];
+            if (Math.max(p.x, q.x) < Math.min(r.x, t.x) || Math.min(p.x, q.x) > Math.max(r.x, t.x)
+              || Math.max(p.y, q.y) < Math.min(r.y, t.y) || Math.min(p.y, q.y) > Math.max(r.y, t.y)) continue;
+            if (segmentsCross(p, q, r, t)) { crossed = true; break; }
+          }
+        }
+        if (crossed) { cost++; if (firstOnly) return cost; continue; }
+        let run = 0;
+        for (const p of a.slice(2, -2)) {
+          const near = p.x > ox0 - touch && p.x < ox1 + touch && p.y > oy0 - touch && p.y < oy1 + touch
+            && b.some((q) => Math.abs(q.x - p.x) < touch && Math.abs(q.y - p.y) < touch && Math.hypot(q.x - p.x, q.y - p.y) < touch);
+          run = near ? run + 1 : 0;
+          if (run >= 3) { cost++; break; }
+        }
+        if (firstOnly && cost) return cost;
+      }
+      return cost;
+    };
+    for (let pass = 0; pass < 2; pass++) {
+      let changed = false;
+      for (const l of lines.values()) {
+        if (!lineSpec.has(l.id) || !targets.has(l.id)) continue;
+        const now = costOf(l, l.pts);
+        if (!now) continue;
+        let best: { c: Cubic; pts: Vec[]; cost: number } | null = null;
+        for (const shape of SHAPES.slice(1)) {
+          const { c } = shapeCurve(l.id, shape);
+          const pts = sample(c, 24);
+          const cost = costOf(l, pts);
+          if (cost < (best?.cost ?? now)) best = { c, pts, cost };
+          if (!cost) break;
+        }
+        if (!best) continue;
+        dropLine(l);
+        l.pts = best.pts;
+        l.bb = bbOf(best.pts);
+        addLine(l);
+        curveOf.set(l.id, best.c);
+        changed = true;
+      }
+      if (!changed) break;
+    }
+  };
   const buildCurves = () => {
     const growthDir = new Map<string, Vec>();
     placeHolders();
+    indexBoxes();
     for (const node of growingNodes) {
       let P = startOf(node);
       let gP = (node.parentId && growthDir.get(node.parentId)) || stemDir.get(node.id) || norm(sub(node, origin));
@@ -1608,40 +2073,47 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       // Organic curves: a line leaves its father half along his own growth
       // direction and arrives partly along its own ray, so it bends in a
       // gentle S rather than shooting out straight (measured: no less clear).
-      const follow = 0.5 * (1 - 0.8 * fan), reach0 = 0.38 - 0.16 * fan;
-      const arrive = 0.4;
-      if (node.shape === "leaf") {
-        const a = (node.angle * Math.PI) / 180;
-        const dir: Vec = { x: Math.cos(a), y: Math.sin(a) };
-        // The stalk aims at the leaf's centre (the leaf is drawn over it, so
-        // it visibly meets the blade at its base). Aiming at the base itself
-        // would offset the line sideways past a sibling's and swap their order.
-        const B: Vec = { x: node.x, y: node.y };
-        const L = len(sub(B, P)) || 1;
-        const dv = norm(sub(B, P));
-        const s0 = norm(add(scale(gP, follow), scale(dv, 1 - follow)));
-        // arrive along the leaf's own ray, like every other line; arriving
-        // along the (horizontal) blade would swing the end sideways across
-        // a sibling's line
-        void dir;
-        const rayDirL = node.ray !== undefined ? dirOf(node.ray) : dv;
-        const e0 = norm(add(scale(dv, 1 - arrive), scale(rayDirL, arrive)));
-        const leafCurve = { p0: P, c1: add(P, scale(s0, L * (reach0 - 0.03))), c2: sub(B, scale(e0, L * 0.3)), p1: B };
-        curveOf.set(node.id, holder ? leafCurve : organic(node, leafCurve));
-        continue;
-      }
+      // A leaf's stalk aims at the leaf's centre (the leaf is drawn over it,
+      // so it visibly meets the blade at its base); aiming at the base itself
+      // would offset the line sideways past a sibling's and swap their
+      // order. Every line arrives partly along its own ray, never hooking
+      // back (arriving along a horizontal blade would swing the end sideways
+      // across a sibling's line).
+      const leaf = node.shape === "leaf";
       const C: Vec = { x: node.x, y: node.y };
-      const L = len(sub(C, P)) || 1;
-      const dv = scale(sub(C, P), 1 / L);
-      const s0 = norm(add(scale(gP, follow), scale(dv, 1 - follow)));
-      // arrive along the child's own ray (outward), never hooking back
-      const rayDir = node.ray !== undefined ? dirOf(node.ray) : UP;
-      const e0 = norm(add(scale(dv, 1 - arrive), scale(rayDir, arrive)));
-      const curve = { p0: P, c1: add(P, scale(s0, L * reach0)), c2: sub(C, scale(e0, L * 0.3)), p1: C };
-      curveOf.set(node.id, holder ? curve : organic(node, curve));
-      growthDir.set(node.id, e0);
+      const dv = norm(sub(C, P));
+      lineSpec.set(node.id, {
+        P, C, gP, rayDir: node.ray !== undefined ? dirOf(node.ray) : leaf ? dv : UP,
+        follow: 0.5 * (1 - 0.8 * fan), reach0: 0.38 - 0.16 * fan, leaf, organicOn: !holder, node,
+      });
+      const { c, e0 } = shapeCurve(node.id, SHAPES[0]);
+      curveOf.set(node.id, c);
+      if (!leaf) growthDir.set(node.id, e0);
     }
   };
+  // A spouse's holder is placed clear of the lines as last drawn: when a
+  // line bent around a name now passes under a holder, the holders are
+  // placed again among the bent lines and everything is drawn again.
+  const holderHit = () => holders.some((h) => {
+    const box = { x: h.x, y: h.y, w: h.w, h: h.h };
+    for (const [id, c] of curveOf) {
+      if (h.childIds.includes(id)) continue;
+      const xs = [c.p0.x, c.p1.x, c.c1.x, c.c2.x], ys = [c.p0.y, c.p1.y, c.c1.y, c.c2.y];
+      if (Math.max(...xs) < box.x - box.w / 2 || Math.min(...xs) > box.x + box.w / 2 || Math.max(...ys) < box.y - box.h / 2 || Math.min(...ys) > box.y + box.h / 2) continue;
+      if (sample(c, 20).some((p, i, a) => i > 0 && i < a.length - 1 && Math.abs(p.x - box.x) < box.w / 2 && Math.abs(p.y - box.y) < box.h / 2)) return true;
+    }
+    return false;
+  });
+  /** The lines named in the issues, as refineLines knows them. */
+  const linesIn = (issues: { edge?: [string, string]; other?: [string, string] | string }[]) => {
+    const ids = new Set<string>();
+    for (const i of issues) {
+      if (i.edge) ids.add(i.edge[1]);
+      if (Array.isArray(i.other)) ids.add(i.other[1]);
+    }
+    return ids;
+  };
+
   // Leaves point away from where their parent actually ended up (a mirror
   // keeps the same footprint, so no new overlaps).
   for (const node of growingNodes) {
@@ -1663,16 +2135,18 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
   // name further out along its ray. A fix is kept only if the number of
   // ambiguities drops and no names come to overlap.
   {
-    const lineW = Math.max(W * 0.0018, f * 0.1) * 1.5;
     const baseBox = base.data.member
       ? { id: base.data.member.id, member: base.data.member, x: origin.x, y: origin.y, w: baseOval.rx * 2, h: baseOval.ry * 2, shape: "medallion" }
       : null;
-    const check = () => {
-      buildCurves();
+    // (each check redraws and validates every line: the untangling makes
+    // at most CHECKS of them per attempt)
+    // (whether the lines as drawn are those of the names as they stand)
+    let fresh = false;
+    const validate = () => {
       const drawnEdges: Edge[] = [
         ...edges,
-        ...growingNodes.map((n) => ({ parentId: holderOf.get(n.id)?.id ?? parentIdOf(n), childId: n.id, points: sample(curveOf.get(n.id)!), w0: lineW, w1: lineW / 2 })),
-        ...holders.map((h) => ({ parentId: h.partnerId, childId: h.id, points: sample(holderCurve.get(h.id)!), w0: lineW, w1: lineW })),
+        ...growingNodes.map((n) => ({ parentId: holderOf.get(n.id)?.id ?? parentIdOf(n), childId: n.id, points: sample(curveOf.get(n.id)!), ...nodeWidths(n) })),
+        ...holders.map((h) => ({ parentId: h.partnerId, childId: h.id, points: sample(holderCurve.get(h.id)!), ...holderWidths(h) })),
       ];
       const provisional = {
         nodes: growingNodes, stubs, base: baseBox, trunkLabels, edges: drawnEdges, origin, trunkWidth, spouses: holders,
@@ -1680,8 +2154,34 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       } as unknown as PosterLayout;
       return validateRelationships(provisional, tree).issues;
     };
+    // Draws every line, checks the drawing, and bends the lines found
+    // wanting around what is in their way (a crowded drawing is left as it
+    // is: smaller names, the caller's retry, are the remedy for that).
+    const check = (hint?: Set<string>) => {
+      budget.checks--;
+      fresh = true;
+      buildCurves();
+      if (hint) {
+        // (the untangling knows which lines to bend: those of the issues
+        // left, and of the name it moved; one validation then suffices)
+        refineLines(hint);
+        return validate();
+      }
+      let out = validate();
+      if (out.length && out.length <= 30) {
+        const targets = linesIn(out);
+        refineLines(targets);
+        // a holder a bent line now passes under is placed again
+        if (holders.some((h) => !h.pin) && holderHit()) {
+          buildCurves();
+          refineLines(linesIn(validate()));
+        }
+        out = validate();
+      }
+      return out;
+    };
     const overlapsAny = (n: LiveNode) =>
-      nodes.some((o) => o !== n && Math.abs(o.x - n.x) < (o.w + n.w) / 2 && Math.abs(o.y - n.y) < (o.h + n.h) / 2);
+      [...nodes, ...holders].some((o) => o !== n && Math.abs(o.x - n.x) < (o.w + n.w) / 2 && Math.abs(o.y - n.y) < (o.h + n.h) / 2);
     const nodeById = (id: string) => growingNodes.find((n) => n.id === id);
     const outward = (n: LiveNode, by: number) => {
       if (n.ray === undefined) return;
@@ -1716,11 +2216,18 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
       placeHolders();
     }
     let issues = check();
+    // the holders stay where they are while names are moved (only a move
+    // of a holder itself places it elsewhere)
+    for (const h of holders) h.pin = { x: h.x, y: h.y };
     // only near-clean layouts are untangled; many issues mean crowding,
     // which more room (the caller's retry) solves
     if (issues.length > 15) issues = [];
-    for (let round = 0; round < Math.min(24, issues.length * 3) && issues.length; round++) {
-      const issue = issues[round % issues.length];
+    // (an issue no move could fix is not tried again)
+    const sig = (i: (typeof issues)[number]) => `${i.kind}|${i.edge?.join(">")}|${Array.isArray(i.other) ? i.other.join(">") : i.other}`;
+    const failed = new Set<string>();
+    for (let round = 0; round < Math.min(40, issues.length * 3) && issues.length && budget.checks > 0; round++) {
+      const issue = issues.find((i) => !failed.has(sig(i)));
+      if (!issue) break;
       const candidates: LiveNode[] = [];
       if (issue.kind === "occlusion" && typeof issue.other === "string") {
         const o = nodeById(issue.other);
@@ -1731,29 +2238,83 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
         if (c) candidates.push(c);
       }
       let fixed = false;
-      for (const n of candidates) {
-        const moves: (() => void)[] = [];
-        if (n.shape === "leaf") moves.push(() => { n.angle = n.angle > 0 ? 180 - n.angle : -180 - n.angle; });
-        for (const k of [0.6, 1.5]) moves.push(() => outward(n, (n.h + n.w * 0.3) * k));
-        // a small turn along the ring, either way (validation rejects any
-        // turn that would cross a neighbour's line)
-        for (const k of [0.5, -0.5, 1, -1]) moves.push(() => turn(n, k));
-        for (const move of moves) {
-          const saved = { x: n.x, y: n.y, angle: n.angle, ray: n.ray };
-          move();
-          const next = overlapsAny(n) ? null : check();
-          if (next && next.length < issues.length) {
+      // a spouse's holder in the issue: tried a little nearer or further,
+      // or turned, along the way from its partner to her children
+      const holderIds = [issue.edge?.[0], issue.edge?.[1], ...(Array.isArray(issue.other) ? issue.other : [issue.other])]
+        .filter((id): id is string => typeof id === "string" && id.startsWith("spouse:"));
+      for (const hid of new Set(holderIds)) {
+        const h = holders.find((x) => x.id === hid);
+        if (!h || fixed) continue;
+        const group = holders.filter((x) => x.partnerId === h.partnerId);
+        const saved = group.map((x) => x.pin);
+        const P = startOf(h.anchorOf);
+        const d0 = len(sub(h, P));
+        for (const [k, deg] of [[0.7, 0], [1.35, 0], [1, 14], [1, -14], [0.7, 24], [0.7, -24]] as const) {
+          if (budget.checks <= 0) break;
+          for (const x of group) x.pin = x === h ? undefined : { x: x.x, y: x.y };
+          const a = (deg * Math.PI) / 180;
+          const d = norm(sub(h, P));
+          h.pin = add(P, scale({ x: d.x * Math.cos(a) - d.y * Math.sin(a), y: d.x * Math.sin(a) + d.y * Math.cos(a) }, d0 * k));
+          const next = check();
+          if (holders.every((x) => x.clear) && next.length < issues.length) {
             issues = next;
             fixed = true;
             break;
           }
-          Object.assign(n, saved);
+          group.forEach((x, i) => (x.pin = saved[i]));
+          fresh = false;
         }
-        if (fixed) break;
       }
-      if (!fixed && round >= issues.length) break;
+      if (fixed) continue;
+      // The moves, most promising first, across the names involved: a leaf
+      // mirrored, a name further out or a little along its ring; then
+      // further along it; a childless name back towards the centre; last,
+      // a short step in any direction. (At most MOVES checks per issue.)
+      const tiers: [LiveNode, () => void][][] = [[], [], [], []];
+      for (const n of candidates) {
+        if (n.shape === "leaf") tiers[0].push([n, () => { n.angle = n.angle > 0 ? 180 - n.angle : -180 - n.angle; }]);
+        for (const k of [0.6, 1.5]) tiers[0].push([n, () => outward(n, (n.h + n.w * 0.3) * k)]);
+        // (validation rejects any turn that would cross a neighbour's line)
+        for (const k of [0.5, -0.5]) tiers[0].push([n, () => turn(n, k)]);
+        for (const k of [1, -1]) tiers[1].push([n, () => turn(n, k)]);
+        if (n.terminal) {
+          tiers[2].push([n, () => outward(n, -(n.h + n.w * 0.3) * 0.6)]);
+          for (const k of [1.6, -1.6, 2.4, -2.4]) tiers[2].push([n, () => turn(n, k)]);
+        }
+        for (let a = 0; a < 8; a++) {
+          tiers[3].push([n, () => {
+            n.x += Math.cos((a * Math.PI) / 4) * n.h * 0.8;
+            n.y += Math.sin((a * Math.PI) / 4) * n.h * 0.8;
+          }]);
+        }
+      }
+      let tried = 0;
+      for (const [n, move] of tiers.flat()) {
+        if (budget.checks <= 0 || tried >= MOVES) break;
+        const saved = { x: n.x, y: n.y, angle: n.angle, ray: n.ray };
+        move();
+        if (overlapsAny(n)) {
+          Object.assign(n, saved);
+          continue;
+        }
+        tried++;
+        const hint = linesIn(issues);
+        hint.add(n.id);
+        for (const k of growingNodes) if (k.parentId === n.id || k.parentId === n.parentId) hint.add(k.id);
+        const next = check(hint);
+        if (next.length < issues.length) {
+          issues = next;
+          fixed = true;
+          break;
+        }
+        Object.assign(n, saved);
+        fresh = false;
+      }
+      if (!fixed) failed.add(sig(issue));
     }
-    buildCurves();
+    // (the final drawing, with lines bent around names where that helps,
+    // unless the last check drew the names as they stand)
+    if (!fresh) check();
   }
   // Verification: overlapping names left after relaxation (fixed obstacles
   // never move, so only pairs with a movable name count).
@@ -1767,18 +2328,17 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     }
   }
 
-  // a spouse's holder with no clear place counts as overlapping names
+  // a spouse's holder with no clear place counts as overlapping names, as
+  // does one that came to overlap a name or another holder
   overlaps += holders.filter((h) => !h.clear).length;
+  for (const h of holders) {
+    for (const o of [...nodes, ...holders.filter((x) => x !== h && x.id > h.id)]) {
+      if (Math.abs(o.x - h.x) < (o.w + h.w) / 2 - 0.5 && Math.abs(o.y - h.y) < (o.h + h.h) / 2 - 0.5) overlaps++;
+    }
+  }
 
   // ── 6. Branches ──────────────────────────────────────────────────────
   const growing = nodes.filter((n) => n.region !== "fixed");
-  const totalLeaves = Math.max(1, base.value ?? 1);
-  const bs = opts.branchScale ?? 1;
-  const wMin = Math.max(W * 0.0018, f * 0.1);
-  const wK = Math.min((trunkWidth * 0.8 - wMin) / Math.sqrt(totalLeaves), W * 0.016) * bs;
-  // pipe model, with fine twigs: a single leaf's stalk is only 1.5 × the
-  // minimum line, so neighbouring twigs stay clearly apart
-  const widthOf = (leaves: number) => wMin * 1.5 + wK * (Math.sqrt(leaves) - 1);
   const branches: Branch[] = [...branchesOut];
   const seeds: { p: Vec; dir: Vec }[] = [];
   const seedFrom = (curve: Cubic) => {
@@ -1990,6 +2550,7 @@ function layoutAttempt(tree: TreeDTO, opts: LayoutOptions, fontScale: number, fi
     legibility,
     overlaps,
     clarity: { ok: true, expected: 0, drawn: 0, clearCrossings: 0, issues: [] },
+    ringLoad,
     familiesThrough: [...through],
     focus: focusMember
       ? {
@@ -2124,6 +2685,14 @@ function clamp(v: number, lo: number, hi: number) {
 const deg = (v: Vec) => (Math.atan2(v.y, v.x) * 180) / Math.PI;
 
 /** Approximate rendered width of a label in Amiri (naskh) or Latin text. */
+function segmentsCross(p: Vec, p2: Vec, q: Vec, q2: Vec): boolean {
+  const d = (p2.x - p.x) * (q2.y - q.y) - (p2.y - p.y) * (q2.x - q.x);
+  if (Math.abs(d) < 1e-9) return false;
+  const t = ((q.x - p.x) * (q2.y - q.y) - (q.y - p.y) * (q2.x - q.x)) / d;
+  const u = ((q.x - p.x) * (p2.y - p.y) - (q.y - p.y) * (p2.x - p.x)) / d;
+  return t > 0 && t < 1 && u > 0 && u < 1;
+}
+
 /** Splits a line in two at the space nearest its middle (not leaving a word like "m." alone). */
 function splitInTwo(text: string): string {
   const spaces = [...text.matchAll(/ /g)].map((m) => m.index!).filter((i) => i >= 4 && text.length - i - 1 >= 4);

@@ -235,7 +235,12 @@ function falseJunction(a: Edge, b: Edge, ends: Vec[]): Vec | null {
 /** First intersection of two polylines, with the angle between the segments. */
 function crossingOf(a: Vec[], b: Vec[]): { at: Vec; angle: number } | null {
   for (let i = 1; i < a.length; i++) {
+    const ax0 = Math.min(a[i - 1].x, a[i].x), ax1 = Math.max(a[i - 1].x, a[i].x);
+    const ay0 = Math.min(a[i - 1].y, a[i].y), ay1 = Math.max(a[i - 1].y, a[i].y);
     for (let j = 1; j < b.length; j++) {
+      // (segments whose bounds are apart cannot cross)
+      if (Math.max(b[j - 1].x, b[j].x) < ax0 || Math.min(b[j - 1].x, b[j].x) > ax1
+        || Math.max(b[j - 1].y, b[j].y) < ay0 || Math.min(b[j - 1].y, b[j].y) > ay1) continue;
       const p = segmentIntersection(a[i - 1], a[i], b[j - 1], b[j]);
       if (!p) continue;
       const ua = { x: a[i].x - a[i - 1].x, y: a[i].y - a[i - 1].y };
@@ -273,9 +278,9 @@ function mergeOf(a: Edge, b: Edge): Vec | null {
       run = 0;
       continue;
     }
-    let dmin = Infinity;
-    for (let j = 1; j < b.points.length; j++) dmin = Math.min(dmin, distToSegment(p, b.points[j - 1], b.points[j]));
-    run = dmin < touch ? run + 1 : 0;
+    let near = false;
+    for (let j = 1; j < b.points.length && !near; j++) near = distToSegment(p, b.points[j - 1], b.points[j]) < touch;
+    run = near ? run + 1 : 0;
     if (run >= 3) return p;
   }
   return null;
