@@ -371,6 +371,15 @@ generations through her; the key explains the dots ("عن طريق البنات"
 It works even with daughters hidden, and the other way round in a
 mother's-line tree.
 
+- **Adding a child to a daughter** (on her panel) shows her family this way
+  at once, so the child appears from her on a dotted line. (Not for a wife
+  who married into the family, nor a daughter married to a cousin of the
+  line: their children are of the line.)
+- **A daughter's child whose father is not recorded** is drawn from her on
+  a dotted line too, never as one of the line.
+- **A daughter keeps her colour** when she has children of another family
+  (with a parent's gold rim); only the line's own parents are ivory.
+
 A mother with children from more than one husband (divorced or widowed and
 remarried): each husband is his own cartouche on her line, with the
 children he fathered growing from it. When adding a child to someone
@@ -379,8 +388,9 @@ field.
 
 ## Spouses on the branch
 
-Turn on **Style → Show spouses on the branch** and every recorded wife a
-man had children with is a cartouche (a name panel with its corners cut
+Turn on **Show spouses** in the header (next to *Show daughters*; also
+**Style → Show spouses on the branch**) and every recorded wife a man had
+children with is a cartouche (a name panel with its corners cut
 in, the manuscript frame for a name, in soft rose) on his branch, with the
 children she bore him growing from it: father → wife → her children. The
 key adds "زوجة" ("Spouse").
@@ -391,11 +401,17 @@ key adds "زوجة" ("Spouse").
   ("آل سعود", "Al Saud") stays together; a single name ("فاطمة بنت سعد" has
   no family name: "فاطمة") is one line. Two wives who share both names are
   shown in full.
-- It applies to every father with a recorded wife, one or several. A
-  spouse with no children on the poster has no cartouche (there is no
-  branch for her to sit on), and a child whose mother is not recorded grows
-  from the father directly. (In a mother's-line tree it shows a mother's
-  husbands.)
+- It applies to every father with a recorded wife, one or several, and a
+  child whose mother is not recorded grows from the father directly. (In a
+  mother's-line tree it shows a mother's husbands.)
+- A spouse with no children on the poster (a wife added before any
+  children, a daughter's husband) is a cartouche on a short line beside the
+  partner: solid for a wife, dotted for a daughter's husband, who is of
+  another family.
+- **Adding a spouse:** on a person's panel, under *Spouses*, type the name
+  and press Enter or **+** (as for a child), or link someone already in the
+  tree. Adding a spouse switches *Show spouses* on, so the new spouse is on
+  the poster at once.
 - A man's wives sit at one distance from him, so no line to one passes
   another; each is placed where it, the line to it and the lines from it
   pass no other name (her children move a little further out when there is
@@ -593,32 +609,19 @@ The editor checks for the file on load. Without it, a fine gold rule is
 drawn instead and **Style → Ornaments** shows a note. The 2:3 artwork is
 stretched about 6% vertically to fit the A-series page.
 
-## Foliage and ornaments
+## Ornaments
 
 Ornaments are toggled under **Style → Ornaments**:
 
 - the Canva gold-foil frame;
 - daughters as gold capsules;
-- the leafy canopy;
 - the basmala ﷽;
 - Al-Hujurat 49:13;
 - the Tirmidhi hadith «تعلموا من أنسابكم ما تصلون به أرحامكم…».
 
-**How the foliage grows.** `src/lib/layout/foliage.ts` uses *space
-colonization*:
-
-1. Attraction points are scattered through the egg-shaped canopy.
-2. Twigs grow in small steps from seeds on the real genealogical branches
-   toward the points around them, removing points as they reach them.
-3. Twig thickness follows the pipe model.
-4. Leaves form fans at the tips and alternate along the twigs.
-
-As a result even a small family gets a full, natural canopy. Names repel
-the growth, so foliage never covers a name.
-
-**Rule: leaves only decorate when names are roundels or ovals.** With
-leaf-shaped names, every leaf is a person and no decorative leaves are
-added. Each ornament can be toggled under **Style → Ornaments**.
+(The decorative leafy canopy was removed: its unnamed leaves hid the
+branches and made lines harder to follow. A saved setting for it is
+ignored.)
 
 ## Rendering details
 
@@ -655,7 +658,7 @@ in `settings.posterSize`.
 | --- | --- |
 | Refined ivory (default) | fine gold rule on ivory, satin-silver leaves for sons, soft-gold capsules for daughters, ivory medallions, one muted colour per main branch, basmala and Ruqaa title |
 | Luxe | the same tree inside the Canva gold-foil frame, with the verse and hadith medallions |
-| Heritage | ivory roundels with gold rims, gold scalloped medallions, leafy canopy, basmala, verse and hadith medallions |
+| Heritage | ivory roundels with gold rims, gold scalloped medallions, basmala, verse and hadith medallions |
 | Silver & Gold | metallic silver (male) and gold (female) ovals, framed ancestor badges |
 | Classic botanical | green leaves, generation-coloured forks, names carved in the bark |
 | Parchment & Emerald | emerald and gold leaves on parchment |
@@ -953,6 +956,15 @@ Measured on the 496-person family (`tests/hardening.test.ts`):
 | فايز | 25 | A3 |
 | سليمان | 135 | A1 |
 | عبدالله | 282 | no single sheet; its biggest sub-branch is clear on A1 |
+
+## Moving around the poster
+
+The editor fills the window; the member list and panels scroll inside it.
+On the poster, the mouse wheel (or a two-finger swipe) scrolls when zoomed
+in, Shift + wheel scrolls sideways, Ctrl/⌘ + wheel (or a pinch) zooms at
+the pointer, and dragging pans; **＋ / － / Fit** zoom and fit the poster.
+It can be scrolled no more than half its size past the view, so it is
+never lost.
 
 ## Print export
 

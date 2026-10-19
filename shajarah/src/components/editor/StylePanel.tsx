@@ -138,7 +138,6 @@ export function StylePanel({ theme, onChange, soilText, onSoilTextChange, frameA
                 ["frame", "Gold-foil frame & parchment (Canva artwork)"],
                 ["femaleCapsule", "Daughters as gold capsules"],
                 ["branchColors", "Colour each main branch (lineage colours)"],
-                ["foliage", "Leafy canopy (with roundel / oval names)"],
                 ["bismillah", "Basmala header ﷽"],
                 ["verse", "Verse medallion (الحجرات ١٣)"],
                 ["hadith", "Hadith medallion (تعلموا من أنسابكم)"],

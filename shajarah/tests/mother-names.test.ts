@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { computePosterLayout } from "@/lib/layout/botanical";
 import { givenAndFamilyName, nameLines } from "@/lib/nasab";
 import { multiMarriageFamily } from "@/lib/samples/fixtures";
+import { kalaliRealistic150 } from "@/lib/samples/kalali";
 import { nouriFamily } from "@/lib/samples/nouri";
 import { layoutOptionsFor, resolveTheme } from "@/lib/theme";
-import type { TreeDTO } from "@/lib/types";
+import type { MemberDTO, TreeDTO } from "@/lib/types";
 
 // حمد has children by three wives, some of his sons by two, others by one:
 // with the option on, every wife is a cartouche on her husband's branch,
@@ -80,7 +81,9 @@ describe("spouses on the branch", () => {
     const l = computePosterLayout(t, opts(t));
     // Ibrahim's two wives, his sons' wives, and Amina's husband on her line
     expect(l.spouses.map((s) => s.label)).toEqual(expect.arrayContaining(["Fatimah", "Mariam", "Hassan", "Dalia"]));
-    expect(l.spouses.filter((s) => s.dotted).map((s) => s.label)).toEqual(["Hassan"]);
+    // (and Layla's husband, on a short dotted line: her family is not shown)
+    expect(l.spouses.filter((s) => s.dotted).map((s) => s.label).sort()).toEqual(["Hassan", "Sami"]);
+    expect(l.spouses.find((s) => s.label === "Sami")!.childIds).toEqual([]);
     expect(l.spouses.find((s) => s.label === "Hassan")!.dotted).toBe(true);
     expect(l.spouses.find((s) => s.label === "Fatimah")!.dotted).toBe(false);
     expect(l.clarity.issues).toEqual([]);
@@ -114,5 +117,35 @@ describe("spouses on the branch", () => {
     expect(givenAndFamilyName("نورة السديري")).toBe("نورة السديري");
     expect(givenAndFamilyName("الجوهرة بنت عبدالعزيز")).toBe("الجوهرة");
     expect(givenAndFamilyName("Fatimah bint Saad Al-Otaibi")).toBe("Fatimah Al-Otaibi");
+  });
+});
+
+describe("spouses with no children on the poster", () => {
+  // (a wife added before any children, or a daughter's husband: they were
+  // not drawn at all)
+  it("each is a cartouche on a short line from the partner, a daughter's husband dotted, and the poster stays clear", () => {
+    const tree = kalaliRealistic150();
+    const settings = { ...tree.settings, showFemales: true, theme: { motherNames: true } };
+    const options = layoutOptionsFor(resolveTheme(settings), "A1");
+    const before = computePosterLayout({ ...tree, settings }, options);
+    const daughter = before.nodes.find((n) => n.member.gender === "FEMALE" && n.terminal && n.depth >= 2)!.member;
+    const son = before.nodes.find((n) => n.member.gender === "MALE" && n.terminal && n.depth >= 3)!.member;
+    const outsider = (id: string, name: string, gender: "MALE" | "FEMALE"): MemberDTO => ({ ...daughter, id, name, gender, fatherId: null, motherId: null, birthOrder: 0 });
+    const husband = outsider("husband", "سعد بن ناصر الشمري", "MALE"), wife = outsider("wife", "هند بنت علي العتيبي", "FEMALE");
+    const marriage = (id: string, a: string, b: string) => ({ id, spouseAId: a, spouseBId: b, startYear: null, endYear: null });
+    const t = { ...tree, settings, members: [...tree.members, husband, wife],
+      marriages: [...tree.marriages, marriage("m1", husband.id, daughter.id), marriage("m2", son.id, wife.id)] };
+    const l = computePosterLayout(t, options);
+    const lone = l.spouses.filter((s) => s.childIds.length === 0);
+    expect(lone.map((s) => [s.label, s.partnerId, s.dotted]).sort()).toEqual([
+      ["سعد الشمري", daughter.id, true], ["هند العتيبي", son.id, false],
+    ].sort());
+    for (const s of lone) expect(l.edges.some((e) => e.parentId === s.partnerId && e.childId === s.id)).toBe(true);
+    expect(l.clarity.issues).toEqual([]);
+    expect(l.overlaps).toBe(0);
+    // off: not drawn
+    const offSettings = { ...settings, theme: { motherNames: false } };
+    const off = computePosterLayout({ ...t, settings: offSettings }, layoutOptionsFor(resolveTheme(offSettings), "A1"));
+    expect(off.spouses).toHaveLength(0);
   });
 });

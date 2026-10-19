@@ -115,7 +115,7 @@ export function GedcomPanel({ tree, busy, filename, onImport, onOpenProject, ope
 
   const p = status.kind === "ready" ? status.preview : null;
   return (
-    <div className="flex-1 space-y-4 overflow-auto p-4 text-sm">
+    <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4 text-sm">
       <section className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-bark-500">Project file</h2>
         <p className="text-gray-600">

@@ -185,6 +185,13 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
     })();
   };
 
+  // A spouse just added is shown on the poster: spouses are switched on
+  // (the "Show spouses" box in the header) if they were off.
+  const addSpouse = async (fn: () => Promise<TreeDTO>, label: string) => {
+    const next = await mutate(fn, { label });
+    if (next && !theme.motherNames) updateSettings({ theme: { ...theme, motherNames: true } });
+  };
+
   // Poster settings change on screen at once and are saved shortly after
   // the last change: dragging a colour picker is one save and one undo step.
   const pendingSettings = useRef<{ timer: ReturnType<typeof setTimeout>; saved: TreeDTO["settings"]; stepId: number } | null>(null);
@@ -367,7 +374,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
   }, [tree.members, query]);
 
   return (
-    <div className="flex h-screen flex-col bg-parchment-100 text-bark-900">
+    <div className="relative flex h-screen flex-col overflow-hidden bg-parchment-100 text-bark-900">
       <header className="relative z-40 flex items-center gap-4 border-b border-parchment-300 bg-white/80 px-4 py-2.5 backdrop-blur">
         <Link href="/" className="font-naskh text-2xl font-bold text-bark-700">شجرة</Link>
         <div className="min-w-0">
@@ -399,6 +406,10 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               Show daughters
             </label>
           )}
+          <label className="flex items-center gap-2 text-sm" title="Each wife (or husband) as a cartouche on the branch, her children growing from it">
+            <input type="checkbox" checked={theme.motherNames} onChange={(e) => updateSettings({ theme: { ...theme, motherNames: e.target.checked } })} />
+            Show spouses
+          </label>
           <label className="flex items-center gap-2 text-sm" title="Select a person to highlight their ancestors and descendants">
             <input type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />
             Trace lineage
@@ -425,11 +436,6 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
               ↷
             </button>
           </div>
-          {theme.foliage && (
-            <button type="button" className="btn-ghost" title="Grow the decorative foliage anew" onClick={() => updateSettings({ seed: seed + 1 })}>
-              ↻ Re-grow foliage
-            </button>
-          )}
           <StylePanel
             theme={theme}
             onChange={(patch) => updateSettings({ theme: { ...theme, ...patch } })}
@@ -459,7 +465,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
       )}
 
       <div className="flex min-h-0 flex-1">
-        <aside className="flex w-[380px] shrink-0 flex-col border-e border-parchment-300 bg-white">
+        <aside className="relative flex min-h-0 w-[380px] shrink-0 flex-col overflow-hidden border-e border-parchment-300 bg-white">
           {error && (
             <div className="m-3 rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800">
               {error} <button className="ms-2 underline" onClick={() => setError(null)}>dismiss</button>
@@ -494,7 +500,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                   <button type="button" className="text-emerald-700" aria-label="Dismiss" onClick={() => setLastImport(null)}>×</button>
                 </div>
               )}
-              <ul className="flex-1 overflow-auto">
+              <ul className="min-h-0 flex-1 overflow-auto">
                 {tree.members.length === 0 && (
                   <li className="p-6 text-center text-sm text-gray-500">
                     Start with the eldest known ancestor — the root of the trunk.
@@ -539,14 +545,14 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
           )}
 
           {panel.kind === "new" && (
-            <div className="flex-1 overflow-auto p-4">
+            <div className="min-h-0 flex-1 overflow-auto p-4">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-bark-500">New member</h2>
               <MemberForm tree={tree} member={null} initialDraft={panel.draft} busy={busy} onSave={saveNew} onCancel={() => setPanel({ kind: "list" })} />
             </div>
           )}
 
           {panel.kind === "edit" && selected && (
-            <div className="flex-1 space-y-5 overflow-auto p-4">
+            <div className="min-h-0 flex-1 space-y-5 overflow-auto p-4">
               <div className="flex items-center gap-2">
                 <button type="button" className="btn-ghost px-2" onClick={() => setPanel({ kind: "list" })}>← All</button>
                 <h2 className="truncate font-naskh text-xl font-bold" dir="auto">{selected.name}</h2>
@@ -563,11 +569,11 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
                 onQuickAddParent={(name, gender) =>
                   void mutate(() => repo.createMember({ name, gender, parentOfId: selected.id }), { label: `Add ${name} above ${selected.name}` })
                 }
-                onAddSpouse={(sid) => void mutate(() => repo.createMarriage({ spouseAId: selected.id, spouseBId: sid }), { label: "Add marriage" })}
+                onAddSpouse={(sid) => void addSpouse(() => repo.createMarriage({ spouseAId: selected.id, spouseBId: sid }), "Add marriage")}
                 onNewSpouse={(name) =>
-                  void mutate(
+                  void addSpouse(
                     () => repo.createMember({ name, gender: selected.gender === "FEMALE" ? "MALE" : "FEMALE", spouseOfId: selected.id }),
-                    { label: `Add spouse ${name}` },
+                    `Add spouse ${name}`,
                   )
                 }
                 onRemoveMarriage={(id) => void mutate(() => repo.deleteMarriage(id), { label: "Remove marriage" })}
@@ -681,7 +687,7 @@ export function TreeWorkspace({ initialTree, mode }: Props) {
           )}
         </aside>
 
-        <main className="relative min-w-0 flex-1">
+        <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
           {view === "sources" ? (
             <SourcesPage
               tree={tree}

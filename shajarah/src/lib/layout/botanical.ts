@@ -51,7 +51,6 @@ import {
   type Cubic, type Vec,
 } from "./geometry";
 import { validateRelationships, type ClarityReport } from "./clarity";
-import { growFoliage, type Box, type Foliage } from "./foliage";
 import { soilStyle, type SoilContext, type SoilGeometry, type SoilStyleId } from "./soil";
 import { namesOf, shortenSoil, wordsOf } from "./soil/common";
 import { mulberry32 } from "./random";
@@ -105,8 +104,6 @@ export interface LayoutOptions {
   maxTrunkLabels?: number;
   /** Branch thickness multiplier (line-art themes use thin branches). */
   branchScale?: number;
-  /** Decorative twigs and leaves filling the canopy (roundel/oval names only). */
-  foliage?: boolean;
   /** Reserve the top corners for the verse / hadith medallions. */
   cornerMedallions?: boolean;
   /** Top of the canopy as a fraction of the height (room for a header). */
@@ -251,8 +248,6 @@ export interface PosterLayout {
   edges: Edge[];
   /** Soft silhouette around the canopy (balanced oval). */
   canopy: string | null;
-  /** Decorative twigs and leaves (null when names are leaves themselves). */
-  foliage: Foliage | null;
   /** Roots spreading over the ground from the trunk base. */
   surfaceRoots: Branch[];
   /** Circular corner medallions (verse / hadith), when reserved. */
@@ -503,8 +498,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       }
     }
   }
-  // decorative foliage is only grown for the chosen layout
-  const result = opts.foliage ? best.attempt(best.chosen, true, best.strict, best.untangle ?? 0) : best.layout;
+  const result = best.layout;
   result.tooDense = result.clarity.issues.length > CLARITY_LIMIT;
   return result;
 }
@@ -625,7 +619,7 @@ function layoutAttempt(
     width: W, height: H, rtl: true, crown, origin, groundY,
     trunkPath: trunkOutline(origin, groundY, trunkWidth), trunkWidth,
     trunkLabels: [], soil: null, trunkZigzag: false, base: null, stubs: [], nodes: [], spouses: [],
-    branches: [], edges: [], canopy: null, foliage: null, surfaceRoots: [], medallions: [],
+    branches: [], edges: [], canopy: null, surfaceRoots: [], medallions: [],
     frame: place,
     legibility: { minTextMm, smallestTextMm: minTextMm, ok: true, scaleNeeded: 1 },
     overlaps: 0,
@@ -1666,7 +1660,9 @@ function layoutAttempt(
   // the children she bore him growing from it; and the husbands of a
   // daughter whose family is shown, on her dotted line. Children whose
   // other parent is not recorded grow from the partner directly.
-  type Holder = SpouseHolder & { anchorOf: LiveNode; kids: LiveNode[]; dir: Vec; clear: boolean; pin?: Vec };
+  // (lone: a spouse with no children on the poster, on a short line from
+  // the partner; anchorOf is then the partner)
+  type Holder = SpouseHolder & { anchorOf: LiveNode; kids: LiveNode[]; dir: Vec; clear: boolean; pin?: Vec; lone?: boolean };
   const holders: Holder[] = [];
   const holderOf = new Map<string, Holder>();
   {
@@ -1713,6 +1709,34 @@ function layoutAttempt(
         for (const k of group) holderOf.set(k.id, h);
       }
     }
+    // Every other recorded spouse of someone on the poster (a wife with no
+    // children yet, a daughter's husband) on a short line from them, when
+    // spouses are shown. (Not one who is on the poster in her own right.)
+    if (opts.motherNames) {
+      const onPoster = new Set([...nodes.map((n) => n.id), ...(base.data.member ? [base.data.member.id] : [])]);
+      for (const p of growingNodes) {
+        const married = tree.marriages
+          .filter((x) => x.spouseAId === p.id || x.spouseBId === p.id)
+          .map((x) => (x.spouseAId === p.id ? x.spouseBId : x.spouseAId));
+        for (const sid of new Set(married)) {
+          const spouse = byMemberId.get(sid);
+          if (!spouse || onPoster.has(sid) || holders.some((h) => h.partnerId === p.id && h.member.id === sid)) continue;
+          const label = givenAndFamilyName(spouse.name);
+          const fs = Math.max(floorFor(fl), p.fontSize * 0.85);
+          // (a daughter's husband is of another family: a dotted line)
+          const outside = dotted.has(p.id) || (matri ? p.member.gender === "MALE" : p.member.gender === "FEMALE");
+          const h: Holder = {
+            id: `spouse:${p.id}:${sid}`, member: spouse, partnerId: p.id, childIds: [],
+            label, lines: nameLines(label), fontSize: fs, w: 0, h: 0, x: 0, y: 0,
+            dotted: outside, lineage: p.lineage ?? null,
+            anchorOf: p, kids: [], dir: UP, clear: true, lone: true,
+          };
+          h.w = Math.max(...h.lines.map((t) => textWidth(t, fs))) + fs * 2;
+          h.h = fs * (1.6 + 1.05 * (h.lines.length - 1));
+          holders.push(h);
+        }
+      }
+    }
   }
   // The width of each drawn line at its start and end, as section 6 draws
   // it (the clarity check judges lines by their width).
@@ -1726,12 +1750,12 @@ function layoutAttempt(
     return { w0: node.depth === 1 && !holderOf.has(node.id) ? w * 1.15 : w, w1: w * 0.7 };
   };
   const holderWidths = (h: Holder) => {
-    const w = widthOf(h.kids.reduce((a, k) => a + (k.shape === "leaf" ? 1 : k.leafCount), 0));
+    const w = widthOf(Math.max(1, h.kids.reduce((a, k) => a + (k.shape === "leaf" ? 1 : k.leafCount), 0)));
     if (h.dotted) {
       const wd = Math.max(wMin * 2.2, w * 0.8);
       return { w0: wd, w1: wd };
     }
-    return { w0: h.anchorOf.region === "crown" && h.anchorOf.depth === 1 ? w * 1.15 : w, w1: w * 0.85 };
+    return { w0: !h.lone && h.anchorOf.region === "crown" && h.anchorOf.depth === 1 ? w * 1.15 : w, w1: w * 0.85 };
   };
   // Where a line to a child starts: its parent's name, or for a main limb
   // the canopy base (or the trunk, for a side branch).
@@ -1739,6 +1763,8 @@ function layoutAttempt(
     const parent = node.parentId ? byId.get(node.parentId) : undefined;
     return parent && parent.region !== "fixed" ? { x: parent.x, y: parent.y } : (stemStart.get(node.id) ?? origin);
   };
+  /** Where the line to a spouse's holder starts: the partner (as for the children's lines). */
+  const fromOf = (h: Holder): Vec => (h.lone ? { x: h.anchorOf.x, y: h.anchorOf.y } : startOf(h.anchorOf));
   const baseBoxOf = () => (base.data.member ? { x: origin.x, y: origin.y, w: baseOval.rx * 2, h: baseOval.ry * 2 } : null);
   // A holder sits on the way from the partner to the children she bore,
   // nearer the partner, wherever it and the lines to and from it are clear
@@ -1771,11 +1797,22 @@ function layoutAttempt(
     // A partner's spouses sit at the same distance from them (so no line to
     // one passes another), turned a little either way if that finds room.
     const byPartner = new Map<string, Holder[]>();
-    for (const h of holders) byPartner.set(h.partnerId, [...(byPartner.get(h.partnerId) ?? []), h]);
+    // (a partner's spouses with no children on the poster: a group of their own)
+    for (const h of holders) {
+      const key = `${h.lone ? "lone:" : ""}${h.partnerId}`;
+      byPartner.set(key, [...(byPartner.get(key) ?? []), h]);
+    }
     for (const group of byPartner.values()) {
-      const P = startOf(group[0].anchorOf);
+      const lone = !!group[0].lone;
+      const P = fromOf(group[0]);
       const partnerBox = obstacles.find((o) => o.id === group[0].partnerId) ?? { x: P.x, y: P.y, w: 0, h: 0 };
       for (const h of group) {
+        if (lone) {
+          // outwards, the way the partner's own branch grows
+          const a = h.anchorOf, from = startOf(a);
+          h.dir = len(sub(a, from)) > 1e-6 ? norm(sub(a, from)) : UP;
+          continue;
+        }
         const G = h.kids.reduce((a, k) => add(a, scale({ x: k.x, y: k.y }, 1 / h.kids.length)), { x: 0, y: 0 } as Vec);
         h.dir = norm(sub(G, P));
       }
@@ -1850,6 +1887,27 @@ function layoutAttempt(
           h.clear = fits(h, h.pin!, placed, false);
           h.x = h.pin!.x;
           h.y = h.pin!.y;
+          placed.push({ h, from: P });
+        }
+        continue;
+      }
+      if (lone) {
+        // a short line from the partner, beside them rather than straight
+        // on (where a child would be), turned as far as it takes to find
+        // room (clear of every name and line, else of every name)
+        for (const h of group) {
+          let J: Vec | null = null;
+          for (const linesToo of [true, false]) {
+            search: for (const t of [1.2, 1.6, 2.1, 2.8, 3.6]) for (const deg of [70, -70, 50, -50, 90, -90, 30, -30, 110, -110, 0, 135, -135, 180]) {
+              const c = beyond(h, turned(h.dir, deg), t);
+              if (fits(h, c, placed, linesToo)) { J = c; break search; }
+            }
+            if (J) break;
+          }
+          h.clear = !!J;
+          const to = J ?? beyond(h, h.dir, 1.2);
+          h.x = to.x;
+          h.y = to.y;
           placed.push({ h, from: P });
         }
         continue;
@@ -2137,6 +2195,17 @@ function layoutAttempt(
       curveOf.set(node.id, c);
       if (!leaf) growthDir.set(node.id, e0);
     }
+    // a spouse with no children here: a short, gently curved line from
+    // the partner, leaving along the partner's growth
+    for (const h of holders) {
+      if (!h.lone) continue;
+      const P = fromOf(h), S: Vec = { x: h.x, y: h.y };
+      const L = len(sub(S, P)) || 1;
+      const dv = scale(sub(S, P), 1 / L);
+      const g = growthDir.get(h.partnerId) ?? h.dir;
+      const s0 = norm(add(scale(g, 0.3), scale(dv, 0.7)));
+      holderCurve.set(h.id, { p0: P, c1: add(P, scale(s0, L * 0.4)), c2: sub(S, scale(dv, L * 0.3)), p1: S });
+    }
   };
   // A spouse's holder is placed clear of the lines as last drawn: when a
   // line bent around a name now passes under a holder, the holders are
@@ -2294,7 +2363,7 @@ function layoutAttempt(
         if (!h || fixed) continue;
         const group = holders.filter((x) => x.partnerId === h.partnerId);
         const saved = group.map((x) => x.pin);
-        const P = startOf(h.anchorOf);
+        const P = fromOf(h);
         const d0 = len(sub(h, P));
         for (const [k, deg] of [[0.7, 0], [1.35, 0], [1, 14], [1, -14], [0.7, 24], [0.7, -24]] as const) {
           if (budget.checks <= 0) break;
@@ -2387,10 +2456,6 @@ function layoutAttempt(
   // ── 6. Branches ──────────────────────────────────────────────────────
   const growing = nodes.filter((n) => n.region !== "fixed");
   const branches: Branch[] = [...branchesOut];
-  const seeds: { p: Vec; dir: Vec }[] = [];
-  const seedFrom = (curve: Cubic) => {
-    for (const t of [0.25, 0.45, 0.65, 0.85, 1]) seeds.push({ p: cubicPointAt(curve, t), dir: cubicTangent(curve, t) });
-  };
 
   // The main limbs (the canopy base's sons with families of their own) grow
   // out of the trunk: together they start about as wide as it, then narrow
@@ -2398,13 +2463,13 @@ function layoutAttempt(
   // poking out of a broad trunk. (They start at the canopy base's centre,
   // inside the wood, under its oval.)
   // (a wife's holder on the canopy base's branch is one limb, carrying her sons)
-  const baseHolder = (h: Holder) => h.anchorOf.region === "crown" && h.anchorOf.depth === 1;
+  const baseHolder = (h: Holder) => !h.lone && h.anchorOf.region === "crown" && h.anchorOf.depth === 1;
   const mainLimbs = growing.filter((n) => n.region === "crown" && n.depth === 1 && !n.terminal && !holderOf.has(n.id)).length
     + holders.filter(baseHolder).length;
   const limbShare = mainLimbs ? clamp(1.05 / mainLimbs, 0.14, 0.4) : 0;
   for (const h of holders) {
     const c = holderCurve.get(h.id)!;
-    const leaves = h.kids.reduce((a, k) => a + (k.shape === "leaf" ? 1 : k.leafCount), 0);
+    const leaves = Math.max(1, h.kids.reduce((a, k) => a + (k.shape === "leaf" ? 1 : k.leafCount), 0));
     const w = widthOf(leaves);
     if (h.dotted) {
       const wd = Math.max(wMin * 2.2, w * 0.8);
@@ -2417,7 +2482,6 @@ function layoutAttempt(
       branches.push({ ...shaded(c, w0, w * 0.85, 14, mainLimb ? 4 : 2), lineage: h.lineage ?? null });
       edges.push({ parentId: h.partnerId, childId: h.id, points: sample(c), w0: mainLimb ? w * 1.15 : w, w1: w * 0.85, lineage: h.lineage ?? null });
     }
-    seedFrom(c);
   }
   for (const node of growing) {
     const c = curveOf.get(node.id)!;
@@ -2430,8 +2494,7 @@ function layoutAttempt(
       const p = (v: Vec) => `${v.x.toFixed(1)} ${v.y.toFixed(1)}`;
       branches.push({ d: `M${p(c.p0)}C${p(c.c1)} ${p(c.c2)} ${p(c.p1)}`, w, lineage: node.lineage ?? null, dotted: true });
       edges.push({ parentId: from, childId: node.id, points: sample(c), w0: w, w1: w, lineage: node.lineage ?? null });
-      seedFrom(c);
-      continue;
+        continue;
     }
     if (node.shape === "leaf") {
       // a thin stalk from the parent to the base of the leaf blade
@@ -2447,7 +2510,6 @@ function layoutAttempt(
       // start lies under the canopy base's oval)
       edges.push({ parentId: from, childId: node.id, points: sample(c), w0: node.depth === 1 && !holder ? w * 1.15 : w, w1: w * 0.7, lineage: node.lineage ?? null });
     }
-    seedFrom(c);
   }
   // Thick limbs first so thin branches (and their junctions) sit on top.
   branches.sort((a, b) => b.w - a.w);
@@ -2473,25 +2535,6 @@ function layoutAttempt(
       pts.push(`${(origin.x + rx * k * Math.sign(c) * Math.abs(c) ** (2 / 2.6)).toFixed(1)} ${(cy + ry * Math.sign(sn) * Math.abs(sn) ** (2 / 2.6)).toFixed(1)}`);
     }
     canopy = `M${pts.join("L")}Z`;
-  }
-
-  // ── Decorative foliage ───────────────────────────────────────────────
-  let foliage: Foliage | null = null;
-  if (opts.foliage && nodeShape !== "leaf" && final) {
-    const obstacles: Box[] = [
-      ...nodes.map((n) => ({ x: n.x, y: n.y, w: n.w + W * 0.006, h: n.h + W * 0.006 })),
-      { x: origin.x, y: origin.y, w: baseMedallionR * 2.3, h: baseMedallionR * 2.3 },
-      ...medallions.map((m) => ({ x: m.x, y: m.y, w: m.r * 2.2, h: m.r * 2.2 })),
-    ];
-    if (!seeds.length) seeds.push({ p: origin, dir: UP });
-    seeds.push({ p: { x: origin.x, y: origin.y - baseMedallionR }, dir: UP });
-    foliage = growFoliage({
-      W, rand, seeds, obstacles,
-      bounds: { x0: crown.cx - crown.rx * 1.15, y0: crown.cy - crown.ry, x1: crown.cx + crown.rx * 1.15, y1: crown.cy + crown.ry },
-      inside: (p) => insideCrown(p),
-      // keep the trunk column and the space under the crown base clear
-      excluded: (p) => p.y > origin.y - baseMedallionR && Math.abs(p.x - origin.x) < trunkWidth * 1.2,
-    });
   }
 
   // ── Surface roots spreading from the trunk base ─────────────────────
@@ -2583,11 +2626,10 @@ function layoutAttempt(
     base: baseNode,
     stubs: stubs.map((s) => strip(s as LiveNode)),
     nodes: growing.map(strip),
-    spouses: holders.map(({ anchorOf: _a, kids: _k, dir: _d, clear: _c, ...h }) => h),
+    spouses: holders.map(({ anchorOf: _a, kids: _k, dir: _d, clear: _c, lone: _l, ...h }) => h),
     branches,
     edges,
     canopy,
-    foliage,
     surfaceRoots,
     medallions,
     frame: place,

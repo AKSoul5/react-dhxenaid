@@ -38,10 +38,10 @@ describe.runIf(process.env.BENCH)("layout speed", () => {
     expect(times.reduce((a, b) => a + b, 0) / times.length).toBeLessThan(2000);
   }, 120000);
 
-  it("large family with foliage: under 2.5 s", () => {
+  it("large family with roundels and corner medallions: under 2.5 s", () => {
     const tree = generateSampleTree();
-    const ms = medianMs(() => computePosterLayout(tree, { nodeShape: "circle", foliage: true, cornerMedallions: true, headerBand: 0.125 }));
-    console.log(`large + foliage: ${ms.toFixed(0)} ms`);
+    const ms = medianMs(() => computePosterLayout(tree, { nodeShape: "circle", cornerMedallions: true, headerBand: 0.125 }));
+    console.log(`large + roundels: ${ms.toFixed(0)} ms`);
     expect(ms).toBeLessThan(2500);
   });
 

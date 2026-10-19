@@ -21,7 +21,7 @@ export function NasabImport({ tree, busy, onImport, onCancel }: Props) {
   }, [text, tree.members, tree.lineage]);
 
   return (
-    <div className="flex-1 space-y-3 overflow-auto p-4">
+    <div className="min-h-0 flex-1 space-y-3 overflow-auto p-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-bark-500">Import nasab</h2>
       <p className="text-sm text-gray-600">
         Paste one lineage per line, newest name first. Names already in the tree are reused, so you

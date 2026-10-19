@@ -51,6 +51,12 @@ export function RelationsPanel({
     setChildName("");
   };
 
+  const submitSpouse = () => {
+    if (!spouseName.trim()) return;
+    onNewSpouse(spouseName.trim());
+    setSpouseName("");
+  };
+
   const submitParent = () => {
     if (!parentName.trim() || !parentGender) return;
     onQuickAddParent(parentName.trim(), parentGender);
@@ -157,28 +163,33 @@ export function RelationsPanel({
             );
           })}
         </ul>
-        <MemberPicker
-          label="Link existing member as spouse"
-          members={tree.members}
-          value={null}
-          onChange={(id) => id && onAddSpouse(id)}
-          excludeGender={member.gender === "UNKNOWN" ? undefined : member.gender}
-          excludeIds={new Set([member.id, ...spouseIds])}
-        />
-        <div className="mt-2 flex gap-1">
+        {/* the same as adding a child: type the name, press Enter or + */}
+        <div className="flex gap-1">
           <input
             className="input flex-1 font-naskh text-base"
             dir="auto"
-            placeholder="…or add a new spouse by name"
+            placeholder={`Add a ${member.gender === "FEMALE" ? "husband" : "wife"} — type name, press Enter`}
             value={spouseName}
             onChange={(e) => setSpouseName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && spouseName.trim()) {
+              if (e.key === "Enter") {
                 e.preventDefault();
-                onNewSpouse(spouseName.trim());
-                setSpouseName("");
+                submitSpouse();
               }
             }}
+          />
+          <button type="button" className="btn-primary px-3" disabled={busy || !spouseName.trim()} onClick={submitSpouse}>
+            +
+          </button>
+        </div>
+        <div className="mt-2">
+          <MemberPicker
+            label="…or link someone already in the tree"
+            members={tree.members}
+            value={null}
+            onChange={(id) => id && onAddSpouse(id)}
+            excludeGender={member.gender === "UNKNOWN" ? undefined : member.gender}
+            excludeIds={new Set([member.id, ...spouseIds])}
           />
         </div>
       </section>

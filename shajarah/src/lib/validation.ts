@@ -35,7 +35,6 @@ export const themeSchema = z
     motherNames: z.boolean(),
     trunkStyle: z.enum(["carved", "badges"]),
     soilStyle: z.enum(["column", "spine", "banner", "pedestal", "paragraph"]),
-    foliage: z.boolean(),
     nodeRim: hexColor,
     bismillah: z.boolean(),
     verse: z.boolean(),

@@ -49,13 +49,6 @@ const INK = "#2a1c0c";
 /** Spouses' cartouches: a soft rose, apart from the line's own names. */
 const SPOUSE_FILL = "#f8ece6";
 const SPOUSE_RIM = "#9a6656";
-/** Foliage leaf tones: [light, dark] pairs from yellow-green to deep green. */
-const FOLIAGE = [
-  ["#b9d36a", "#5d8f2c"],
-  ["#8fc057", "#2f6b25"],
-  ["#a7c95e", "#4a7d2a"],
-  ["#6fa848", "#22561d"],
-] as const;
 
 interface Palette {
   mono: boolean;
@@ -165,18 +158,6 @@ export const TreePoster = memo(
             <stop offset="0" stopColor="#b98d2c" />
             <stop offset="1" stopColor="#6e4f12" />
           </linearGradient>
-          {FOLIAGE.map(([light, dark], i) => (
-            <linearGradient key={`lg${i}`} id={`sh-leafg-${i}`} x1="0" y1="0" x2="0.2" y2="1">
-              <stop offset="0" stopColor={light} />
-              <stop offset="1" stopColor={dark} />
-            </linearGradient>
-          ))}
-          {FOLIAGE.map((_, i) => (
-            <g key={`ls${i}`} id={`sh-fol-${i}`}>
-              <path d={leafPath(1, 0.5)} fill={`url(#sh-leafg-${i})`} stroke="#264a16" strokeWidth={0.018} />
-              <path d="M-0.5 0Q0 -0.03 0.46 0" stroke="#eef5c8" strokeWidth={0.025} fill="none" opacity={0.5} />
-            </g>
-          ))}
         </defs>
 
         {/* Paper, then either the frame artwork or a fine gold rule */}
@@ -196,7 +177,7 @@ export const TreePoster = memo(
         })}
 
         {/* A faint wash behind the canopy gives a sparse tree its shape */}
-        {layout.canopy && !pal.mono && !layout.foliage && <path d={layout.canopy} fill="#efe3c3" opacity={0.35} />}
+        {layout.canopy && !pal.mono && <path d={layout.canopy} fill="#efe3c3" opacity={0.35} />}
 
         {/* Ground and roots */}
         {layout.soil ? (
@@ -216,11 +197,6 @@ export const TreePoster = memo(
 
         {/* Trunk and branches: clean tapered vector shapes, no textures */}
         <path d={layout.trunkPath} fill={pal.mono ? "#ffffff" : "url(#sh-trunk)"} stroke={pal.mono ? "#111" : "none"} strokeWidth={W * 0.0015} />
-        {layout.foliage && (
-          <g stroke={shade(bark, 0.1)} fill="none" strokeLinecap="round" strokeLinejoin="round">
-            {layout.foliage.twigs.map((t, i) => <path key={i} d={t.d} strokeWidth={t.w} />)}
-          </g>
-        )}
         {/* Every branch has a fine paper-coloured edge, so where lines cross
             the upper one visibly passes over the lower (never a shared junction) */}
         <g stroke={pal.mono ? "#ffffff" : PAPER} strokeWidth={W * 0.0018} strokeLinejoin="round" paintOrder="stroke">
@@ -233,17 +209,6 @@ export const TreePoster = memo(
             ),
           )}
         </g>
-        {layout.foliage && (
-          <g>
-            {layout.foliage.leaves.map((l, i) => (
-              <use
-                key={i}
-                href={`#sh-fol-${l.tone % FOLIAGE.length}`}
-                transform={`translate(${l.x.toFixed(1)} ${l.y.toFixed(1)}) rotate(${l.angle.toFixed(0)}) scale(${l.size.toFixed(1)})`}
-              />
-            ))}
-          </g>
-        )}
 
         {/* The ancestral chain on the trunk, eldest at the bottom, joined by a gold
             thread that runs up the middle of the bark to the canopy base */}

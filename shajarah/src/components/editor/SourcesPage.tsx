@@ -85,7 +85,7 @@ export function SourcesPage(props: Props) {
             </select>
           </label>
         </div>
-        <ul className="flex-1 overflow-auto" aria-label="Sources">
+        <ul className="min-h-0 flex-1 overflow-auto" aria-label="Sources">
           {tree.sources.length === 0 && (
             <li className="p-6 text-center text-sm text-gray-500">
               No sources yet. Add one here, cite one from a person&apos;s panel, or import a GEDCOM file.
