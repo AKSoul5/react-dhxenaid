@@ -216,6 +216,32 @@ describe("the lineage to آدم stays in the foundation's area", () => {
   }
 });
 
+describe("the inscribed panel's text keeps clear of its rules", () => {
+  // (a 77-name lineage set small on an A0 poster once ran its first line
+  // into the panel's inner rule: the rule was set in by a share of the page,
+  // the text by a share of its own size)
+  const tree = kalaliTree();
+  for (const paper of ["A3", "A2", "A0", "2A0", "4A0"] as const) {
+    it(paper, () => {
+      for (const preset of Object.keys(THEME_PRESETS)) {
+        const settings = { ...tree.settings, theme: { preset, frame: true } } as TreeDTO["settings"];
+        const l = computePosterLayout({ ...tree, settings }, { ...layoutOptionsFor(resolveTheme(settings), paper), soilStyle: "paragraph" });
+        const s = l.soil!;
+        const where = `${preset} ${paper}`;
+        // the inner rule: its top edge, and the same inset at the bottom
+        const m = s.shapes[1].d.match(/^M(-?[\d.]+) (-?[\d.]+)/)!;
+        const innerTop = Number(m[2]), innerBottom = s.box.y + s.box.h - (innerTop - s.box.y);
+        const half = (t: (typeof s.texts)[number]) => t.fontSize;
+        for (const t of s.texts) {
+          // the line's ink, from its tallest letters to its descenders, clear of both rules by a third of its height
+          expect(t.y - half(t) * 1.0, `${where}: "${t.text.slice(0, 20)}…" against the top rule`).toBeGreaterThan(innerTop + t.fontSize * 0.3);
+          expect(t.y + half(t) * 0.4, `${where}: against the bottom rule`).toBeLessThan(innerBottom - t.fontSize * 0.3);
+        }
+      }
+    }, 60_000);
+  }
+});
+
 describe("every name in the foundation, unless asked to shorten", () => {
   // the Al-Kalali line to آدم under a canopy of 120 descendants, the trunk
   // start automatic: some 70 names for the foundation, far more than the

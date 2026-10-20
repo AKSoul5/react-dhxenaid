@@ -566,7 +566,7 @@ automatic choice) decides. Only the drawing changes.
 | **Timeline spine** | A spine in the trunk's own colour, with names alternating either side on gold ticks and each ancestor's generation on a disc (٤٧, ٤٦ … in Arabic). The numbers are held to the legible minimum like the names, and the ticks reach out into the width the names leave free. | The spine starts at the trunk's full width and tapers down, so trunk and spine are one form. |
 | **Illuminated banner** | A manuscript panel: double gold rule, a border of small lozenges, head- and tailpiece, names stacked with ornamental separators. A long lineage is set in columns, read right to left. | The trunk stands on the panel's head with a few fine roots. |
 | **Stepped pedestal** | Light, finely ruled steps widening downward, each carrying the next group of names ("بن نصر بن سهل بن …"). | The trunk stands on the top step. |
-| **Inscribed panel** | The original: running text in a gold-ruled panel. | A root flare into a mound, with fine roots. |
+| **Inscribed panel** | The original: running text in a gold-ruled panel. Its inner rule sits half a name's height inside the outer one and the text keeps clear of it on every side at any size (a long lineage set small on A0 once ran its first line into the rule). | A root flare into a mound, with fine roots. |
 
 **Every name stays in its place.** The foundation has its own width
 (78% of the page, inside the frame), and every line has the width it was
