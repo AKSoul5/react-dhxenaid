@@ -542,6 +542,10 @@ on any member's panel:
     lowest names, tangled with the canopy base's wife and daughters.)
   - It reaches as far out as its names need, so each generation sits on its
     own ring with room for its names side by side (tests/side-branches.test.ts).
+- **A daughter's several husbands:** their boxes stand around her in the
+  same order as their children, each on the way to his own. A box turned
+  aside to find room may not pass another (one daughter's four husbands
+  once sent their dotted lines across each other's).
 - **Crossing lines:** a crossing at a clear angle is allowed, but on a
   clean poster the people at each end are still tried a little further out
   or along their ring, kept only when the poster stays clean and readable
@@ -818,7 +822,10 @@ Options:
   colour picker.
 - **Colour by:** gender or generation band.
 - **Finish:** metallic gradients on or off.
-- **Node shape:** leaves, circular badges or oval medallions.
+- **Node shape:** leaves, circular badges or oval medallions. Circular
+  badges are all one height: a name too long for the circle (عبدالرحمن)
+  stretches it sideways into a capsule hugging the name, instead of a
+  larger circle with empty room above and below.
 - **Labels:** first name, or «name بن father», with optional
   birth/death years.
 - **Trunk:** ancestors carved in the bark, or shown as framed badges.

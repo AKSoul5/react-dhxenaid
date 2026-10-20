@@ -527,7 +527,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     for (const { sr, scale, l: before } of near) {
       // (half as much for an illegible one)
       const checks = before.legibility.ok ? untangleChecks : Math.ceil(untangleChecks / 2);
-      const l = sr.attempt(scale, false, false, checks);
+      const l = sr.attempt(scale, false, false, checks, undefined, true);
       const found = { layout: l, chosen: scale, strict: false, attempt: sr.attempt, untangle: checks };
       const b = best.layout;
       if (isClean(l) && l.legibility.ok) {
@@ -541,7 +541,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     if (one && !(isClean(best.layout) && best.layout.legibility.ok)) {
       for (const k of [-1, 1, -2, 2]) {
         const scale = clamp(one.scale + k * 0.015, MIN_SCALE, 1);
-        const l = one.sr.attempt(scale, false, false, untangleChecks);
+        const l = one.sr.attempt(scale, false, false, untangleChecks, undefined, true);
         if (isClean(l) && l.legibility.ok) {
           best = { layout: l, chosen: scale, strict: false, attempt: one.sr.attempt, untangle: untangleChecks };
           break;
@@ -559,7 +559,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       .filter(({ scale, l }) => scale > best.chosen * 1.1 && l.overlaps === 0 && l.legibility.ok && l.clarity.issues.length <= 2)
       .sort((a, b) => b.scale - a.scale)[0];
     if (near) {
-      const l = near.sr.attempt(near.scale, false, false, untangleChecks);
+      const l = near.sr.attempt(near.scale, false, false, untangleChecks, undefined, true);
       if (isClean(l) && l.legibility.ok) best = { layout: l, chosen: near.scale, strict: false, attempt: near.sr.attempt, untangle: untangleChecks };
     }
   }
@@ -606,7 +606,8 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
   // little elsewhere (see the untangling), kept when the poster stays
   // clean, as legible, with fewer. (Not on a poster too small to read: the
   // larger paper the editor recommends is laid out afresh.)
-  if (isClean(best.layout) && best.layout.legibility.ok && best.layout.clarity.clearCrossings > 0) {
+  // (one already untangled had its crossings tried in the same pass)
+  if (isClean(best.layout) && best.layout.legibility.ok && best.layout.clarity.clearCrossings > 0 && !best.untangle) {
     const before = best.layout;
     const l = best.attempt(best.chosen, false, best.strict, Math.max(untangleChecks, best.untangle ?? 0), best.fit, true);
     if (isClean(l) && l.legibility.ok && l.clarity.clearCrossings < before.clarity.clearCrossings) {
@@ -947,7 +948,7 @@ function layoutAttempt(
       const L = textWidth(label, fs) + fs * 1.9;
       return L * Math.max(fs * 1.6, L * 0.36) * 1.15;
     }
-    if (nodeShape === "circle") return (fs * 2.55) ** 2;
+    if (nodeShape === "circle") return (fs * 2.55) * Math.max(fs * 2.55, textWidth(label, fs) + fs * 1.1);
     if (nodeShape === "oval") return (textWidth(label, fs) + fs * OVAL_PAD) * fs * OVAL_H;
     return (textWidth(label, fs) + fs * 0.9) * fs * 1.45;
   };
@@ -1575,10 +1576,14 @@ function layoutAttempt(
     } else {
       const tw = Math.max(textWidth(label, fs), subLabel ? textWidth(subLabel, fs * 0.7) : 0);
       if (nodeShape === "circle") {
-        // Uniform roundels (like engraved family charts); long names shrink to fit.
-        // (long names widen the roundel rather than shrink below legibility)
+        // Uniform roundels (like engraved family charts), all one height: a
+        // name too long for the circle stretches it sideways into a capsule
+        // hugging the name (round ends), never a larger circle with empty
+        // room above and below it ("عبدالرحمن" once sat in a circle half as
+        // large again as its brothers').
         shape = "circle";
-        w = h = Math.max(fs * 2.55 + subH * 0.6, Math.max(textWidth(label, fs), subW) / 0.8);
+        h = fs * 2.55 + subH * 0.6;
+        w = Math.max(h, Math.max(textWidth(label, fs), subW) + fs * 1.1);
       } else if (nodeShape === "oval") {
         shape = "oval";
         w = tw + fs * OVAL_PAD;
@@ -2148,6 +2153,18 @@ function layoutAttempt(
           if (d.bb[1] < me.x - me.w / 2 || d.bb[0] > me.x + me.w / 2 || d.bb[3] < me.y - me.h / 2 || d.bb[2] > me.y + me.h / 2) continue;
           if (d.pts.some((p) => within(p, me))) return false;
         }
+        // nor do its lines cross anyone else's (a box turned aside to find
+        // room once sent all its lines across a neighbouring family's)
+        const own = new Set([...mine, h.id, group[0].partnerId, ...group.map((g) => g.id)]);
+        const mineSegs: [Vec, Vec][] = [[P, J], ...h.kids.map((k): [Vec, Vec] => [J, k])];
+        for (const [a, b] of mineSegs) {
+          const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+          for (const d of drawn) {
+            if (own.has(d.id) || byId.get(d.id)?.parentId === group[0].partnerId) continue;
+            if (d.bb[1] < x0 || d.bb[0] > x1 || d.bb[3] < y0 || d.bb[2] > y1) continue;
+            for (let i = 1; i < d.pts.length; i++) if (crossesInside(a, b, d.pts[i - 1], d.pts[i])) return false;
+          }
+        }
         return true;
       };
       const turned = (d: Vec, deg: number) => {
@@ -2181,6 +2198,23 @@ function layoutAttempt(
       /** A spot along d just clear of the partner's name (t = 1: touching it). */
       const beyond = (h: Holder, d: Vec, t: number) =>
         add(P, scale(d, (edge(d, partnerBox.w, partnerBox.h) + edge(d, h.w + h.fontSize * 0.5, h.h + h.fontSize * 0.5)) * t));
+      // A partner's several spouses keep the order of their children around
+      // the partner: one turned aside to find room, past another, sends its
+      // lines across the other's (a daughter's four husbands once did).
+      const around = (v: Vec, ref: number) => {
+        let a = Math.atan2(v.y - P.y, v.x - P.x) - ref;
+        while (a > Math.PI) a -= 2 * Math.PI;
+        while (a < -Math.PI) a += 2 * Math.PI;
+        return a;
+      };
+      const centroid = (h: Holder) => h.kids.reduce((a, k) => add(a, scale({ x: k.x, y: k.y }, 1 / h.kids.length)), { x: 0, y: 0 } as Vec);
+      const inOrder = (got: { h: Holder; J: Vec }[]) => {
+        if (got.length < 2) return true;
+        const ref = Math.atan2(got.reduce((a, g) => a + g.h.dir.y, 0), got.reduce((a, g) => a + g.h.dir.x, 0));
+        const byKids = [...got].sort((a, b) => around(centroid(a.h), ref) - around(centroid(b.h), ref)).map((g) => g.h.id).join();
+        const bySpot = [...got].sort((a, b) => around(a.J, ref) - around(b.J, ref)).map((g) => g.h.id).join();
+        return byKids === bySpot;
+      };
       const tryAt = (ts: number[]) => {
         const got: { h: Holder; from: Vec; J: Vec }[] = [];
         for (const h of group) {
@@ -2188,7 +2222,7 @@ function layoutAttempt(
           if (!J) return null;
           got.push({ h, from: P, J });
         }
-        return got;
+        return inOrder(got) ? got : null;
       };
       // a holder the untangling placed stays there (still judged: clear
       // only while it overlaps nothing)
@@ -2765,6 +2799,32 @@ function layoutAttempt(
         if (!c) break;
         seen.add(`${c.edge.join(">")}|${c.other.join(">")}`);
         let fixed = false;
+        // a spouse's holder at either end: tried a little nearer or further
+        // along the way to her children, or turned (her group's others held)
+        for (const hid of new Set([...c.edge, ...c.other])) {
+          const h = holders.find((x) => x.id === hid);
+          if (!h || fixed || h.lone) continue;
+          const group = holders.filter((x) => x.partnerId === h.partnerId && !x.lone);
+          const saved = group.map((x) => x.pin);
+          const P = fromOf(h);
+          const d0 = len(sub(h, P));
+          for (const [k, deg] of [[0.75, 0], [1.3, 0], [1, 10], [1, -10], [0.8, 18], [0.8, -18], [1.2, 18], [1.2, -18]] as const) {
+            if (budget.checks <= 0) break;
+            for (const x of group) x.pin = x === h ? undefined : { x: x.x, y: x.y };
+            const a = (deg * Math.PI) / 180;
+            const d = norm(sub(h, P));
+            h.pin = add(P, scale({ x: d.x * Math.cos(a) - d.y * Math.sin(a), y: d.x * Math.sin(a) + d.y * Math.cos(a) }, d0 * k));
+            const next = check();
+            if (!next.length && holders.every((x) => x.clear) && lastReport!.clearCrossings < report.clearCrossings) {
+              report = lastReport!;
+              fixed = true;
+              break;
+            }
+            group.forEach((x, i) => (x.pin = saved[i]));
+            fresh = false;
+          }
+        }
+        if (fixed) continue;
         for (const n of [c.edge[1], c.other[1]].map(nodeById).filter((x): x is LiveNode => !!x)) {
           const moves = [
             ...[1, -1, 0.5, -0.5, 1.6, -1.6, 2.4, -2.4].map((k) => () => turn(n, k)),
@@ -3151,6 +3211,16 @@ function segmentsCross(p: Vec, p2: Vec, q: Vec, q2: Vec): boolean {
   const t = ((q.x - p.x) * (q2.y - q.y) - (q.y - p.y) * (q2.x - q.x)) / d;
   const u = ((q.x - p.x) * (p2.y - p.y) - (q.y - p.y) * (p2.x - p.x)) / d;
   return t > 0 && t < 1 && u > 0 && u < 1;
+}
+
+/** Whether segment ab crosses cd away from both ends (a line leaving or reaching a shared point does not count). */
+function crossesInside(a: Vec, b: Vec, c: Vec, d: Vec): boolean {
+  const r = sub(b, a), q = sub(d, c);
+  const den = r.x * q.y - r.y * q.x;
+  if (Math.abs(den) < 1e-9) return false;
+  const t = ((c.x - a.x) * q.y - (c.y - a.y) * q.x) / den;
+  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
+  return t > 0.04 && t < 0.96 && u > 0.02 && u < 0.98;
 }
 
 /** Splits a line in two at the space nearest its middle (not leaving a word like "m." alone). */

@@ -629,7 +629,10 @@ function PersonNode({
       );
       break;
     case "circle":
-      body = <circle r={node.w / 2} fill={fill} stroke={border} strokeWidth={sw * 1.2} />;
+      // (a long name's roundel is a capsule of the same height)
+      body = node.w > node.h + 0.5
+        ? <rect x={-node.w / 2} y={-node.h / 2} width={node.w} height={node.h} rx={node.h / 2} fill={fill} stroke={border} strokeWidth={sw * 1.2} />
+        : <circle r={node.w / 2} fill={fill} stroke={border} strokeWidth={sw * 1.2} />;
       break;
     case "oval":
       body = <ellipse rx={node.w / 2} ry={node.h / 2} fill={fill} stroke={border} strokeWidth={sw} />;
@@ -642,7 +645,9 @@ function PersonNode({
     const g = fs * 0.16, stroke = pal.mono ? "#111111" : GOLD, w = sw * 1.1;
     switch (node.shape) {
       case "leaf": return null;
-      case "circle": return <circle r={node.w / 2 + g} fill="none" stroke={stroke} strokeWidth={w} />;
+      case "circle": return node.w > node.h + 0.5
+        ? <rect x={-node.w / 2 - g} y={-node.h / 2 - g} width={node.w + 2 * g} height={node.h + 2 * g} rx={node.h / 2 + g} fill="none" stroke={stroke} strokeWidth={w} />
+        : <circle r={node.w / 2 + g} fill="none" stroke={stroke} strokeWidth={w} />;
       case "oval": return <ellipse rx={node.w / 2 + g} ry={node.h / 2 + g} fill="none" stroke={stroke} strokeWidth={w} />;
       default: return <rect x={-node.w / 2 - g} y={-node.h / 2 - g} width={node.w + 2 * g} height={node.h + 2 * g} rx={node.h / 2 + g} fill="none" stroke={stroke} strokeWidth={w} />;
     }
