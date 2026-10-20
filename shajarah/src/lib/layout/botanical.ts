@@ -377,8 +377,8 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
   }
   const search = (dense: boolean) => {
-    const attempt = (scale: number, final = false, strict = false, untangle = 0, fit?: number, crossings = false) => {
-      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, fit, crossings });
+    const attempt = (scale: number, final = false, strict = false, untangle = 0, fit?: number, crossings = false, fan?: { step: number; ends?: boolean }) => {
+      const layout = layoutAttempt(tree, opts, scale, final, strict, dense, { checks: untangle, fit, crossings, fan: fan?.step, ends: fan?.ends });
       layout.clarity = validateRelationships(layout, tree);
       return layout;
     };
@@ -486,7 +486,7 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
     }
     return { layout, chosen, strict, attempt, tried, dense };
   };
-  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number, fit?: number, cr?: boolean) => PosterLayout; untangle?: number; fit?: number };
+  type Found = { layout: PosterLayout; chosen: number; strict: boolean; attempt: (s: number, f?: boolean, st?: boolean, u?: number, fit?: number, cr?: boolean, fan?: { step: number; ends?: boolean }) => PosterLayout; untangle?: number; fit?: number };
   let best: Found = search(false);
   const searches = [best as Found & { tried: Map<number, PosterLayout> }];
   // Dense packing, a second try for a family whose generations do not fit
@@ -614,6 +614,36 @@ export function computePosterLayout(tree: TreeDTO, opts: LayoutOptions = {}): Po
       best = { ...best, layout: l, untangle: Math.max(untangleChecks, best.untangle ?? 0) };
     }
   }
+  // Each generation on one smooth fan: a clean (or nearly clean) poster is
+  // laid out again with its names given other shares of their room along
+  // their rings (where a crowded ring's end had them step out of the fan
+  // to clear each other), at the same size; one kept when it is as legible,
+  // with no more crossings, and either smoother with no more ambiguities or
+  // with fewer and no rougher. (More room from the start costs some
+  // families their name size: it drags fathers off their families' sectors.)
+  if (best.layout.overlaps === 0 && best.layout.legibility.ok && best.layout.clarity.issues.length <= 2) {
+    const before = best.layout;
+    let kink = fanKink(before), issues = before.clarity.issues.length;
+    // (a very large family tries the first few only: each is a whole layout)
+    for (const step of before.nodes.length > HUGE_FAMILY ? RING_TRIES.slice(0, 2) : RING_TRIES) {
+      if (kink <= FAN_SMOOTH && issues === 0) break;
+      let l = best.attempt(best.chosen, false, best.strict, best.untangle ?? 0, best.fit, !!best.untangle, step);
+      let untangle = best.untangle;
+      // (a few ambiguities left are untangled, as in the search)
+      if (!isClean(l) && !best.untangle && l.overlaps === 0 && l.clarity.issues.length <= 2) {
+        untangle = untangleChecks;
+        l = best.attempt(best.chosen, false, best.strict, untangle, best.fit, true, step);
+      }
+      const k = fanKink(l), n = l.clarity.issues.length;
+      // (smoother with no more ambiguities, or fewer and no rougher)
+      if (l.overlaps === 0 && (isClean(l) || !isClean(before)) && l.legibility.ok && l.clarity.clearCrossings <= before.clarity.clearCrossings
+        && (n < issues ? k <= kink + 0.02 : n === issues && k < kink - 0.01)) {
+        best = { ...best, layout: l, untangle };
+        kink = k;
+        issues = n;
+      }
+    }
+  }
   const result = best.layout;
   result.tooDense = result.clarity.issues.length > CLARITY_LIMIT;
   // The balanced centring (a leader up the centred branch, its brothers
@@ -660,6 +690,41 @@ const BRANCH_TRUNK_NAMES = 6;
 const BARE_TRUNK = 0.1;
 /** Below this size, larger sizes are tried for a clean layout too (see search). */
 const UPWARD_BELOW = 0.5;
+/** The fan's squareness (2 is an oval): as full as the crown, and smooth. */
+const FAN_P = 2.4;
+/** The share of their room neighbours on a ring are at least given (see the ring packing), and the other shares tried on a clean poster. */
+const RING_STEP = 0.3;
+const RING_TRIES: { step: number; ends?: boolean }[] = [{ step: 0.6 }, { step: 0.7, ends: true }, { step: 0.25 }, { step: 0.8, ends: true }];
+/** Above this many names, fewer of RING_TRIES are tried. */
+const HUGE_FAMILY = 300;
+/** A fan this smooth (see fanKink) is not laid out again. */
+const FAN_SMOOTH = 0.1;
+
+/**
+ * How far a generation leaves its fan: the largest change of step in
+ * distance from the canopy base between neighbours on one ring, as a share
+ * of the ring's median distance (0 on a perfect arc).
+ */
+export function fanKink(l: Pick<PosterLayout, "nodes" | "origin">): number {
+  const rings = new Map<number, { ray: number; r: number }[]>();
+  for (const n of l.nodes) {
+    const ray = (n as { ray?: number }).ray;
+    if (ray === undefined || n.depth < 1) continue;
+    const list = rings.get(n.depth) ?? [];
+    list.push({ ray, r: Math.hypot(n.x - l.origin.x, n.y - l.origin.y) });
+    rings.set(n.depth, list);
+  }
+  let worst = 0;
+  for (const ring of rings.values()) {
+    if (ring.length < 5) continue;
+    ring.sort((a, b) => a.ray - b.ray);
+    const median = ring.map((x) => x.r).sort((a, b) => a - b)[ring.length >> 1];
+    for (let i = 2; i < ring.length; i++) {
+      worst = Math.max(worst, Math.abs(ring[i].r - 2 * ring[i - 1].r + ring[i - 2].r) / median);
+    }
+  }
+  return worst;
+}
 /** Generations above the centred branch whose largest sub-branch is held straight on (see the leader). */
 const LEAD_STEPS = 1;
 /** The trunk's names are at most this many times the canopy's typical name. */
@@ -711,7 +776,7 @@ export const CLARITY_LIMIT = 5;
 
 function layoutAttempt(
   tree: TreeDTO, opts: LayoutOptions, fontScale: number, final = true, strictFamilies = false, dense = false,
-  budget: { checks: number; fit?: number; crossings?: boolean } = { checks: CHECKS },
+  budget: { checks: number; fit?: number; crossings?: boolean; fan?: number; ends?: boolean } = { checks: CHECKS },
 ): PosterLayout {
   const W = opts.width ?? 2400;
   const H = opts.height ?? Math.round(W * Math.SQRT2);
@@ -1350,11 +1415,29 @@ function layoutAttempt(
   // crown's angular range, interpolated, instead of a bisection per call
   const REACH_N = 720;
   const reachTable = Array.from({ length: REACH_N + 1 }, (_, i) => reachExact(thetaEnd + ((thetaStart - thetaEnd) * i) / REACH_N));
-  const reach = (theta: number) => {
+  const outline = (theta: number) => {
     const t = ((theta - thetaEnd) / (thetaStart - thetaEnd)) * REACH_N;
     if (t <= 0 || t >= REACH_N) return reachExact(theta);
     const i = Math.floor(t);
     return reachTable[i] + (reachTable[i + 1] - reachTable[i]) * (t - i);
+  };
+  // Every generation lies on one smooth fan round the canopy base, through
+  // the crown's top and the ends of its sweep. (Rings that followed the
+  // crown's own outline, an egg drawn squarer near its foot, ran level and
+  // then turned in where it narrows: each generation's fan looked broken
+  // there.) Not for the widest sweep, which a crowded family takes because
+  // it needs all of the outline's room.
+  const fanTop = outline(Math.PI / 2);
+  const fanSide = (outline(thetaEnd) + outline(thetaStart)) / 2;
+  const fanB = fanTop;
+  const fanA = (() => {
+    const c = Math.abs(Math.cos(thetaEnd)), sn = Math.abs(Math.sin(thetaEnd));
+    const den = fanSide ** -FAN_P - (sn / fanB) ** FAN_P;
+    return den > 1e-12 && c > 1e-6 ? c / den ** (1 / FAN_P) : fanSide;
+  })();
+  const reach = lift <= 0 ? outline : (theta: number) => {
+    const c = Math.abs(Math.cos(theta)), sn = Math.abs(Math.sin(theta));
+    return ((c / fanA) ** FAN_P + (sn / fanB) ** FAN_P) ** (-1 / FAN_P);
   };
   const SAMPLES = 360;
   const thetas: number[] = [];
@@ -1665,6 +1748,7 @@ function layoutAttempt(
       for (let p = n.parentId; p; p = byId.get(p)?.parentId ?? null) ids.add(p);
       return ids;
     };
+    const firstRing = Math.min(...rings.keys());
     for (const d of [...rings.keys()].sort((a, b) => a - b)) {
       const ring = rings.get(d)!;
       ring.sort((a, b) => b.ray! - a.ray!); // anticlockwise from the left
@@ -1715,6 +1799,33 @@ function layoutAttempt(
         }
         for (let i = 0; i < th.length; i++) th[i] = clamp(th[i] + (target[i] - th[i]) * pull[i], bounds[i][0], bounds[i][1]);
         if (!moved) break;
+      }
+      // Every name strictly after the one before it, even where a crowded
+      // ring's end clamped several to one angle (they were then stacked one
+      // inside another, off their generation's fan): some of the room each
+      // needs, the earlier ones moved back along the ring where the end is
+      // reached. (More room drags fathers off their families' sectors.)
+      {
+        const need = (i: number) => half(ring[i - 1], th[i - 1]) + half(ring[i], th[i]);
+        // (budget.ends: the first generation's childless names at either end
+        // given their full room first, running on past the end of the sweep
+        // along the fan, rather than squeezed against it; no father moves)
+        if (budget.ends && d === firstRing) {
+          const ext = (hi - lo) / th.length;
+          const free = ring.map((n) => n.terminal && !centerIds.has(n.id));
+          let k = 0;
+          while (k < th.length && free[k]) k++;
+          for (let i = Math.min(k, th.length - 1); i > 0; i--) th[i - 1] = Math.min(hi + ext, Math.max(th[i - 1], th[i] + need(i)));
+          let m = th.length - 1;
+          while (m >= 0 && free[m]) m--;
+          for (let i = Math.max(m, 0) + 1; i < th.length; i++) th[i] = Math.max(lo - ext, Math.min(th[i], th[i - 1] - need(i)));
+        }
+        const step = (i: number) => Math.min(need(i), (hi - lo) / th.length) * (budget.fan ?? RING_STEP);
+        for (let i = 1; i < th.length; i++) if (th[i] > th[i - 1] - step(i)) th[i] = th[i - 1] - step(i);
+        for (let i = th.length - 1; i > 0; i--) {
+          if (th[i] < bounds[i][0]) th[i] = bounds[i][0];
+          if (th[i - 1] < th[i] + step(i)) th[i - 1] = th[i] + step(i);
+        }
       }
       ringLoad = Math.max(ringLoad, ring.reduce((a, n, i) => a + 2 * half(n, th[i]), 0) / (hi - lo));
       ring.forEach((n, i) => {
@@ -1923,6 +2034,9 @@ function layoutAttempt(
         r = Math.max(r, rp + (parent.h + n.h) * 0.3);
       }
       r = Math.max(r, baseMedallionR + Math.max(n.w, n.h) / 2);
+      // and never sinks inside its generation's fan: a neighbour stepped out
+      // to clear another leaves it, not the fan, broken
+      r = Math.max(r, ((n.tx - origin.x) * dir.x + (n.ty - origin.y) * dir.y) * 0.99);
       // on the page, by moving along the ray (never off it)
       r = Math.min(r, rMaxOnPage(n, n.ray));
       n.x = origin.x + dir.x * r;

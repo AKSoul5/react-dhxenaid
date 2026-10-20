@@ -546,6 +546,19 @@ on any member's panel:
   same order as their children, each on the way to his own. A box turned
   aside to find room may not pass another (one daughter's four husbands
   once sent their dotted lines across each other's).
+- **One smooth fan per generation:** each generation sits on one arc
+  round the canopy base, through the crown's top and the ends of its sweep.
+  - A crowded ring's end used to push its last names inward or outward to
+    clear each other: a visible break in the fan (two sisters after a
+    brother with a son).
+  - Now a clean poster is laid out again at the same name size with its
+    names given other shares of their room along their rings. The first
+    generation's childless names at an end may also run a little past the
+    end of the sweep, along the fan, and no father moves.
+  - The smoothest version is kept, only when it stays as clean and legible
+    with no more crossings (tests/fan.test.ts).
+  - On a 245-person family, the worst break in any theme went from
+    0.13–0.14 to 0.08–0.11 of a generation's distance.
 - **Crossing lines:** a crossing at a clear angle is allowed, but on a
   clean poster the people at each end are still tried a little further out
   or along their ring, kept only when the poster stays clean and readable
