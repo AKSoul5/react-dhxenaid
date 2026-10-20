@@ -367,9 +367,15 @@ is held in the page as a `data:` URL.
   of the canopy base whose branch holds the most people rises straight
   from the trunk as the crown (unless two branches are equally large).
   His own largest son carries straight on above him, as a tree's main stem
-  carries on above its side branches. The other brothers go to the right
-  and left in birth order, split so each side holds as many names as the
-  other. A branch you centre yourself always wins.
+  carries on above its side branches. A branch you centre yourself always
+  wins.
+  - The centred son stays exactly in the middle and keeps his own place
+    among his brothers: the elder ones on one side, the younger on the
+    other, in the order you set.
+  - Only when that would leave one side with less than half the other's
+    names are the brothers split where the two sides hold most alike
+    instead, still in order, with the centred son moved among them (the
+    tree would otherwise swing to one side; tests/sibling-order.test.ts).
   - Never at the cost of a clean poster: if that arrangement leaves a few
     lines unclear, the poster is laid out again with only the centred
     branch held in the middle and its brothers split by the room their

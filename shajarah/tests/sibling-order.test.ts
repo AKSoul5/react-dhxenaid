@@ -1,11 +1,15 @@
 // The order of brothers and sisters: the poster follows it (eldest at the
 // start of the canopy's sweep, half-siblings together by mother; a centred
 // branch takes the middle, its brothers in order around it), and moving
-// one renumbers them all 0, 1, 2 … so the change always shows.
+// one renumbers them all 0, 1, 2 … so the change always shows. The centred
+// son keeps his own place among his brothers (the elder on one side, the
+// younger on the other) unless that leaves one side with far fewer names.
 import { describe, expect, it } from "vitest";
 import { moveAmongSiblings, siblingsInOrder } from "@/lib/genealogy";
 import { computePosterLayout } from "@/lib/layout/botanical";
+import { computeGenerations } from "@/lib/genealogy";
 import * as F from "@/lib/samples/fixtures";
+import { kalaliTree } from "@/lib/samples/kalali";
 import type { MemberDTO, TreeDTO } from "@/lib/types";
 
 /** Each parent's children on the poster, in the order of the canopy's sweep. */
@@ -31,6 +35,55 @@ const apply = (t: TreeDTO, changes: { id: string; birthOrder: number }[]): TreeD
   const by = new Map(changes.map((c) => [c.id, c.birthOrder]));
   return { ...t, members: t.members.map((m): MemberDTO => (by.has(m.id) ? { ...m, birthOrder: by.get(m.id)! } : m)) };
 };
+
+/** The Al-Kalali line; under the canopy base, sons with these many sons each. */
+function brothers(sizes: number[]): { tree: TreeDTO; sons: string[] } {
+  const base = kalaliTree();
+  const members: MemberDTO[] = base.members.slice(0, 82).map((m) => ({ ...m }));
+  const crown = members[81];
+  let n = 0;
+  const add = (name: string, fatherId: string) => {
+    const m: MemberDTO = { ...members[0], id: `b${n++}`, name, laqab: null, gender: "MALE", fatherId, motherId: null, birthOrder: n };
+    members.push(m);
+    return m;
+  };
+  const names = ["أحمد", "عمر", "باسل", "نوفل", "ظافر", "سالم", "فضل"];
+  const sons = sizes.map((k, i) => {
+    const s = add(names[i], crown.id);
+    for (let j = 0; j < k; j++) add(["طلال", "خالد", "فيصل", "مهند", "بدر", "هتان", "حسام", "فارس", "سلمان", "يوسف"][j], s.id);
+    return s.id;
+  });
+  const gens = computeGenerations(members, "PATRILINEAL");
+  for (const m of members) m.generation = gens.get(m.id) ?? 0;
+  return { tree: { ...base, members, marriages: [], trunkStartId: members[69].id, crownBaseId: crown.id, settings: { showFemales: true } }, sons };
+}
+
+describe("the centred son among his brothers", () => {
+  const sonsOnPoster = (tree: TreeDTO, sons: string[]) => {
+    const l = computePosterLayout(tree, { width: 2400, showFemales: true });
+    return { l, order: posterOrder(l).get(tree.crownBaseId!)!.filter((id) => sons.includes(id)) };
+  };
+  it("keeps his own place: the elder brothers on one side, the younger on the other", () => {
+    // (by names alone he would sit after a younger brother: 5 against 8)
+    const { tree, sons } = brothers([4, 8, 1, 1, 1, 1]);
+    const { l, order } = sonsOnPoster(tree, sons);
+    expect(l.centerLine).toContain(sons[1]);
+    expect(order).toEqual(sons);
+    expect(l.clarity.issues).toEqual([]);
+  });
+  it("moves to the middle only when keeping it would leave one side far lighter", () => {
+    // the eldest the largest: in his place, all four brothers on one side
+    const { tree, sons } = brothers([8, 3, 3, 3, 3]);
+    const { l, order } = sonsOnPoster(tree, sons);
+    expect(l.centerLine).toContain(sons[0]);
+    const at = order.indexOf(sons[0]);
+    expect(at > 0 && at < order.length - 1).toBe(true);
+    // his brothers still in their order around him, split about evenly
+    expect(order.filter((id) => id !== sons[0])).toEqual(sons.slice(1));
+    expect(Math.abs(at - (order.length - 1 - at))).toBeLessThanOrEqual(1);
+    expect(l.clarity.issues).toEqual([]);
+  });
+});
 
 describe("the order of brothers and sisters", () => {
   const families: [string, TreeDTO][] = [

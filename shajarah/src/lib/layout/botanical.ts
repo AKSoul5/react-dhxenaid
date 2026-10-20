@@ -725,6 +725,8 @@ export function fanKink(l: Pick<PosterLayout, "nodes" | "origin">): number {
   }
   return worst;
 }
+/** A centred branch keeps its place among its brothers unless one side would hold less than this share of the other's names. */
+const LOPSIDED = 0.5;
 /** Generations above the centred branch whose largest sub-branch is held straight on (see the leader). */
 const LEAD_STEPS = 1;
 /** The trunk's names are at most this many times the canopy's typical name. */
@@ -1552,14 +1554,23 @@ function layoutAttempt(
       const mid = (u0 + u1) / 2;
       const half = ((u1 - u0) * Math.max(chosenPath.has(kids[c]) ? CENTER_SHARE : 0, weights[c] / newTotal)) / 2;
       const others = kids.map((_, i) => i).filter((i) => i !== c);
+      // The elder brothers on one side, the younger on the other, in the
+      // editor's order; only where that leaves one side with far fewer
+      // names than the other (under LOPSIDED of it) are they split where
+      // the two sides hold most alike instead, the centred one moved
+      // among them (the tree would otherwise swing to one side).
       // (sides weighed by their names, what the eye sees)
       const side = opts.centerSides === "room" ? (i: number) => weights[i] : (i: number) => kids[i].descendants().length;
-      const otherTotal = others.reduce((sum, i) => sum + side(i), 0);
-      let cut = 0, best = Infinity, acc = 0;
-      for (let k = 0; k <= others.length; k++) {
-        const diff = Math.abs(otherTotal - 2 * acc);
-        if (diff < best) { best = diff; cut = k; }
-        if (k < others.length) acc += side(others[k]);
+      const sideL = others.slice(0, c).reduce((sum, i) => sum + side(i), 0);
+      const sideR = others.slice(c).reduce((sum, i) => sum + side(i), 0);
+      let cut = c;
+      if (Math.min(sideL, sideR) < Math.max(sideL, sideR) * LOPSIDED) {
+        let best = Infinity, acc = 0;
+        for (let k = 0; k <= others.length; k++) {
+          const diff = Math.abs(sideL + sideR - 2 * acc);
+          if (diff < best) { best = diff; cut = k; }
+          if (k < others.length) acc += side(others[k]);
+        }
       }
       const spread = (from: number, to: number, list: number[]) => {
         const total = list.reduce((sum, i) => sum + weights[i], 0) || 1;
