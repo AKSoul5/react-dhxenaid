@@ -10,6 +10,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test --env=jsdom",
+    "check:prototype": "node scripts/check-prototype.cjs",
     "eject": "react-scripts eject"
   },
   "devDependencies": {
