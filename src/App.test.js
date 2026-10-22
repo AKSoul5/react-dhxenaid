@@ -49,6 +49,17 @@ describe("prototype startup and locale smoke tests", () => {
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)).schemaVersion).toBe(8);
   });
 
+  test("recovers from syntactically invalid local storage JSON", () => {
+    window.localStorage.setItem(STORAGE_KEY, "{not valid JSON");
+
+    act(() => root.render(<App />));
+
+    expect(host.textContent).toContain("Could not load saved prototype data:");
+    expect(host.textContent).toContain("Procurement Intelligence Platform");
+    expect(host.querySelector('[role="alert"]')).not.toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)).schemaVersion).toBe(8);
+  });
+
   test("upgrades valid schema-7 browser data to schema 8", () => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
       schemaVersion: 7,
