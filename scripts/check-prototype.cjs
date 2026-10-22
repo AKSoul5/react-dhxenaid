@@ -39,6 +39,7 @@ const requiredKeys = [
   "buyerDecisionReviewTitle", "buyerDecisionReviewBody",
   "supplierBidReadinessTitle", "supplierBidReadinessHint", "supplierBidPriceReady",
   "supplierBidDeliveryReady", "supplierBidPaymentReady", "supplierBidReadinessCount",
+  "bidUpdateTooltip", "bidCreateTooltip", "closeQATitle", "supplierProfileCompletenessLabel",
   "awardRationaleLabel", "awardRationalePlaceholder", "awardRationaleRequired",
   "sampleVerifiedBadge", "preferredSupplierBadge", "awardedStatusBadge",
   "expiresLabel", "openRequestsTitle", "matchingRequestsCount",
