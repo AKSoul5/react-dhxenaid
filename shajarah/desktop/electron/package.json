@@ -1,0 +1,89 @@
+{
+  "name": "shajarah-desktop",
+  "productName": "Shajarah",
+  "version": "1.0.30",
+  "description": "Shajarah family tree posters",
+  "author": "Shajarah",
+  "private": true,
+  "main": "main.js",
+  "devDependencies": {
+    "electron": "43.7.7",
+    "electron-builder": "26.16.1"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9",
+    "pg": "8.13.1"
+  },
+  "optionalDependencies": {
+    "@embedded-postgres/linux-x64": "16.14.0-beta.17",
+    "@embedded-postgres/windows-x64": "16.14.0-beta.17"
+  },
+  "scripts": {
+    "prepare-app": "node scripts/prepare.mjs",
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "build": {
+    "appId": "app.shajarah.desktop",
+    "productName": "Shajarah",
+    "copyright": "Shajarah",
+    "asar": false,
+    "files": [
+      "main.js",
+      "postgres.js",
+      "migrate.js",
+      "build/icon.*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": ".",
+        "to": ".",
+        "filter": [
+          "server/**/*",
+          "server/.next/**/*",
+          "migrations/**/*"
+        ]
+      }
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Shajarah",
+      "artifactName": "Shajarah-Setup-${version}.exe",
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        "dir"
+      ],
+      "icon": "build/icon.png",
+      "category": "Office"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "AKSoul5",
+      "repo": "react-dhxenaid",
+      "releaseType": "release"
+    }
+  }
+}

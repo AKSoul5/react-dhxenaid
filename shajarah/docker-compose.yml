@@ -1,0 +1,13 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: shajarah
+      POSTGRES_PASSWORD: shajarah
+      POSTGRES_DB: shajarah
+    ports:
+      - "5432:5432"
+    volumes:
+      - shajarah-db:/var/lib/postgresql/data
+volumes:
+  shajarah-db:

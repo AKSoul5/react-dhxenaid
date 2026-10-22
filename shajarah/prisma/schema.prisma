@@ -1,0 +1,191 @@
+// Shajarah — relational model for family hierarchies.
+//
+// Design notes
+// - A FamilyTree owns every Member and Marriage in it (cascade delete).
+// - Parentage is stored as two self-relations (fatherId / motherId). The
+//   poster's "lineage parent" (whose branch a person grows from) is chosen
+//   by FamilyTree.lineage: father first for patrilineal trees (the
+//   traditional nasab poster), mother first for matrilineal ones.
+// - `generation` is denormalised (0 = tree root) so that queries such as
+//   "everyone in the 5th generation" and the generation colour legend do not
+//   need a recursive CTE. The API recomputes it whenever parentage changes.
+// - Spouses are a separate Marriage table so a person can have several
+//   marriages, each with its own dates.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
+enum Lineage {
+  PATRILINEAL
+  MATRILINEAL
+}
+
+model FamilyTree {
+  id           String     @id @default(cuid())
+  name         String
+  // Poster headings, e.g. "شجرة نسب أسرة آل حقيل"
+  title        String?
+  subtitle     String?
+  lineage      Lineage    @default(PATRILINEAL)
+  // Optional explicit root. When null, the oldest member with no lineage
+  // parent is used.
+  rootMemberId String?    @unique
+  rootMember   Member?    @relation("TreeRoot", fields: [rootMemberId], references: [id], onDelete: SetNull)
+  // The branching ancestor where the canopy starts. Trunk membership is
+  // derived from it (ancestors of this member), so there is no per-member
+  // "isTrunkNode" flag that could drift out of sync. Null = automatic.
+  crownBaseId  String?    @unique
+  crownBase    Member?    @relation("TreeCrownBase", fields: [crownBaseId], references: [id], onDelete: SetNull)
+  // The poster has three tiers along the ancestral chain:
+  //   soil   — ancestors older than trunkStart, inscribed in the soil/roots
+  //   trunk  — trunkStart … crownBase's father, stacked medallions
+  //   canopy — crownBase and all descendants
+  // Null = automatic (nearest ancestors on the trunk, the rest in the soil).
+  trunkStartId String?    @unique
+  trunkStart   Member?    @relation("TreeTrunkStart", fields: [trunkStartId], references: [id], onDelete: SetNull)
+  // Optional verbatim soil inscription; replaces the text generated from
+  // the soil-tier ancestors (e.g. a lineage quoted from a source).
+  soilText     String?
+  // Poster settings: show females, seed, theme (colours, shapes, labels)
+  settings     Json?
+  members      Member[]   @relation("TreeMembers")
+  marriages    Marriage[]
+  sources      Source[]
+  media        Media[]
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Member {
+  id     String     @id @default(cuid())
+  treeId String
+  tree   FamilyTree @relation("TreeMembers", fields: [treeId], references: [id], onDelete: Cascade)
+
+  name       String
+  // Laqab / nickname shown under the name, e.g. "الملقب بلقمان"
+  laqab      String?
+  gender     Gender  @default(MALE)
+  birthYear  Int?
+  deathYear  Int?
+  isDeceased Boolean @default(false)
+  // Order among siblings (left → right on the poster)
+  birthOrder Int     @default(0)
+  generation Int     @default(0)
+  notes      String?
+
+  fatherId         String?
+  father           Member?  @relation("Paternity", fields: [fatherId], references: [id], onDelete: SetNull)
+  childrenAsFather Member[] @relation("Paternity")
+
+  motherId         String?
+  mother           Member?  @relation("Maternity", fields: [motherId], references: [id], onDelete: SetNull)
+  childrenAsMother Member[] @relation("Maternity")
+
+  marriagesAsA     Marriage[]  @relation("SpouseA")
+  marriagesAsB     Marriage[]  @relation("SpouseB")
+  rootOfTree       FamilyTree? @relation("TreeRoot")
+  crownBaseOfTree  FamilyTree? @relation("TreeCrownBase")
+  trunkStartOfTree FamilyTree? @relation("TreeTrunkStart")
+  citations        Citation[]
+  media            Media[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([treeId])
+  @@index([fatherId])
+  @@index([motherId])
+  @@index([treeId, generation])
+}
+
+model Marriage {
+  id        String     @id @default(cuid())
+  treeId    String
+  tree      FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  spouseAId String
+  spouseA   Member     @relation("SpouseA", fields: [spouseAId], references: [id], onDelete: Cascade)
+  spouseBId String
+  spouseB   Member     @relation("SpouseB", fields: [spouseBId], references: [id], onDelete: Cascade)
+  startYear Int?
+  endYear   Int?
+  createdAt DateTime   @default(now())
+
+  @@unique([spouseAId, spouseBId])
+  @@index([treeId])
+}
+
+/// Where a fact comes from: a register, a book, a family document.
+model Source {
+  id          String     @id @default(cuid())
+  treeId      String
+  tree        FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  title       String
+  author      String?
+  publication String?
+  notes       String?
+  citations   Citation[]
+  media       Media[]
+  createdAt   DateTime   @default(now())
+
+  @@index([treeId])
+}
+
+/// A source cited for a person, optionally for one event ("BIRT", "DEAT", "MARR" …) and a page.
+model Citation {
+  id        String   @id @default(cuid())
+  sourceId  String
+  source    Source   @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  memberId  String
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  eventType String?
+  page      String?
+  createdAt DateTime @default(now())
+
+  @@index([sourceId])
+  @@index([memberId])
+}
+
+/// A photo or document, attached to a person or to a source. `url` is any
+/// URL: an uploaded file is served from /api/media/blob/<sha256> (see
+/// MediaBlob) and can later move to cloud storage by changing only the URL;
+/// a GEDCOM import keeps the file path the other program recorded.
+model Media {
+  id        String     @id @default(cuid())
+  treeId    String
+  tree      FamilyTree @relation(fields: [treeId], references: [id], onDelete: Cascade)
+  memberId  String?
+  member    Member?    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  sourceId  String?
+  source    Source?    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  url       String
+  caption   String?
+  fileType  String?
+  createdAt DateTime   @default(now())
+
+  @@index([treeId])
+  @@index([memberId])
+  @@index([sourceId])
+}
+
+/// Uploaded file contents, addressed by their SHA-256. Kept apart from Media
+/// so that deleting a photo and undoing it brings the same file back, and so
+/// the tree that travels with every edit carries a URL, not megabytes.
+model MediaBlob {
+  id        String   @id
+  data      Bytes
+  fileType  String
+  size      Int
+  createdAt DateTime @default(now())
+}
