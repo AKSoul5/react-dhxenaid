@@ -22,5 +22,7 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Run prototype source checks
+        run: npm run check:prototype
       - name: Build React app
         run: npm run build
