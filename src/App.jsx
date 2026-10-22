@@ -106,6 +106,10 @@ const I18N = {
     supplierBidDeliveryReady: "A delivery timeline is entered",
     supplierBidPaymentReady: "Payment terms are selected",
     supplierBidReadinessCount: "{ready} of {total} essentials ready",
+    bidUpdateTooltip: "Updates your existing bid",
+    bidCreateTooltip: "Creates a new bid",
+    closeQATitle: "Close questions and answers",
+    supplierProfileCompletenessLabel: "Supplier profile completeness",
     qaButton: "Q&A",
     qaTitle: "Public Q&A",
     supplierHashLabel: "Supplier #",
@@ -428,6 +432,10 @@ const I18N = {
     supplierBidDeliveryReady: "تم إدخال مدة التوريد",
     supplierBidPaymentReady: "تم اختيار شروط الدفع",
     supplierBidReadinessCount: "اكتمل {ready} من أصل {total} عناصر أساسية",
+    bidUpdateTooltip: "تحديث عرضك الحالي",
+    bidCreateTooltip: "إنشاء عرض جديد",
+    closeQATitle: "إغلاق الأسئلة والأجوبة",
+    supplierProfileCompletenessLabel: "اكتمال ملف المورد",
     placeholderFloorPrice: "ر.س",
     qaButton: "الأسئلة والأجوبة",
     qaTitle: "أسئلة وأجوبة عامة",
@@ -1726,7 +1734,7 @@ const ClarificationModal = ({ request, role, currentSupplierId, lang = "en", onS
             <div style={{ fontSize: 16, fontWeight: 700, color: C.white }}>{t.qaTitle}</div>
             <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>{lang === "ar" ? (request.titleAr || request.title) : request.title}</div>
           </div>
-          <button aria-label="Close Q&A" onClick={onClose} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 22, cursor: "pointer" }}>×</button>
+          <button aria-label={t.closeQATitle} onClick={onClose} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 22, cursor: "pointer" }}>×</button>
         </div>
         {role === USER_ROLES.SUPPLIER_SALES && (
           <div style={{ marginBottom: 16 }}>
@@ -1852,7 +1860,7 @@ const BidModal = ({ req, existingBid, onSubmit, onAnswerClarification, profileCo
               {profileCompletenessMessage && <div role="alert" style={{ color: C.red, fontSize: 12 }}>{profileCompletenessMessage}</div>}
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <Button variant="subtle" onClick={onClose}>{t.cancel}</Button>
-                <Button title={existingBid ? "Updates your existing bid" : "Creates a new bid"} disabled={Boolean(profileCompletenessMessage)} onClick={handleSubmit}>{isUpdate ? t.updateBid : t.submitBid}</Button>
+                <Button title={existingBid ? t.bidUpdateTooltip : t.bidCreateTooltip} disabled={Boolean(profileCompletenessMessage)} onClick={handleSubmit}>{isUpdate ? t.updateBid : t.submitBid}</Button>
               </div>
             </div>
           </>
@@ -2927,7 +2935,7 @@ const SupplierDashboard = ({ supplier: me, bids, requests, lang = "en", onNaviga
           <div style={{ fontSize: 14, fontWeight: 700, color: C.white }}>{t.profileCompletenessTitle}</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: C.gold, fontFamily: "monospace" }}>{completeness.percent}%</div>
         </div>
-        <div role="progressbar" aria-label="Supplier profile completeness" aria-valuemin="0" aria-valuemax="100" aria-valuenow={completeness.percent}
+        <div role="progressbar" aria-label={t.supplierProfileCompletenessLabel} aria-valuemin="0" aria-valuemax="100" aria-valuenow={completeness.percent}
           style={{ height: 7, background: C.border, borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
           <div style={{ height: "100%", width: `${completeness.percent}%`, background: C.greenLight, borderRadius: 4, transition: "width 0.2s" }} />
         </div>
