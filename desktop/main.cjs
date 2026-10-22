@@ -11,9 +11,9 @@ autoUpdater.autoInstallOnAppQuit = false;
 autoUpdater.allowPrerelease = false;
 
 function showUpdateMessage(options) {
-  if (updateDialogOpen || !mainWindow || mainWindow.isDestroyed()) return;
+  if (updateDialogOpen || !mainWindow || mainWindow.isDestroyed()) return Promise.resolve({ response: 1 });
   updateDialogOpen = true;
-  dialog.showMessageBox(mainWindow, options).finally(() => {
+  return dialog.showMessageBox(mainWindow, options).finally(() => {
     updateDialogOpen = false;
   });
 }
