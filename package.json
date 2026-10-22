@@ -13,6 +13,6 @@
     "eject": "react-scripts eject"
   },
   "devDependencies": {
-    "react-scripts": "latest"
+    "react-scripts": "5.0.1"
   }
 }
