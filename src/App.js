@@ -3305,7 +3305,6 @@ export default function App() {
       const nextBids = existing
         ? current.bids.map(bid => bid.requestId === request.id && bid.supplierId === CURRENT_SUPPLIER_ID ? newBid : bid)
         : [...current.bids, newBid];
-      const action = existing ? "Bid updated" : "Bid submitted";
       const actionKey = existing ? "bid_updated" : "bid_submitted";
       return {
         ...current,
