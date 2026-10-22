@@ -15,6 +15,23 @@ npm start
 
 Create a production build with `npm run build`. Preview it locally with `npm run preview`.
 
+## Kalali desktop app (Windows)
+
+A Windows desktop wrapper and GitHub Release updater are being introduced in this repository. The desktop app packages the built React interface in an Electron window and checks for newer published releases on startup. Users can also select **Kalali → Check for Updates**. The updater downloads a published patch and offers to restart to install it.
+
+For local desktop development, first build the web app, then run:
+
+```sh
+npm run build
+cd desktop
+npm install
+npm start
+```
+
+For the first installer, merge the desktop implementation, then create a version tag matching `desktop/package.json` (initial version `v1.0.0`). The release workflow builds and publishes the Windows installer and updater metadata to GitHub Releases. See [the desktop release and update guide](docs/kalali-desktop-updates.md) for initial installation and patch-release steps.
+
+The updater only installs versioned GitHub Releases, not arbitrary commits. Windows code signing is not configured yet; plan to add a signing certificate before broad distribution.
+
 ## Important limitations
 
 This is a **prototype, not a production procurement system**. Demo role selection does not authenticate users or enforce permissions. Application records are stored in browser local storage, which is not a trusted or shared database. Seeded supplier details, prices, ratings, and certification claims are illustrative and are not verified evidence. The Etimad reference field is a demo field, not a live integration.
