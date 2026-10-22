@@ -4,7 +4,7 @@ A React demo for bilingual (English/Arabic) procurement flows, bid comparison, a
 
 ## Run locally
 
-Requirements: Node.js 20 or later and npm.
+Requirements: Node.js 22 LTS or later and npm.
 
 ```sh
 npm install --no-audit --no-fund
