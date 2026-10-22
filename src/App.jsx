@@ -13,15 +13,25 @@ const I18N = {
     priceScoreFormula: "100 − (distance from SAR {midpoint} midpoint ÷ midpoint × 100), clamped to 0–100.",
     priceScoreUnavailable: "Unavailable without a complete budget range; the remaining criteria are rescaled.",
     lcgpaMinimumLabel: "LCGPA minimum:",
+    highestScoreAtLabel: "— highest overall score at",
+    winnerSaudiContentLabel: "Winner Saudi content",
+    winnerSaudiContentThreshold: "(threshold {n}%)",
     analytics: "Analytics",
     approvalInbox: "Approval Inbox",
     marketplaceSupplier: "Browse Requests",
     openRequestsTitle: "Open Requests",
     matchingRequestsCount: "{n} matching procurement requests",
+    placeholderSearchRequests: "Search requests...",
+    requiredCertsFilterLabel: "Required certifications:",
+    paymentTermsFilterLabel: "Payment terms:",
     anonymousBuyer: "Anonymous Buyer",
     reverseAuctionChip: "REVERSE AUCTION · Round {n}",
     etimadRefLabel: "Etimad Ref",
     etimadRefTitle: "Demo reference field; not a live Etimad integration.",
+    authProductTagline: "Procurement Intelligence Platform",
+    authSubTagline: "B2B Supply Chain Marketplace · KSA",
+    authIntro: "Choose a demo role. This prototype has no real accounts or authentication; changes are saved only in this browser.",
+    authFooter: "Demo data is stored locally on this device",
     login: "Enter the prototype",
     buyerAdmin: "Buyer Admin Demo",
     buyerApprover: "Buyer Approver Demo",
@@ -68,6 +78,8 @@ const I18N = {
     submitForApprovalBtn: "Submit for Approval",
     submittedForApprovalTitle: "Submitted for Approval",
     approvalTaskExplainer: "Submitting creates a local approval task assigned to the buyer approver role.",
+    purchaseOrderSummary: "Purchase Order Summary",
+    reviewBeforeSubmitting: "Review before submitting for internal approval",
     fieldYourPrice: "Your Price (SAR)",
     placeholderBidPrice: "e.g. 334000",
     fieldDelivery: "Delivery Timeline",
@@ -252,6 +264,16 @@ const I18N = {
     recordedFaceValue: "Recorded face value total:",
     recurringValueDisclaimer: "Monthly recurring values are counted once; this is not actual spend.",
     unknownSupplierLabel: "Unknown supplier",
+    notifications: {
+      requestPostedNotification: "New request posted: {title}",
+      bidUpdatedNotification: "Bid updated: {title}",
+      bidSubmittedNotification: "Bid submitted: {title}",
+      negotiationClosedNotification: "Negotiation closed for {title}",
+      bidWithdrawnNotification: "Bid withdrawn on {title} by supplier",
+      awardApprovalRequestedNotification: "Award approval requested: {title} → {supplier}",
+      awardApprovedNotification: "Award approved: {title} → {supplier}",
+      clarificationAnsweredNotification: "Answered a clarification on {title}",
+    },
     auditActions: {
       request_created: "Request created",
       bid_submitted: "Bid submitted",
@@ -268,6 +290,7 @@ const I18N = {
       approval_granted: "Approval granted",
     },
     auditDetails: {
+      negotiationFloorContext: " with a floor price of {price}",
       request_created: 'Created request "{title}".',
       bid_submitted: "Submitted bid at {price}, score {score}.",
       bid_updated: "Updated bid at {price}, score {score}.",
@@ -292,15 +315,25 @@ const I18N = {
     priceScoreFormula: "100 − (الفرق عن متوسط SAR {midpoint} ÷ المتوسط × 100)، ضمن نطاق 0–100.",
     priceScoreUnavailable: "لا تتوفر الدرجة دون نطاق ميزانية مكتمل؛ وتُعاد موازنة المعايير المتبقية.",
     lcgpaMinimumLabel: "الحد الأدنى لهيئة المحتوى المحلي:",
+    highestScoreAtLabel: "— أعلى درجة إجمالية بسعر",
+    winnerSaudiContentLabel: "المحتوى السعودي للفائز",
+    winnerSaudiContentThreshold: "(الحد الأدنى {n}%)",
     analytics: "التحليلات",
     approvalInbox: "صندوق الموافقات",
     marketplaceSupplier: "تصفح الطلبات",
     openRequestsTitle: "الطلبات المفتوحة",
     matchingRequestsCount: "{n} طلب توريد مطابق",
+    placeholderSearchRequests: "ابحث في الطلبات...",
+    requiredCertsFilterLabel: "الشهادات المطلوبة:",
+    paymentTermsFilterLabel: "شروط الدفع:",
     anonymousBuyer: "مشتري مجهول",
     reverseAuctionChip: "مزاد عكسي · الجولة {n}",
     etimadRefLabel: "مرجع اعتماد",
     etimadRefTitle: "حقل مرجعي تجريبي؛ ليس تكاملاً حياً مع منصة اعتماد.",
+    authProductTagline: "Procurement Intelligence Platform",
+    authSubTagline: "B2B Supply Chain Marketplace · KSA",
+    authIntro: "اختر دورًا تجريبيًا. لا يحتوي هذا النموذج على حسابات أو مصادقة حقيقية؛ وتُحفظ التغييرات في هذا المتصفح فقط.",
+    authFooter: "تُحفظ البيانات التجريبية محليًا على هذا الجهاز",
     login: "دخول النموذج التجريبي",
     buyerAdmin: "مدير المشتريات (تجريبي)",
     buyerApprover: "معتمد المشتريات (تجريبي)",
@@ -347,6 +380,8 @@ const I18N = {
     submitForApprovalBtn: "إرسال للاعتماد",
     submittedForApprovalTitle: "تم الإرسال للاعتماد",
     approvalTaskExplainer: "يؤدي الإرسال إلى إنشاء مهمة اعتماد محلية مسندة إلى دور معتمد المشتريات.",
+    purchaseOrderSummary: "ملخص أمر الشراء",
+    reviewBeforeSubmitting: "راجع قبل الإرسال للاعتماد الداخلي",
     fieldYourPrice: "سعرك (ر.س)",
     placeholderBidPrice: "مثال: 334000",
     fieldDelivery: "مدة التوريد",
@@ -531,6 +566,16 @@ const I18N = {
     recordedFaceValue: "إجمالي القيمة الاسمية المسجلة:",
     recurringValueDisclaimer: "تُحتسب القيم الشهرية المتكررة مرة واحدة؛ وهذا ليس إنفاقاً فعلياً.",
     unknownSupplierLabel: "مورد غير معروف",
+    notifications: {
+      requestPostedNotification: "تم نشر طلب جديد: {title}",
+      bidUpdatedNotification: "تم تحديث العرض: {title}",
+      bidSubmittedNotification: "تم تقديم العرض: {title}",
+      negotiationClosedNotification: "أُغلق التفاوض على {title}",
+      bidWithdrawnNotification: "سحب المورد العرض بشأن {title}",
+      awardApprovalRequestedNotification: "طُلب اعتماد الترسية: {title} ← {supplier}",
+      awardApprovedNotification: "تم اعتماد الترسية: {title} ← {supplier}",
+      clarificationAnsweredNotification: "تمت الإجابة عن استفسار بشأن {title}",
+    },
     auditActions: {
       request_created: "تم إنشاء الطلب",
       bid_submitted: "تم تقديم العرض",
@@ -547,6 +592,7 @@ const I18N = {
       approval_granted: "تم اعتماد الترسية",
     },
     auditDetails: {
+      negotiationFloorContext: " بسعر أدنى {price}",
       request_created: 'تم إنشاء الطلب "{title}".',
       bid_submitted: "تم تقديم عرض بسعر {price}، ودرجة {score}.",
       bid_updated: "تم تحديث العرض بسعر {price}، ودرجة {score}.",
@@ -682,7 +728,7 @@ const MARKET_PULSE = [
 ];
 
 const STORAGE_KEY = "kalali-prototype-v1";
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 const MAX_AUDIT_ENTRIES = 500;
 const LEGACY_AUDIT_ACTIONS = {
   "Request created": "request_created",
@@ -701,11 +747,16 @@ const LEGACY_AUDIT_ACTIONS = {
 };
 const dateLocale = (lang) => lang === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-US";
 const DEMO_EPOCH = "2026-01-01T00:00:00.000Z";
-const formatDate = (date, lang = "en") => date.toLocaleDateString(dateLocale(lang), {
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
+const formatDate = (date, lang = "en") => {
+  if (date == null || date === "") return lang === "ar" ? "تاريخ غير صالح" : "Invalid date";
+  const parsedDate = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) return lang === "ar" ? "تاريخ غير صالح" : "Invalid date";
+  return parsedDate.toLocaleDateString(dateLocale(lang), {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+};
 const demoDateAfterDays = (days) => {
   const base = new Date(DEMO_EPOCH);
   base.setDate(base.getDate() + days);
@@ -1058,15 +1109,15 @@ const loadInitialData = () => {
     const saved = window.localStorage.getItem(STORAGE_KEY);
     if (!saved) return { data: defaults, warning: "" };
     const stored = JSON.parse(saved);
-    // The stored schemaVersion is bumped with each format change; older data is reset.
-    if (Number.isInteger(stored?.schemaVersion) && stored.schemaVersion < SCHEMA_VERSION) {
+    // Schema 7 is migrated in place; older versions are reset to the current demo defaults.
+    if (Number.isInteger(stored?.schemaVersion) && stored.schemaVersion < 7) {
       return {
         data: createInitialData(),
         warning: "",
         toast: "Prototype data format updated, demo data has been reset.",
       };
     }
-    if (stored?.schemaVersion !== SCHEMA_VERSION || !stored.data) {
+    if ((stored?.schemaVersion !== SCHEMA_VERSION && stored?.schemaVersion !== 7) || !stored.data) {
       const warning = stored?.lang === "ar"
         ? `تم تحديث البيانات التجريبية إلى الإصدار ${SCHEMA_VERSION}؛ تمت إعادة تعيين العرض — اضغط على "إعادة تعيين البيانات التجريبية" لمسح هذا التنبيه.`
         : `Prototype data upgraded to schema v${SCHEMA_VERSION}; demo reset. — press "Reset demo data" to clear this notice.`;
@@ -1082,6 +1133,20 @@ const loadInitialData = () => {
       !Array.isArray(parsed.auditLog)
     ) {
       return { data: defaults, warning: "Saved prototype data was invalid; a fresh demo has been loaded." };
+    }
+    const malformedCoreRecords =
+      parsed.requests.some(request => !request || typeof request.id !== "string" || typeof request.title !== "string") ||
+      parsed.bids.some(bid => !bid || typeof bid.id !== "string" || typeof bid.requestId !== "string" || typeof bid.supplierId === "undefined" || !Number.isFinite(Number(bid.price))) ||
+      parsed.suppliers.some(supplier => !supplier || !Number.isFinite(Number(supplier.id)) || typeof supplier.name !== "string") ||
+      parsed.contracts.some(contract => !contract || typeof contract.id !== "string" || typeof contract.supplier !== "string") ||
+      parsed.auditLog.some(entry => !entry || typeof entry !== "object" || typeof entry.action !== "string");
+    if (malformedCoreRecords) {
+      return {
+        data: defaults,
+        warning: stored.lang === "ar"
+          ? "بيانات النموذج المحفوظة تالفة؛ تم تحميل بيانات تجريبية جديدة."
+          : "Saved prototype data was malformed; a fresh demo has been loaded.",
+      };
     }
     const requests = parsed.requests
       .filter(request => request && typeof request.id === "string" && typeof request.title === "string")
@@ -1099,7 +1164,35 @@ const loadInitialData = () => {
         bid.requestId === "KAL-2024-0350" &&
         requests.find(request => request.id === bid.requestId)?.status === "open"
       ))
-      .map(bid => scoreBid(bid, requests.find(request => request.id === bid.requestId), suppliers.find(supplier => supplier.id === bid.supplierId)));
+      .map(bid => {
+        const legacyReasonToObject = reason => {
+          if (reason && typeof reason === "object" && typeof reason.key === "string") return reason;
+          if (typeof reason !== "string") return null;
+          if (reason === "Supplier profile is unavailable.") return { key: "supplierUnavailable", params: {} };
+          if (reason === "Supplier is blacklisted.") return { key: "supplierBlacklisted", params: {} };
+          if (reason.includes("LCGPA Mandatory List")) return { key: "mandatoryListNotConfirmed", params: {} };
+          let match = reason.match(/^Missing required (.+) certification\.$/);
+          if (match) return { key: "missingCert", params: { name: match[1] } };
+          match = reason.match(/^(.+) certification expired\.$/);
+          if (match) return { key: "expiredCert", params: { name: match[1] } };
+          match = reason.match(/^(.+) certification is not verified\.$/);
+          if (match) return { key: "unverifiedCert", params: { name: match[1] } };
+          match = reason.match(/^Saudi content (\d+(?:\.\d+)?)% is below the required (\d+(?:\.\d+)?)%\.$/);
+          if (match) return { key: "localContentBelow", params: { actual: match[1], required: match[2] } };
+          return null;
+        };
+        const rawReasons = bid.disqualificationReasons;
+        const normalizedReasons = Array.isArray(rawReasons) ? rawReasons.map(legacyReasonToObject) : [];
+        if (Array.isArray(rawReasons) && normalizedReasons.some(reason => !reason)) {
+          throw new Error("Saved bid contained an unsupported disqualification reason.");
+        }
+        const normalizedBid = {
+          ...bid,
+          status: ["reviewing", "disqualified"].includes(bid.status) ? bid.status : "reviewing",
+          ...(Array.isArray(rawReasons) ? { disqualificationReasons: normalizedReasons } : {}),
+        };
+        return scoreBid(normalizedBid, requests.find(request => request.id === bid.requestId), suppliers.find(supplier => supplier.id === bid.supplierId));
+      });
     const contracts = parsed.contracts.filter(contract => contract && typeof contract.id === "string" && typeof contract.supplier === "string");
     const approvalTasks = Array.isArray(parsed.approvalTasks)
       ? parsed.approvalTasks.filter(task => task && typeof task.id === "string" && typeof task.requestId === "string")
@@ -1174,18 +1267,25 @@ const loadInitialData = () => {
 };
 
 const formatNumber = (value, lang) => Number(value).toLocaleString("en-US");
-const formatDateTime = (iso, lang) => new Date(iso).toLocaleString(dateLocale(lang), {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
+const formatDateTime = (iso, lang) => {
+  if (iso == null || iso === "") return lang === "ar" ? "تاريخ ووقت غير صالحين" : "Invalid date and time";
+  const parsedDate = new Date(iso);
+  if (Number.isNaN(parsedDate.getTime())) return lang === "ar" ? "تاريخ ووقت غير صالحين" : "Invalid date and time";
+  return parsedDate.toLocaleString(dateLocale(lang), {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
 const money = (value, lang = "en") => `${lang === "ar" ? "ر.س" : "SAR"} ${formatNumber(value, lang)}`;
 const bidsCountLabel = (n, lang) => lang === "ar"
   ? formatMessage(I18N[lang].bidsCount, { n: formatNumber(n, "en") })
   : `${formatNumber(n, "en")} bid${n === 1 ? "" : "s"}`;
-const formatMessage = (template, values) => template.replace(/\{(\w+)\}/g, (_, key) => values[key] ?? `{${key}}`);
-const renderAuditDetails = (entry, t) => {
+const formatMessage = (template, values = {}) => String(template ?? "[missing translation]").replace(/\{(\w+)\}/g, (_, key) => values[key] ?? `{${key}}`);
+const renderAuditDetails = (entry, t, lang = "en") => {
   if (entry.detailsKey && t.auditDetails?.[entry.detailsKey]) {
-    return formatMessage(t.auditDetails[entry.detailsKey], entry.detailsParams || {});
+    const params = { ...(entry.detailsParams || {}) };
+    if (typeof params.name === "string") params.name = supplierName(params.name, lang);
+    return formatMessage(t.auditDetails[entry.detailsKey], params);
   }
   if (entry.details) return entry.details;
   return t.auditActions?.[entry.action] || entry.action;
@@ -1459,9 +1559,9 @@ const SupplierModal = ({ supplier, auditLog = [], lang = "en", onClose, onToggle
         <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{t.vision2030Target}</div>
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
           <Badge small color={supplier.externalRefs?.lcgpaCertId ? C.greenLight : C.gold}>
-            {supplier.externalRefs?.lcgpaCertId ? (lang === "ar" ? "موثق من هيئة المحتوى المحلي" : "LCGPA Verified") : (lang === "ar" ? "إقرار ذاتي" : "Self-reported")}
+            {supplier.externalRefs?.lcgpaCertId ? t.lcgpaVerified : t.selfReported}
           </Badge>
-          {supplier.saudiContent < 30 && <Badge small color={C.red}>{lang === "ar" ? "أقل من الحد الاسترشادي لهيئة المحتوى المحلي 30%" : "Below LCGPA 30% advisory threshold"}</Badge>}
+          {supplier.saudiContent < 30 && <Badge small color={C.red}>{t.belowLcgpa30}</Badge>}
           {supplier.externalRefs?.lcgpaCertId && (
             <span style={{ fontSize: 10, color: C.textMuted }}>{lang === "ar" ? "شهادة هيئة المحتوى المحلي:" : "LCGPA certificate:"} {supplier.externalRefs.lcgpaCertId}</span>
           )}
@@ -1503,7 +1603,7 @@ const SupplierModal = ({ supplier, auditLog = [], lang = "en", onClose, onToggle
                       <time dateTime={entry.createdAt} style={{ fontSize: 10, color: C.textMuted }}>{formatDateTime(entry.createdAt, lang)}</time>
                     </div>
                     <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>
-                      {renderAuditDetails(entry, t)}
+                      {renderAuditDetails(entry, t, lang)}
                     </div>
                   </div>
                 ))}
@@ -1856,8 +1956,8 @@ const ApprovalModal = ({ request, supplier, bid, lang = "en", onConfirm, onClose
       <div className="app-modal" style={{ background: C.bgMid, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28, width: "100%", maxWidth: 480 }}>
         {step === 1 && (
           <>
-            <div style={{ fontSize: 16, fontWeight: 700, color: C.white, marginBottom: 4 }}>{lang === "ar" ? "ملخص أمر الشراء" : "Purchase Order Summary"}</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>{lang === "ar" ? "راجع قبل الإرسال للاعتماد الداخلي" : "Review before submitting for internal approval"}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: C.white, marginBottom: 4 }}>{t.purchaseOrderSummary}</div>
+            <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 20 }}>{t.reviewBeforeSubmitting}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 0, border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", marginBottom: 20 }}>
               {[
                 { l: lang === "ar" ? "الطلب" : "Request", v: lang === "ar" ? (request.titleAr || request.title) : request.title, id: request.id },
@@ -2108,12 +2208,12 @@ const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [
             <span dir={lang === "ar" ? "rtl" : "ltr"} style={{ fontSize: 20 }}>🏆</span>
             <div style={{ flex: 1 }}>
               <span style={{ fontSize: 13, color: C.gold, fontWeight: 700 }}>{t.recommended} </span>
-              <span style={{ fontSize: 13, color: C.text }}>{supplierName(winner.supplier.name, lang)} — highest overall score at SAR {formatNumber(winner.price, "en")}</span>
+              <span style={{ fontSize: 13, color: C.text }}>{supplierName(winner.supplier.name, lang)} {t.highestScoreAtLabel} SAR {formatNumber(winner.price, "en")}</span>
             </div>
             <Button small onClick={() => submitAward(winner)}>{t.awardContract}</Button>
           </div>
           <div style={{ fontSize: 11, color: C.textDim, marginTop: 6 }}>
-            {lang === "ar" ? "المحتوى السعودي للفائز" : "Winner Saudi content"}: {winner.supplier.saudiContent}% {request.minimumLocalContent > 0 ? `(threshold ${request.minimumLocalContent}%)` : ""}
+            {t.winnerSaudiContentLabel}: {winner.supplier.saudiContent}% {request.minimumLocalContent > 0 ? formatMessage(t.winnerSaudiContentThreshold, { n: request.minimumLocalContent }) : ""}
           </div>
         </div>
       )}
@@ -2182,7 +2282,7 @@ const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [
                       <time dateTime={entry.createdAt} style={{ fontSize: 10, color: C.textMuted }}>{formatDateTime(entry.createdAt, lang)}</time>
                     </div>
                     <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>
-                      {renderAuditDetails(entry, t)}
+                      {renderAuditDetails(entry, t, lang)}
                     </div>
                   </div>
                 ))}
@@ -2530,7 +2630,7 @@ const MarketplaceView = ({ role, supplier, requests, bids, lang = "en", onCreate
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {role === USER_ROLES.BUYER_ADMIN && <Button onClick={() => setNewModal(true)}>{t.postRequest}</Button>}
-          <Input placeholder={lang === "ar" ? "ابحث في الطلبات..." : "Search requests..."} value={search} onChange={e => setSearch(e.target.value)} />
+          <Input placeholder={t.placeholderSearchRequests} value={search} onChange={e => setSearch(e.target.value)} />
           <Select value={filter} onChange={e => setFilter(e.target.value)} options={[
             { value: "all", label: lang === "ar" ? "كل الفئات" : "All Categories" },
             ...[...new Set(requests.map(r => r.category))].map(category => ({ value: category, label: CATEGORIES[category]?.[lang] || category })),
@@ -2539,7 +2639,7 @@ const MarketplaceView = ({ role, supplier, requests, bids, lang = "en", onCreate
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12, marginBottom: 16 }}>
         <div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{lang === "ar" ? "الشهادات المطلوبة:" : "Required certifications:"}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{t.requiredCertsFilterLabel}</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {Object.entries(CERT_TYPES).map(([key, cert]) => (
               <button key={key} onClick={() => toggleCert(key)} style={{ background: certFilter.includes(key) ? cert.color + "22" : C.bgLight, border: `1px solid ${certFilter.includes(key) ? cert.color : C.border}`, color: certFilter.includes(key) ? cert.color : C.textDim, borderRadius: 6, padding: "5px 10px", fontSize: 10, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>{certLabel(key, lang)}</button>
@@ -2547,7 +2647,7 @@ const MarketplaceView = ({ role, supplier, requests, bids, lang = "en", onCreate
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{lang === "ar" ? "شروط الدفع:" : "Payment terms:"}</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>{t.paymentTermsFilterLabel}</div>
           <Select value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)} options={[{ value: "all", label: t.allTerms }, ...PAYMENT_TERMS.map(term => ({ ...term, label: paymentLabel(term.value, lang) }))]} />
         </div>
       </div>
@@ -2957,7 +3057,7 @@ const ApprovalInbox = ({ tasks, requests, bids, suppliers, contracts, user, lang
   );
 };
 
-const AuthScreen = ({ onLogin, lang, onToggleLang }) => {
+const AuthScreen = ({ onLogin, lang, onToggleLang, storageWarning = "" }) => {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
@@ -2965,15 +3065,20 @@ const AuthScreen = ({ onLogin, lang, onToggleLang }) => {
           <Button small variant="ghost" onClick={onToggleLang}>{lang === "en" ? "AR" : "EN"}</Button>
         </div>
         <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.3em", color: C.textMuted, textTransform: "uppercase", marginBottom: 8 }}><span data-ltr style={{ display: "inline-block" }}>Procurement Intelligence Platform</span></div>
+          <div style={{ fontSize: 11, letterSpacing: "0.3em", color: C.textMuted, textTransform: "uppercase", marginBottom: 8 }}><span data-ltr style={{ display: "inline-block" }}>{I18N[lang].authProductTagline}</span></div>
           <div style={{ fontSize: 36, fontWeight: 900, color: C.white, letterSpacing: "0.08em" }}>KA<span style={{ color: C.gold }}>LA</span>LI</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}><span data-ltr style={{ display: "inline-block" }}>B2B Supply Chain Marketplace · KSA</span></div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}><span data-ltr style={{ display: "inline-block" }}>{I18N[lang].authSubTagline}</span></div>
           <div style={{ width: 40, height: 2, background: C.gold, margin: "16px auto 0" }} />
         </div>
+        {storageWarning && (
+          <div role="alert" style={{ background: C.red + "11", border: `1px solid ${C.red}55`, borderRadius: 8, padding: "10px 12px", marginBottom: 16, color: C.red, fontSize: 12, lineHeight: 1.5 }}>
+            {storageWarning}
+          </div>
+        )}
         <div style={{ background: C.bgMid, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: C.white, textAlign: "center", marginBottom: 8 }}>{I18N[lang].login}</div>
           <div style={{ fontSize: 12, lineHeight: 1.6, color: C.textMuted, textAlign: "center", marginBottom: 20 }}>
-            Choose a demo role. This prototype has no real accounts or authentication; changes are saved only in this browser.
+            {I18N[lang].authIntro}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <Button variant="subtle" onClick={() => onLogin(USER_ROLES.BUYER_ADMIN)} fullWidth>{I18N[lang].buyerAdmin}</Button>
@@ -2982,7 +3087,7 @@ const AuthScreen = ({ onLogin, lang, onToggleLang }) => {
           </div>
         </div>
         <div style={{ textAlign: "center", marginTop: 20, fontSize: 11, color: C.textMuted }}>
-          Demo data is stored locally on this device
+          {I18N[lang].authFooter}
         </div>
       </div>
     </div>
@@ -3104,7 +3209,7 @@ export default function App() {
           }
           : item),
         notifications: [
-          { id: uid("notice"), message: lang === "ar" ? `تمت الإجابة عن استفسار بشأن ${request.title}` : `Answered a clarification on ${request.title}`, createdAt: answeredAt, read: false },
+          { id: uid("notice"), message: formatMessage(I18N[lang].notifications.clarificationAnsweredNotification, { title: lang === "ar" ? (request.titleAr || request.title) : request.title }), createdAt: answeredAt, read: false },
           ...current.notifications,
         ].slice(0, 50),
         auditLog: [...current.auditLog, createAuditEntry({
@@ -3164,7 +3269,7 @@ export default function App() {
         detailsParams: { title: request.title },
       })].slice(-MAX_AUDIT_ENTRIES),
     }));
-    addNotification(lang === "ar" ? `تم نشر طلب جديد: ${request.title}` : `New request posted: ${request.title}`);
+    addNotification(formatMessage(I18N[lang].notifications.requestPostedNotification, { title: lang === "ar" ? (request.titleAr || request.title) : request.title }));
   };
 
   const handleSubmitBid = (request, bidDetails) => {
@@ -3205,15 +3310,15 @@ export default function App() {
       const nextBids = existing
         ? current.bids.map(bid => bid.requestId === request.id && bid.supplierId === CURRENT_SUPPLIER_ID ? newBid : bid)
         : [...current.bids, newBid];
-      const action = existing ? "Bid updated" : "Bid submitted";
       const actionKey = existing ? "bid_updated" : "bid_submitted";
       return {
         ...current,
         bids: nextBids,
         notifications: [
-          { id: uid("notice"), message: lang === "ar"
-            ? `${existing ? "تم تحديث العرض" : "تم تقديم العرض"}: ${request.title}`
-            : `${action}: ${request.title}`, createdAt: new Date().toISOString(), read: false },
+          { id: uid("notice"), message: formatMessage(
+            I18N[lang].notifications[existing ? "bidUpdatedNotification" : "bidSubmittedNotification"],
+            { title: lang === "ar" ? (request.titleAr || request.title) : request.title }
+          ), createdAt: new Date().toISOString(), read: false },
           ...current.notifications,
         ].slice(0, 50),
         auditLog: [...current.auditLog, createAuditEntry({
@@ -3260,7 +3365,7 @@ export default function App() {
           detailsParams: {
             round,
             floorContext: floorPrice !== null
-              ? (lang === "ar" ? ` بسعر أدنى ${money(floorPrice, lang)}` : ` with a floor price of ${money(floorPrice, lang)}`)
+              ? formatMessage(I18N[lang].auditDetails.negotiationFloorContext, { price: money(floorPrice, lang) })
               : "",
           },
         })].slice(-MAX_AUDIT_ENTRIES),
@@ -3280,7 +3385,7 @@ export default function App() {
           ? { ...item, negotiation: { ...item.negotiation, status: "closed" } }
           : item),
         notifications: [
-          { id: uid("notice"), message: lang === "ar" ? `تم إغلاق التفاوض على ${request.title}` : `Negotiation closed for ${request.title}`, createdAt, read: false },
+          { id: uid("notice"), message: formatMessage(I18N[lang].notifications.negotiationClosedNotification, { title: lang === "ar" ? (request.titleAr || request.title) : request.title }), createdAt, read: false },
           ...current.notifications,
         ].slice(0, 50),
         auditLog: [...current.auditLog, createAuditEntry({
@@ -3309,7 +3414,7 @@ export default function App() {
         ...current,
         bids: current.bids.filter(item => item.id !== bidId),
         notifications: [
-          { id: uid("notice"), message: lang === "ar" ? `تم سحب العرض على ${request?.title || bid.requestId} بواسطة المورد` : `Bid withdrawn on ${request?.title || bid.requestId} by supplier`, createdAt, read: false },
+          { id: uid("notice"), message: formatMessage(I18N[lang].notifications.bidWithdrawnNotification, { title: lang === "ar" ? (request?.titleAr || request?.title || bid.requestId) : (request?.title || bid.requestId) }), createdAt, read: false },
           ...current.notifications,
         ].slice(0, 50),
         auditLog: [...current.auditLog, createAuditEntry({
@@ -3365,7 +3470,10 @@ export default function App() {
           createdByName: user.name,
         }, ...current.approvalTasks],
         notifications: [
-          { id: uid("notice"), message: lang === "ar" ? `طُلب اعتماد الترسية: ${request.title} ← ${awarded.supplier.name}` : `Award approval requested: ${request.title} → ${awarded.supplier.name}`, createdAt, read: false },
+          { id: uid("notice"), message: formatMessage(I18N[lang].notifications.awardApprovalRequestedNotification, {
+            title: lang === "ar" ? (request.titleAr || request.title) : request.title,
+            supplier: supplierName(awarded.supplier.name, lang),
+          }), createdAt, read: false },
           ...current.notifications,
         ].slice(0, 50),
         auditLog: [...current.auditLog, createAuditEntry({
@@ -3402,7 +3510,10 @@ export default function App() {
           ? { ...item, status: "approved", approvedAt, approvedBy: user.id, approvedByName: user.name }
           : item),
         notifications: [
-          { id: uid("notice"), message: lang === "ar" ? `تم اعتماد الترسية: ${request.title} ← ${contract.supplier}` : `Award approved: ${request.title} → ${contract.supplier}`, createdAt: approvedAt, read: false },
+          { id: uid("notice"), message: formatMessage(I18N[lang].notifications.awardApprovedNotification, {
+            title: lang === "ar" ? (request.titleAr || request.title) : request.title,
+            supplier: supplierName(contract.supplier, lang),
+          }), createdAt: approvedAt, read: false },
           ...current.notifications,
         ].slice(0, 50),
         auditLog: [...current.auditLog, createAuditEntry({
@@ -3514,7 +3625,7 @@ export default function App() {
     </div>
   );
 
-  if (!authed) return <>{loadToastElement}<AuthScreen lang={lang} onToggleLang={() => setLang(current => current === "en" ? "ar" : "en")} onLogin={handleLogin} /></>;
+  if (!authed) return <>{loadToastElement}<AuthScreen lang={lang} onToggleLang={() => setLang(current => current === "en" ? "ar" : "en")} onLogin={handleLogin} storageWarning={storageWarning} /></>;
 
   const currentSupplier = suppliers.find(supplier => supplier.id === CURRENT_SUPPLIER_ID) || suppliers[0];
   const comparisonRequest = requests.find(request => request.id === selectedRequestId) || requests.find(request => request.id === "KAL-2024-0350") || requests[0];
