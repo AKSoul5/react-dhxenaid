@@ -51,6 +51,12 @@ const I18N = {
     placeholderTitleArabic: "Enter the request title in Arabic",
     placeholderSpecsArabic: "Add Arabic delivery, quality, or compliance requirements",
     awardPendingDemo: "Award saved locally as pending approval. This demo has no approval workflow or ERP connection.",
+    awardRationaleLabel: "Award rationale (required)",
+    awardRationalePlaceholder: "Explain the decision using price, quality, delivery, capacity, or compliance evidence.",
+    awardRationaleRequired: "Add a short rationale before submitting this award for approval.",
+    sampleVerifiedBadge: "Sample: verified",
+    preferredSupplierBadge: "★ Preferred",
+    awardedStatusBadge: "Awarded",
     noSpecsProvided: "No additional specifications provided.",
     placeholderRequestTitle: "e.g. Sugar (Refined White) — Bulk",
     fieldCategory: "Category",
@@ -359,6 +365,12 @@ const I18N = {
     placeholderTitleArabic: "أدخل عنوان الطلب باللغة العربية",
     placeholderSpecsArabic: "أضف متطلبات التسليم أو الجودة أو الامتثال باللغة العربية",
     awardPendingDemo: "تم حفظ الترسية محليًا بانتظار الاعتماد. هذا نموذج تجريبي ولا يتضمن سير اعتماد فعليًا أو ربطًا بنظام تخطيط موارد المؤسسة.",
+    awardRationaleLabel: "مبررات الترسية (مطلوبة)",
+    awardRationalePlaceholder: "وضّح القرار استنادًا إلى السعر أو الجودة أو التسليم أو الطاقة الاستيعابية أو أدلة الامتثال.",
+    awardRationaleRequired: "أضف مبررات موجزة قبل إرسال الترسية للاعتماد.",
+    sampleVerifiedBadge: "بيانات تجريبية: موثّق",
+    preferredSupplierBadge: "★ مورد مفضّل",
+    awardedStatusBadge: "تمت الترسية",
     noSpecsProvided: "لم تُضف مواصفات إضافية.",
     placeholderRequestTitle: "مثال: سكر أبيض مكرر — توريد بالجملة",
     fieldCategory: "الفئة",
@@ -1968,6 +1980,8 @@ const NewRequestModal = ({ onSubmit, lang = "en", onClose }) => {
 const ApprovalModal = ({ request, supplier, bid, lang = "en", onConfirm, onClose }) => {
   const t = I18N[lang];
   const [step, setStep] = useState(1);
+  const [rationale, setRationale] = useState("");
+  const [rationaleError, setRationaleError] = useState("");
   return (
     <div className="app-modal-overlay" style={{ position: "fixed", inset: 0, background: "#000000dd", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div className="app-modal" style={{ background: C.bgMid, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28, width: "100%", maxWidth: 480 }}>
@@ -1991,12 +2005,17 @@ const ApprovalModal = ({ request, supplier, bid, lang = "en", onConfirm, onClose
                 </div>
               ))}
             </div>
+            <div style={{ marginBottom: 16 }}>
+              <label htmlFor="award-rationale" style={{ display: "block", fontSize: 12, color: C.textMuted, marginBottom: 6 }}>{t.awardRationaleLabel}</label>
+              <textarea id="award-rationale" dir={lang === "ar" ? "rtl" : "ltr"} value={rationale} onChange={event => { setRationale(event.target.value); if (event.target.value.trim()) setRationaleError(""); }} placeholder={t.awardRationalePlaceholder} aria-invalid={Boolean(rationaleError)} aria-describedby={rationaleError ? "award-rationale-error" : undefined} style={{ background: C.bgLight, border: `1px solid ${rationaleError ? C.red : C.border}`, borderRadius: 6, padding: "10px 14px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "inherit", resize: "vertical", minHeight: 84, boxSizing: "border-box" }} />
+              {rationaleError && <div id="award-rationale-error" role="alert" style={{ color: C.red, fontSize: 11, marginTop: 5 }}>{rationaleError}</div>}
+            </div>
             <div style={{ background: C.bgLight, borderRadius: 8, padding: 12, marginBottom: 20, fontSize: 12, color: C.textDim }}>
               {t.approvalTaskExplainer}
             </div>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <Button variant="subtle" onClick={onClose}>{t.cancel}</Button>
-              <Button onClick={() => { onConfirm(); setStep(2); }}>{t.submitForApprovalBtn}</Button>
+              <Button onClick={() => { if (!rationale.trim()) { setRationaleError(t.awardRationaleRequired); return; } onConfirm(rationale.trim()); setStep(2); }}>{t.submitForApprovalBtn}</Button>
             </div>
           </>
         )}
@@ -2237,7 +2256,7 @@ const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [
       {awardedId && (
         <div style={{ background: C.green + "0d", border: `1px solid ${C.green}33`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 20 }}>✓</span>
-          <span style={{ fontSize: 13, color: C.greenLight, fontWeight: 600 }}>{t.awardPendingDemo}</span>
+          <div style={{ fontSize: 13, color: C.greenLight, fontWeight: 600 }}>{t.awardPendingDemo}{request.awardRationale && <div style={{ color: C.text, fontWeight: 400, marginTop: 8 }}><span style={{ fontWeight: 700 }}>{t.awardRationaleLabel}: </span>{request.awardRationale}</div>}</div>
         </div>
       )}
       {request.status === "open" && (
@@ -2332,9 +2351,9 @@ const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [
                 <div style={{ flex: 1, minWidth: 160 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 14, fontWeight: 700, color: C.white }}>{supplierName(bid.supplier.name, lang)}</span>
-                    {bid.supplier.verified && <Badge small color={C.gold}>Sample: verified</Badge>}
-                    {bid.supplier.preferred && <Badge small color={C.gold}>★ Preferred</Badge>}
-                    {isAwarded && <Badge small color={C.teal}>Awarded</Badge>}
+                    {bid.supplier.verified && <Badge small color={C.gold}>{t.sampleVerifiedBadge}</Badge>}
+                    {bid.supplier.preferred && <Badge small color={C.gold}>{t.preferredSupplierBadge}</Badge>}
+                    {isAwarded && <Badge small color={C.teal}>{t.awardedStatusBadge}</Badge>}
                   </div>
                   <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 6 }}>
                     {sortedCertificates.filter(certificate => getCertificateStatus(certificate) !== "expired").map(certificate => <CertBadge key={certificate.certificateNumber} certificate={certificate} lang={lang} />)}
@@ -2407,7 +2426,7 @@ const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [
                       <tr key={bid.supplierId}>
                         <td style={{ color: i === 0 ? C.gold : C.textMuted, padding: "10px 8px", borderBottom: `1px solid ${C.border}`, fontFamily: "monospace" }}>#{i + 1}</td>
                         <td style={{ color: C.white, padding: "10px 8px", borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap" }}>
-                          {supplierName(bid.supplier.name, lang)}{isAwarded && <span style={{ marginInlineStart: 6 }}><Badge small color={C.teal}>Awarded</Badge></span>}
+                          {supplierName(bid.supplier.name, lang)}{isAwarded && <span style={{ marginInlineStart: 6 }}><Badge small color={C.teal}>{t.awardedStatusBadge}</Badge></span>}
                         </td>
                         <td style={{ color: C.greenLight, padding: "10px 8px", borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap", fontFamily: "monospace" }}>SAR {formatNumber(bid.price, "en")}</td>
                         <td style={{ minWidth: 100, padding: "10px 8px", borderBottom: `1px solid ${C.border}` }}>
@@ -2480,7 +2499,7 @@ const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [
         supplier={approvalModal.supplier}
         bid={approvalModal.bid}
         lang={lang}
-        onConfirm={() => onAward(request, approvalModal)}
+        onConfirm={(rationale) => onAward(request, { ...approvalModal, rationale })}
         onClose={() => setApprovalModal(null)}
       />}
     </div>
@@ -3473,7 +3492,7 @@ export default function App() {
       return {
         ...current,
         requests: current.requests.map(item => item.id === request.id
-          ? { ...item, status: "pending_approval", awardedSupplierId: awarded.supplier.id, awardedBidId: awarded.bid.id }
+          ? { ...item, status: "pending_approval", awardedSupplierId: awarded.supplier.id, awardedBidId: awarded.bid.id, awardRationale: awarded.rationale }
           : item),
         contracts: [contract, ...current.contracts],
         approvalTasks: [{
@@ -3506,6 +3525,7 @@ export default function App() {
             name: currentSupplier.name,
             price: money(eligibleBid.price, lang),
             score: eligibleBid.totalScore,
+            rationale: awarded.rationale,
           },
         })].slice(-MAX_AUDIT_ENTRIES),
       };
