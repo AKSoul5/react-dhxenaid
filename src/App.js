@@ -173,10 +173,16 @@ const I18N = {
     fullComparison: "Full Comparison →",
     marketPulseTitle: "Market Pulse — Sample Pricing",
     marketPulseNote: "Illustrative sample prices; not live market data.",
+    lowLabel: "Low:",
+    highLabel: "High:",
+    sampleBadge: "Sample",
+    perMtLabel: "SAR per MT",
+    per1000Label: "SAR per 1000 units",
     trendUp: "up",
     trendDown: "down",
     trendStable: "stable",
     contractTrackerTitle: "Contract Expiry Tracker",
+    daySuffix: "d",
     expiringSoon: "Expiring Soon",
     expiringContractsBanner: "{n} contracts expiring within 14 days",
     viewContractTracker: "View Contract Tracker",
@@ -446,10 +452,16 @@ const I18N = {
     fullComparison: "المقارنة الكاملة ←",
     marketPulseTitle: "نبض السوق — أسعار تجريبية",
     marketPulseNote: "أسعار توضيحية؛ ليست بيانات سوق حية.",
+    lowLabel: "الأدنى:",
+    highLabel: "الأعلى:",
+    sampleBadge: "تجريبي",
+    perMtLabel: "ر.س لكل طن متري",
+    per1000Label: "ر.س لكل 1000 وحدة",
     trendUp: "صاعد",
     trendDown: "هابط",
     trendStable: "مستقر",
     contractTrackerTitle: "متتبع انتهاء العقود",
+    daySuffix: "يوم",
     expiringSoon: "تنتهي قريباً",
     expiringContractsBanner: "عقود تنتهي خلال 14 يوماً ({n})",
     viewContractTracker: "عرض متتبع العقود",
@@ -1891,7 +1903,7 @@ const MarketPulseWidget = ({ lang = "en" }) => {
     <Card>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <SectionTitle>{I18N[lang].marketPulseTitle}</SectionTitle>
-        <Badge small color={C.gold}>{lang === "ar" ? "تجريبي" : "Sample"}</Badge>
+        <Badge small color={C.gold}>{t.sampleBadge}</Badge>
       </div>
       <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 14 }}>{I18N[lang].marketPulseNote}</div>
       {MARKET_PULSE.map(m => (
@@ -1899,7 +1911,7 @@ const MarketPulseWidget = ({ lang = "en" }) => {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{lang === "ar" ? m.arCategory : m.category}</div>
-              <div style={{ fontSize: 11, color: C.textMuted }}>{lang === "ar" ? `ر.س ${m.unit === "per MT" ? "لكل طن متري" : "لكل 1000 وحدة"}` : `SAR ${m.unit}`}</div>
+              <div style={{ fontSize: 11, color: C.textMuted }}>{m.unit === "per MT" ? t.perMtLabel : t.per1000Label}</div>
             </div>
             <div style={{ textAlign: "end" }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: C.text, fontFamily: "monospace" }}>{money(m.avg, lang)}</div>
@@ -1907,8 +1919,8 @@ const MarketPulseWidget = ({ lang = "en" }) => {
             </div>
           </div>
           <div style={{ display: "flex", gap: 12, fontSize: 11, color: C.textMuted }}>
-            <span>{lang === "ar" ? "الأدنى:" : "Low:"} <span style={{ color: C.greenLight }}>{money(m.low, lang)}</span></span>
-            <span>{lang === "ar" ? "الأعلى:" : "High:"} <span style={{ color: C.red }}>{money(m.high, lang)}</span></span>
+            <span>{t.lowLabel} <span style={{ color: C.greenLight }}>{money(m.low, lang)}</span></span>
+            <span>{t.highLabel} <span style={{ color: C.red }}>{money(m.high, lang)}</span></span>
           </div>
         </div>
       ))}
@@ -1916,7 +1928,9 @@ const MarketPulseWidget = ({ lang = "en" }) => {
   );
 };
 
-const ContractTracker = ({ contracts, lang = "en", onNewRequest }) => (
+const ContractTracker = ({ contracts, lang = "en", onNewRequest }) => {
+  const t = I18N[lang];
+  return (
   <Card id="contract-tracker">
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
       <SectionTitle>{I18N[lang].contractTrackerTitle}</SectionTitle>
@@ -1939,7 +1953,7 @@ const ContractTracker = ({ contracts, lang = "en", onNewRequest }) => (
             </div>
           </div>
           <div style={{ textAlign: "end", flexShrink: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color, fontFamily: "monospace" }}>{c.daysLeft}d</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color, fontFamily: "monospace" }}>{c.daysLeft} {t.daySuffix}</div>
             <div style={{ fontSize: 10, color: C.textMuted }}>{formatDate(new Date(c.expiry), lang)}</div>
           </div>
           {c.status !== "active" && (
@@ -1949,7 +1963,8 @@ const ContractTracker = ({ contracts, lang = "en", onNewRequest }) => (
       );
     })}
   </Card>
-);
+  );
+};
 
 const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [], lang = "en", onUpdateSuppliers, onToggleBlacklist, onAward, canManageNegotiation, onStartNegotiation, onCloseNegotiation }) => {
   const t = I18N[lang];
@@ -2950,9 +2965,9 @@ const AuthScreen = ({ onLogin, lang, onToggleLang }) => {
           <Button small variant="ghost" onClick={onToggleLang}>{lang === "en" ? "AR" : "EN"}</Button>
         </div>
         <div style={{ textAlign: "center", marginBottom: 40 }}>
-          <div style={{ fontSize: 11, letterSpacing: "0.3em", color: C.textMuted, textTransform: "uppercase", marginBottom: 8 }}>Procurement Intelligence Platform</div>
+          <div style={{ fontSize: 11, letterSpacing: "0.3em", color: C.textMuted, textTransform: "uppercase", marginBottom: 8 }}><span data-ltr style={{ display: "inline-block" }}>Procurement Intelligence Platform</span></div>
           <div style={{ fontSize: 36, fontWeight: 900, color: C.white, letterSpacing: "0.08em" }}>KA<span style={{ color: C.gold }}>LA</span>LI</div>
-          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>B2B Supply Chain Marketplace · KSA</div>
+          <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}><span data-ltr style={{ display: "inline-block" }}>B2B Supply Chain Marketplace · KSA</span></div>
           <div style={{ width: 40, height: 2, background: C.gold, margin: "16px auto 0" }} />
         </div>
         <div style={{ background: C.bgMid, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28 }}>
