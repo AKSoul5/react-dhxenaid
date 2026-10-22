@@ -748,6 +748,7 @@ const LEGACY_AUDIT_ACTIONS = {
 const dateLocale = (lang) => lang === "ar" ? "ar-SA-u-ca-gregory-nu-latn" : "en-US";
 const DEMO_EPOCH = "2026-01-01T00:00:00.000Z";
 const formatDate = (date, lang = "en") => {
+  if (date == null || date === "") return lang === "ar" ? "تاريخ غير صالح" : "Invalid date";
   const parsedDate = date instanceof Date ? date : new Date(date);
   if (Number.isNaN(parsedDate.getTime())) return lang === "ar" ? "تاريخ غير صالح" : "Invalid date";
   return parsedDate.toLocaleDateString(dateLocale(lang), {
@@ -1267,6 +1268,7 @@ const loadInitialData = () => {
 
 const formatNumber = (value, lang) => Number(value).toLocaleString("en-US");
 const formatDateTime = (iso, lang) => {
+  if (iso == null || iso === "") return lang === "ar" ? "تاريخ ووقت غير صالحين" : "Invalid date and time";
   const parsedDate = new Date(iso);
   if (Number.isNaN(parsedDate.getTime())) return lang === "ar" ? "تاريخ ووقت غير صالحين" : "Invalid date and time";
   return parsedDate.toLocaleString(dateLocale(lang), {
@@ -1279,9 +1281,11 @@ const bidsCountLabel = (n, lang) => lang === "ar"
   ? formatMessage(I18N[lang].bidsCount, { n: formatNumber(n, "en") })
   : `${formatNumber(n, "en")} bid${n === 1 ? "" : "s"}`;
 const formatMessage = (template, values = {}) => String(template ?? "[missing translation]").replace(/\{(\w+)\}/g, (_, key) => values[key] ?? `{${key}}`);
-const renderAuditDetails = (entry, t) => {
+const renderAuditDetails = (entry, t, lang = "en") => {
   if (entry.detailsKey && t.auditDetails?.[entry.detailsKey]) {
-    return formatMessage(t.auditDetails[entry.detailsKey], entry.detailsParams || {});
+    const params = { ...(entry.detailsParams || {}) };
+    if (typeof params.name === "string") params.name = supplierName(params.name, lang);
+    return formatMessage(t.auditDetails[entry.detailsKey], params);
   }
   if (entry.details) return entry.details;
   return t.auditActions?.[entry.action] || entry.action;
@@ -1599,7 +1603,7 @@ const SupplierModal = ({ supplier, auditLog = [], lang = "en", onClose, onToggle
                       <time dateTime={entry.createdAt} style={{ fontSize: 10, color: C.textMuted }}>{formatDateTime(entry.createdAt, lang)}</time>
                     </div>
                     <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>
-                      {renderAuditDetails(entry, t)}
+                      {renderAuditDetails(entry, t, lang)}
                     </div>
                   </div>
                 ))}
@@ -2278,7 +2282,7 @@ const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [
                       <time dateTime={entry.createdAt} style={{ fontSize: 10, color: C.textMuted }}>{formatDateTime(entry.createdAt, lang)}</time>
                     </div>
                     <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>
-                      {renderAuditDetails(entry, t)}
+                      {renderAuditDetails(entry, t, lang)}
                     </div>
                   </div>
                 ))}
