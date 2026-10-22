@@ -7,7 +7,7 @@ A React demo for bilingual (English/Arabic) procurement flows, bid comparison, a
 Requirements: Node.js 22 LTS or later and npm.
 
 ```sh
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run check:prototype
 npm test -- --watchAll=false
 npm start
