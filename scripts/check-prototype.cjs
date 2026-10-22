@@ -27,6 +27,8 @@ const requiredKeys = [
   "historicalContractsLabel", "historicalWinRateLabel", "locationLabel",
   "capacityLabel", "lcgpaVerified", "selfReported", "belowLcgpa30",
   "lowLabel", "highLabel", "sampleBadge", "perMtLabel", "per1000Label",
+  "awardRationaleLabel", "awardRationalePlaceholder", "awardRationaleRequired",
+  "sampleVerifiedBadge", "preferredSupplierBadge", "awardedStatusBadge",
   "expiresLabel", "openRequestsTitle", "matchingRequestsCount",
   "placeholderSearchRequests", "requiredCertsFilterLabel", "paymentTermsFilterLabel",
   "authProductTagline", "authSubTagline", "authIntro", "authFooter",
@@ -72,4 +74,8 @@ assert.match(source, /supplierName\(c\.supplier, lang\)/);
 assert.match(source, /supplierName\(contract\.supplier, lang\)/);
 assert.match(source, /\{c\.daysLeft\} \{t\.daySuffix\}/);
 assert.equal(source.split("Etimad Ref").length - 1, 1, "raw Etimad Ref label should exist only in the translation dictionary");
+assert.match(source, /if \(!rationale\.trim\(\)\) \{ setRationaleError\(t\.awardRationaleRequired\); return; \}/);
+assert.match(source, /awardRationale: awarded\.rationale/);
+assert.match(source, /request\.awardRationale/);
+assert.match(source, /onConfirm=\{\(rationale\) => onAward\(request, \{ \.\.\.approvalModal, rationale \}\)\}/);
 console.log("Prototype source checks passed: " + requiredKeys.length + " bilingual keys per locale plus schema, migration, date, LTR, risk, and supplier-rendering guards.");
