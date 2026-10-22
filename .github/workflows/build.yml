@@ -3,9 +3,10 @@ name: Prototype build validation
 on:
   pull_request:
     branches: [main]
-  push:
-    branches:
-      - update/copilot-procurement-app-2026-10-22
+
+concurrency:
+  group: prototype-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
