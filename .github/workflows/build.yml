@@ -29,6 +29,10 @@ jobs:
         run: CI=true npm test
       - name: Build React app
         run: npm run build
+      - name: Install desktop packaging dependencies
+        run: npm --prefix desktop install --no-package-lock --no-audit --no-fund
+      - name: Check desktop main process syntax
+        run: npm --prefix desktop run check
       - name: Capture dependency audit report
         if: always()
         run: timeout 90s npm audit --json --fetch-timeout=15000 --fetch-retries=0 > npm-audit.json || true
