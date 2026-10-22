@@ -1,19 +1,19 @@
 # KALALI Procurement Prototype
 
-A React demo for bilingual (English/Arabic) procurement flows, bid comparison, approvals, and supplier marketplace exploration.
+A React demo for bilingual (English/Arabic) procurement flows, bid comparison, approvals, and supplier marketplace exploration. The frontend uses Vite and Vitest rather than the deprecated Create React App toolchain.
 
 ## Run locally
 
-Requirements: Node.js 22 LTS or later and npm.
+Requirements: Node.js 22.12 or later and npm.
 
 ```sh
 npm ci --no-audit --no-fund
 npm run check:prototype
-npm test -- --watchAll=false
+npm test
 npm start
 ```
 
-Create a production build with `npm run build`.
+Create a production build with `npm run build`. Preview it locally with `npm run preview`.
 
 ## Important limitations
 
@@ -23,9 +23,9 @@ Do not enter real bid prices, supplier documents, personal data, credentials, or
 
 Before production use, implement trusted backend persistence, server-side authentication and authorization, server-side validation and audit logging, secure document storage, and independent security review. See [SECURITY.md](SECURITY.md).
 
-## Checks
+## Checks and dependency hygiene
 
-The pull-request workflow runs source regression checks, React runtime smoke tests, and a production build. Dependabot is configured to propose weekly npm and GitHub Actions dependency updates. The current Create React App toolchain has known transitive dependency advisories; automated updates and a reviewed toolchain migration are still required before production deployment.
+The pull-request workflow runs source regression checks, Vitest runtime smoke tests, a production build, and publishes an npm audit report. The lockfile is committed and CI uses `npm ci`. Dependabot proposes weekly npm and GitHub Actions updates, and CodeQL scans JavaScript on pull requests and weekly. Continue reviewing audit output and dependency updates; passing tests do not mean the application is production-secure.
 
 ## Open in StackBlitz
 
