@@ -26,7 +26,7 @@ jobs:
       - name: Run prototype source checks
         run: npm run check:prototype
       - name: Run React runtime smoke tests
-        run: CI=true npm test -- --watchAll=false
+        run: CI=true npm test
       - name: Build React app
         run: npm run build
       - name: Capture dependency audit report
