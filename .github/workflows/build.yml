@@ -31,7 +31,7 @@ jobs:
         run: npm run build
       - name: Capture dependency audit report
         if: always()
-        run: npm audit --json > npm-audit.json || true
+        run: timeout 90s npm audit --json --fetch-timeout=15000 --fetch-retries=0 > npm-audit.json || true
       - name: Upload dependency audit report
         if: always()
         uses: actions/upload-artifact@v4
