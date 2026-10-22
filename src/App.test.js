@@ -3,6 +3,8 @@ import { act } from "react-dom/test-utils";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
 const STORAGE_KEY = "kalali-prototype-v1";
 
 describe("prototype startup and locale smoke tests", () => {
