@@ -58,7 +58,7 @@ describe("prototype startup and locale smoke tests", () => {
 
     expect(document.documentElement.lang).toBe("ar");
     expect(document.documentElement.dir).toBe("rtl");
-    expect(host.textContent).toContain("منصة ذكاء المشتريات");
+    expect(host.textContent).toContain("اختر دورًا تجريبيًا.");
     expect(host.textContent).toContain("Procurement Intelligence Platform");
     expect(host.textContent).toContain("B2B Supply Chain Marketplace · KSA");
     expect(host.querySelectorAll('[data-ltr]').length).toBeGreaterThanOrEqual(2);
