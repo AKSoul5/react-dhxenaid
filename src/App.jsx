@@ -9,6 +9,8 @@ const I18N = {
     marketplace: "Marketplace",
     compare: "Bid Comparison",
     compareRankingNote: "Eligible bids are ranked using the buyer-configured request weights.",
+    buyerDecisionReviewTitle: "Before you award",
+    buyerDecisionReviewBody: "Confirm specification compliance, delivery capacity, quote validity, required certificates, and any excluded bids. A high score is a decision aid, not a substitute for due diligence.",
     compareDisclaimer: "Seeded prices, ratings, and certification claims are illustrative demo data, not verified supplier evidence.",
     priceScoreFormula: "100 − (distance from SAR {midpoint} midpoint ÷ midpoint × 100), clamped to 0–100.",
     priceScoreUnavailable: "Unavailable without a complete budget range; the remaining criteria are rescaled.",
@@ -98,6 +100,16 @@ const I18N = {
     placeholderBidDelivery: "e.g. 9 days from award",
     fieldProposalNotes: "Proposal Notes",
     placeholderProposalNotes: "Certifications, capacity, references, special conditions...",
+    supplierBidReadinessTitle: "Bid readiness checklist",
+    supplierBidReadinessHint: "Complete the essentials below before submitting your proposal.",
+    supplierBidPriceReady: "A valid price is entered",
+    supplierBidDeliveryReady: "A delivery timeline is entered",
+    supplierBidPaymentReady: "Payment terms are selected",
+    supplierBidReadinessCount: "{ready} of {total} essentials ready",
+    bidUpdateTooltip: "Updates your existing bid",
+    bidCreateTooltip: "Creates a new bid",
+    closeQATitle: "Close questions and answers",
+    supplierProfileCompletenessLabel: "Supplier profile completeness",
     qaButton: "Q&A",
     qaTitle: "Public Q&A",
     supplierHashLabel: "Supplier #",
@@ -323,6 +335,8 @@ const I18N = {
     marketplace: "السوق",
     compare: "مقارنة العروض",
     compareRankingNote: "تُرتب العروض المؤهلة وفق الأوزان المحددة للطلب من قبل المشتري.",
+    buyerDecisionReviewTitle: "قبل اعتماد الترسية",
+    buyerDecisionReviewBody: "تحقق من مطابقة المواصفات، والطاقة الاستيعابية للتسليم، وصلاحية عرض السعر، والشهادات المطلوبة، وأسباب استبعاد أي عرض. الدرجة المرتفعة أداة مساعدة للقرار وليست بديلاً عن التحقق الواجب.",
     compareDisclaimer: "الأسعار والتقييمات ومزاعم الشهادات بيانات توضيحية، وليست أدلة موثقة على الموردين.",
     priceScoreFormula: "100 − (الفرق عن متوسط SAR {midpoint} ÷ المتوسط × 100)، ضمن نطاق 0–100.",
     priceScoreUnavailable: "لا تتوفر الدرجة دون نطاق ميزانية مكتمل؛ وتُعاد موازنة المعايير المتبقية.",
@@ -412,6 +426,16 @@ const I18N = {
     placeholderBidDelivery: "مثال: 9 أيام من الترسية",
     fieldProposalNotes: "ملاحظات العرض",
     placeholderProposalNotes: "الشهادات، الطاقة الإنتاجية، المراجع، الشروط الخاصة...",
+    supplierBidReadinessTitle: "قائمة التحقق من جاهزية العرض",
+    supplierBidReadinessHint: "أكمل البيانات الأساسية أدناه قبل إرسال عرضك.",
+    supplierBidPriceReady: "تم إدخال سعر صحيح",
+    supplierBidDeliveryReady: "تم إدخال مدة التوريد",
+    supplierBidPaymentReady: "تم اختيار شروط الدفع",
+    supplierBidReadinessCount: "اكتمل {ready} من أصل {total} عناصر أساسية",
+    bidUpdateTooltip: "تحديث عرضك الحالي",
+    bidCreateTooltip: "إنشاء عرض جديد",
+    closeQATitle: "إغلاق الأسئلة والأجوبة",
+    supplierProfileCompletenessLabel: "اكتمال ملف المورد",
     placeholderFloorPrice: "ر.س",
     qaButton: "الأسئلة والأجوبة",
     qaTitle: "أسئلة وأجوبة عامة",
@@ -1710,7 +1734,7 @@ const ClarificationModal = ({ request, role, currentSupplierId, lang = "en", onS
             <div style={{ fontSize: 16, fontWeight: 700, color: C.white }}>{t.qaTitle}</div>
             <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>{lang === "ar" ? (request.titleAr || request.title) : request.title}</div>
           </div>
-          <button aria-label="Close Q&A" onClick={onClose} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 22, cursor: "pointer" }}>×</button>
+          <button aria-label={t.closeQATitle} onClick={onClose} style={{ background: "none", border: "none", color: C.textMuted, fontSize: 22, cursor: "pointer" }}>×</button>
         </div>
         {role === USER_ROLES.SUPPLIER_SALES && (
           <div style={{ marginBottom: 16 }}>
@@ -1744,6 +1768,12 @@ const BidModal = ({ req, existingBid, onSubmit, onAnswerClarification, profileCo
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
   const [showClarifications, setShowClarifications] = useState(false);
+  const bidReadinessChecks = [
+    { key: "price", label: t.supplierBidPriceReady, ready: Number(String(price).replace(/,/g, "")) > 0 },
+    { key: "delivery", label: t.supplierBidDeliveryReady, ready: Boolean(timeline.trim()) },
+    { key: "payment", label: t.supplierBidPaymentReady, ready: Boolean(paymentTerms) },
+  ];
+  const bidReadinessCount = bidReadinessChecks.filter(item => item.ready).length;
   const handleSubmit = () => {
     if (profileCompletenessMessage) {
       setError(profileCompletenessMessage);
@@ -1797,6 +1827,16 @@ const BidModal = ({ req, existingBid, onSubmit, onAnswerClarification, profileCo
                 </div>
               )}
             </div>
+            <div aria-live="polite" style={{ background: C.bgLight, border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginBottom: 5 }}>
+                <strong style={{ fontSize: 12, color: C.white }}>{t.supplierBidReadinessTitle}</strong>
+                <span style={{ fontSize: 11, color: bidReadinessCount === bidReadinessChecks.length ? C.greenLight : C.gold }}>{formatMessage(t.supplierBidReadinessCount, { ready: bidReadinessCount, total: bidReadinessChecks.length })}</span>
+              </div>
+              <div style={{ fontSize: 11, color: C.textDim, marginBottom: 8 }}>{t.supplierBidReadinessHint}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {bidReadinessChecks.map(item => <span key={item.key} style={{ fontSize: 11, color: item.ready ? C.greenLight : C.textMuted }}>{item.ready ? "✓" : "○"} {item.label}</span>)}
+              </div>
+            </div>
             <div style={{ borderTop: `1px solid ${C.border}`, borderBottom: `1px solid ${C.border}`, padding: "10px 0", marginBottom: 14 }}>
               <button type="button" aria-expanded={showClarifications} onClick={() => setShowClarifications(open => !open)}
                 style={{ background: "none", border: "none", color: C.gold, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, fontFamily: "inherit" }}>
@@ -1820,7 +1860,7 @@ const BidModal = ({ req, existingBid, onSubmit, onAnswerClarification, profileCo
               {profileCompletenessMessage && <div role="alert" style={{ color: C.red, fontSize: 12 }}>{profileCompletenessMessage}</div>}
               <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
                 <Button variant="subtle" onClick={onClose}>{t.cancel}</Button>
-                <Button title={existingBid ? "Updates your existing bid" : "Creates a new bid"} disabled={Boolean(profileCompletenessMessage)} onClick={handleSubmit}>{isUpdate ? t.updateBid : t.submitBid}</Button>
+                <Button title={existingBid ? t.bidUpdateTooltip : t.bidCreateTooltip} disabled={Boolean(profileCompletenessMessage)} onClick={handleSubmit}>{isUpdate ? t.updateBid : t.submitBid}</Button>
               </div>
             </div>
           </>
@@ -2201,6 +2241,10 @@ const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [
         <div style={{ fontSize: 20, fontWeight: 700, color: C.white, marginBottom: 4 }}>{t.compare}</div>
         <div style={{ fontSize: 13, color: C.textMuted }}>{t.compareRankingNote}</div>
         <div style={{ fontSize: 11, color: C.gold, marginTop: 6 }}>{t.compareDisclaimer}</div>
+        <div style={{ background: C.bgLight, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 12px", marginTop: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.white, marginBottom: 4 }}>{t.buyerDecisionReviewTitle}</div>
+          <div style={{ fontSize: 11, color: C.textDim, lineHeight: 1.7 }}>{t.buyerDecisionReviewBody}</div>
+        </div>
       </div>
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
@@ -2891,7 +2935,7 @@ const SupplierDashboard = ({ supplier: me, bids, requests, lang = "en", onNaviga
           <div style={{ fontSize: 14, fontWeight: 700, color: C.white }}>{t.profileCompletenessTitle}</div>
           <div style={{ fontSize: 18, fontWeight: 700, color: C.gold, fontFamily: "monospace" }}>{completeness.percent}%</div>
         </div>
-        <div role="progressbar" aria-label="Supplier profile completeness" aria-valuemin="0" aria-valuemax="100" aria-valuenow={completeness.percent}
+        <div role="progressbar" aria-label={t.supplierProfileCompletenessLabel} aria-valuemin="0" aria-valuemax="100" aria-valuenow={completeness.percent}
           style={{ height: 7, background: C.border, borderRadius: 4, overflow: "hidden", marginBottom: 14 }}>
           <div style={{ height: "100%", width: `${completeness.percent}%`, background: C.greenLight, borderRadius: 4, transition: "width 0.2s" }} />
         </div>

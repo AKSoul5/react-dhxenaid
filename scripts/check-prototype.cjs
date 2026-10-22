@@ -12,6 +12,15 @@ const locales = {
   en: source.slice(i18nStart, arabicStart),
   ar: source.slice(arabicStart, i18nEnd),
 };
+const localeKeys = Object.fromEntries(Object.entries(locales).map(([locale, text]) => [
+  locale,
+  [...text.matchAll(/^    ([A-Za-z_$][\\w$]*):/gm)].map(match => match[1]),
+]));
+assert.deepEqual(
+  [...localeKeys.en].sort(),
+  [...localeKeys.ar].sort(),
+  "English and Arabic top-level translation keys must stay in parity",
+);
 const requiredKeys = [
   "buyerPrefersLabel", "previousBidLabel", "floorLabel",
   "supplierHashLabel", "answeredByLabel", "buyerRoleLabel",
@@ -27,6 +36,10 @@ const requiredKeys = [
   "historicalContractsLabel", "historicalWinRateLabel", "locationLabel",
   "capacityLabel", "lcgpaVerified", "selfReported", "belowLcgpa30",
   "lowLabel", "highLabel", "sampleBadge", "perMtLabel", "per1000Label",
+  "buyerDecisionReviewTitle", "buyerDecisionReviewBody",
+  "supplierBidReadinessTitle", "supplierBidReadinessHint", "supplierBidPriceReady",
+  "supplierBidDeliveryReady", "supplierBidPaymentReady", "supplierBidReadinessCount",
+  "bidUpdateTooltip", "bidCreateTooltip", "closeQATitle", "supplierProfileCompletenessLabel",
   "awardRationaleLabel", "awardRationalePlaceholder", "awardRationaleRequired",
   "sampleVerifiedBadge", "preferredSupplierBadge", "awardedStatusBadge",
   "expiresLabel", "openRequestsTitle", "matchingRequestsCount",
@@ -74,6 +87,9 @@ assert.match(source, /supplierName\(c\.supplier, lang\)/);
 assert.match(source, /supplierName\(contract\.supplier, lang\)/);
 assert.match(source, /\{c\.daysLeft\} \{t\.daySuffix\}/);
 assert.equal(source.split("Etimad Ref").length - 1, 1, "raw Etimad Ref label should exist only in the translation dictionary");
+assert.match(source, /bidReadinessChecks\.map\(item =>/);
+assert.match(source, /buyerDecisionReviewBody/);
+assert.match(source, /dir=\{lang === "ar" \? "rtl" : "ltr"\}/);
 assert.match(source, /if \(!rationale\.trim\(\)\) \{ setRationaleError\(t\.awardRationaleRequired\); return; \}/);
 assert.match(source, /awardRationale: awarded\.rationale/);
 assert.match(source, /request\.awardRationale/);

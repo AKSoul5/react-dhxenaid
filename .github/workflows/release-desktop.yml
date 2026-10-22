@@ -1,0 +1,57 @@
+name: Release Kalali desktop app
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: kalali-desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify release tag matches desktop version
+        shell: pwsh
+        run: |
+          $tagVersion = "${{ github.ref_name }}".Substring(1)
+          $appVersion = (Get-Content desktop/package.json | ConvertFrom-Json).version
+          if ($tagVersion -ne $appVersion) {
+            throw "Tag version $tagVersion must match desktop/package.json version $appVersion."
+          }
+
+      - name: Install web app dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run source checks and tests
+        run: |
+          npm run check:prototype
+          npm test
+
+      - name: Build web app
+        run: npm run build
+
+      - name: Install desktop packaging dependencies
+        run: npm --prefix desktop install --no-package-lock --no-audit --no-fund
+
+      - name: Check desktop main process syntax
+        run: npm --prefix desktop run check
+
+      - name: Build and publish Kalali installer to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm --prefix desktop run release:win
