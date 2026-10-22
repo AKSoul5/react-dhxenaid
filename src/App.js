@@ -3057,7 +3057,7 @@ const ApprovalInbox = ({ tasks, requests, bids, suppliers, contracts, user, lang
   );
 };
 
-const AuthScreen = ({ onLogin, lang, onToggleLang }) => {
+const AuthScreen = ({ onLogin, lang, onToggleLang, storageWarning = "" }) => {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
       <div style={{ width: "100%", maxWidth: 420 }}>
@@ -3070,6 +3070,11 @@ const AuthScreen = ({ onLogin, lang, onToggleLang }) => {
           <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}><span data-ltr style={{ display: "inline-block" }}>{I18N[lang].authSubTagline}</span></div>
           <div style={{ width: 40, height: 2, background: C.gold, margin: "16px auto 0" }} />
         </div>
+        {storageWarning && (
+          <div role="alert" style={{ background: C.red + "11", border: `1px solid ${C.red}55`, borderRadius: 8, padding: "10px 12px", marginBottom: 16, color: C.red, fontSize: 12, lineHeight: 1.5 }}>
+            {storageWarning}
+          </div>
+        )}
         <div style={{ background: C.bgMid, border: `1px solid ${C.border}`, borderRadius: 12, padding: 28 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: C.white, textAlign: "center", marginBottom: 8 }}>{I18N[lang].login}</div>
           <div style={{ fontSize: 12, lineHeight: 1.6, color: C.textMuted, textAlign: "center", marginBottom: 20 }}>
@@ -3620,7 +3625,7 @@ export default function App() {
     </div>
   );
 
-  if (!authed) return <>{loadToastElement}<AuthScreen lang={lang} onToggleLang={() => setLang(current => current === "en" ? "ar" : "en")} onLogin={handleLogin} /></>;
+  if (!authed) return <>{loadToastElement}<AuthScreen lang={lang} onToggleLang={() => setLang(current => current === "en" ? "ar" : "en")} onLogin={handleLogin} storageWarning={storageWarning} /></>;
 
   const currentSupplier = suppliers.find(supplier => supplier.id === CURRENT_SUPPLIER_ID) || suppliers[0];
   const comparisonRequest = requests.find(request => request.id === selectedRequestId) || requests.find(request => request.id === "KAL-2024-0350") || requests[0];
