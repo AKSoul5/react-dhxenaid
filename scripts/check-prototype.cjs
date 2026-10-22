@@ -12,6 +12,15 @@ const locales = {
   en: source.slice(i18nStart, arabicStart),
   ar: source.slice(arabicStart, i18nEnd),
 };
+const localeKeys = Object.fromEntries(Object.entries(locales).map(([locale, text]) => [
+  locale,
+  [...text.matchAll(/^    ([A-Za-z_$][\\w$]*):/gm)].map(match => match[1]),
+]));
+assert.deepEqual(
+  [...localeKeys.en].sort(),
+  [...localeKeys.ar].sort(),
+  "English and Arabic top-level translation keys must stay in parity",
+);
 const requiredKeys = [
   "buyerPrefersLabel", "previousBidLabel", "floorLabel",
   "supplierHashLabel", "answeredByLabel", "buyerRoleLabel",
