@@ -46,6 +46,12 @@ const I18N = {
     postRequest: "+ Post Request",
     newRequestTitle: "Post Supply Request",
     fieldTitle: "Request Title",
+    fieldTitleArabic: "Arabic title (optional)",
+    fieldSpecsArabic: "Arabic specifications (optional)",
+    placeholderTitleArabic: "Enter the request title in Arabic",
+    placeholderSpecsArabic: "Add Arabic delivery, quality, or compliance requirements",
+    awardPendingDemo: "Award saved locally as pending approval. This demo has no approval workflow or ERP connection.",
+    noSpecsProvided: "No additional specifications provided.",
     placeholderRequestTitle: "e.g. Sugar (Refined White) — Bulk",
     fieldCategory: "Category",
     fieldQuantity: "Quantity",
@@ -348,6 +354,12 @@ const I18N = {
     postRequest: "+ نشر طلب",
     newRequestTitle: "نشر طلب توريد",
     fieldTitle: "عنوان الطلب",
+    fieldTitleArabic: "عنوان الطلب بالعربية (اختياري)",
+    fieldSpecsArabic: "المواصفات باللغة العربية (اختياري)",
+    placeholderTitleArabic: "أدخل عنوان الطلب باللغة العربية",
+    placeholderSpecsArabic: "أضف متطلبات التسليم أو الجودة أو الامتثال باللغة العربية",
+    awardPendingDemo: "تم حفظ الترسية محليًا بانتظار الاعتماد. هذا نموذج تجريبي ولا يتضمن سير اعتماد فعليًا أو ربطًا بنظام تخطيط موارد المؤسسة.",
+    noSpecsProvided: "لم تُضف مواصفات إضافية.",
     placeholderRequestTitle: "مثال: سكر أبيض مكرر — توريد بالجملة",
     fieldCategory: "الفئة",
     fieldQuantity: "الكمية",
@@ -1808,7 +1820,7 @@ const BidModal = ({ req, existingBid, onSubmit, onAnswerClarification, profileCo
 
 const NewRequestModal = ({ onSubmit, lang = "en", onClose }) => {
   const t = I18N[lang];
-  const [form, setForm] = useState({ title: "", category: "Food & Beverage", quantity: "", budgetMin: "", budgetMax: "", minimumLocalContent: 0, requiresMandatoryList: false, specs: "", anonymous: true, requiredPayment: "net30", requiredCerts: [], scoringWeights: { price: 40, quality: 40, delivery: 20 } });
+  const [form, setForm] = useState({ title: "", titleAr: "", category: "Food & Beverage", quantity: "", budgetMin: "", budgetMax: "", minimumLocalContent: 0, requiresMandatoryList: false, specs: "", specsAr: "", anonymous: true, requiredPayment: "net30", requiredCerts: [], scoringWeights: { price: 40, quality: 40, delivery: 20 } });
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -1871,6 +1883,7 @@ const NewRequestModal = ({ onSubmit, lang = "en", onClose }) => {
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div><label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 6 }}>{t.fieldTitle} *</label><Input placeholder={t.placeholderRequestTitle} value={form.title} onChange={e => set("title", e.target.value)} /></div>
+              <div><label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 6 }}>{t.fieldTitleArabic}</label><Input dir="rtl" placeholder={t.placeholderTitleArabic} value={form.titleAr} onChange={e => set("titleAr", e.target.value)} /></div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}>
                 <div><label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 6 }}>{t.fieldCategory}</label>
                   <Select value={form.category} onChange={e => set("category", e.target.value)} options={[
@@ -1925,6 +1938,10 @@ const NewRequestModal = ({ onSubmit, lang = "en", onClose }) => {
               </div>
               <div><label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 6 }}>{t.fieldSpecs}</label>
                 <textarea placeholder={t.placeholderSpecs} value={form.specs} onChange={e => set("specs", e.target.value)}
+                  style={{ background: C.bgLight, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 14px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "inherit", resize: "vertical", minHeight: 72, boxSizing: "border-box" }} />
+              </div>
+              <div><label style={{ fontSize: 12, color: C.textMuted, display: "block", marginBottom: 6 }}>{t.fieldSpecsArabic}</label>
+                <textarea dir="rtl" placeholder={t.placeholderSpecsArabic} value={form.specsAr} onChange={e => set("specsAr", e.target.value)}
                   style={{ background: C.bgLight, border: `1px solid ${C.border}`, borderRadius: 6, padding: "10px 14px", color: C.text, fontSize: 13, outline: "none", width: "100%", fontFamily: "inherit", resize: "vertical", minHeight: 72, boxSizing: "border-box" }} />
               </div>
               <div style={{ background: form.anonymous ? C.gold + "0d" : C.bgLight, border: `1px solid ${form.anonymous ? C.gold + "44" : C.border}`, borderRadius: 8, padding: 14, transition: "all 0.2s" }}>
@@ -2220,7 +2237,7 @@ const BidComparisonView = ({ request, bids: requestBids, suppliers, auditLog = [
       {awardedId && (
         <div style={{ background: C.green + "0d", border: `1px solid ${C.green}33`, borderRadius: 10, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 20 }}>✓</span>
-          <span style={{ fontSize: 13, color: C.greenLight, fontWeight: 600 }}>Award saved locally as pending approval. This demo has no approval workflow or ERP connection.</span>
+          <span style={{ fontSize: 13, color: C.greenLight, fontWeight: 600 }}>{t.awardPendingDemo}</span>
         </div>
       )}
       {request.status === "open" && (
@@ -2960,7 +2977,7 @@ const SupplierDashboard = ({ supplier: me, bids, requests, lang = "en", onNaviga
         {invitations.map(request => (
           <div key={request.id} className="invitation-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: `1px solid ${C.border}`, flexWrap: "wrap" }}>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{request.title}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.white }}>{lang === "ar" ? (request.titleAr || request.title) : request.title}</div>
               <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3 }}><span data-ltr>{request.id}</span> · {request.quantity} · {t.deadlineLabel} {formatDate(new Date(request.deadline), lang)}</div>
               <div style={{ fontSize: 11, color: C.textDim, marginTop: 3 }}>{t.budgetLabel}: {request.budget}</div>
             </div>
@@ -3250,7 +3267,9 @@ export default function App() {
       bidsCount: 0,
       status: "open",
       posted: "Just now",
-      specs: form.specs.trim() || "No additional specifications provided.",
+      titleAr: form.titleAr.trim(),
+      specs: form.specs.trim() || I18N.en.noSpecsProvided,
+      specsAr: form.specsAr.trim() || (lang === "ar" && !form.specs.trim() ? I18N.ar.noSpecsProvided : ""),
       requiredPayment: form.requiredPayment,
       requiredCerts: form.requiredCerts,
       requiresMandatoryList: form.requiresMandatoryList,
