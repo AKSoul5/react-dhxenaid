@@ -29,3 +29,14 @@ jobs:
         run: CI=true npm test -- --watchAll=false
       - name: Build React app
         run: npm run build
+      - name: Capture dependency audit report
+        if: always()
+        run: npm audit --json > npm-audit.json || true
+      - name: Upload dependency audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-report
+          path: npm-audit.json
+          if-no-files-found: warn
+          retention-days: 14
