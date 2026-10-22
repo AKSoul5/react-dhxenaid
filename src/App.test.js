@@ -1,5 +1,5 @@
 import React from "react";
-import { act } from "react-dom/test-utils";
+import { act } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 
@@ -46,6 +46,25 @@ describe("prototype startup and locale smoke tests", () => {
     expect(host.textContent).toContain("Procurement Intelligence Platform");
     expect(host.textContent).toContain("B2B Supply Chain Marketplace · KSA");
     expect(host.querySelector('[data-ltr]')).not.toBeNull();
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)).schemaVersion).toBe(8);
+  });
+
+  test("upgrades valid schema-7 browser data to schema 8", () => {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      schemaVersion: 7,
+      data: {
+        requests: [],
+        bids: [],
+        suppliers: [],
+        contracts: [],
+        notifications: [],
+        auditLog: [],
+      },
+    }));
+
+    act(() => root.render(<App />));
+
+    expect(host.textContent).toContain("Procurement Intelligence Platform");
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)).schemaVersion).toBe(8);
   });
 
