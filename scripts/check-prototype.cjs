@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const appPath = path.join(__dirname, "..", "src", "App.js");
+const appPath = path.join(__dirname, "..", "src", "App.jsx");
 const source = fs.readFileSync(appPath, "utf8");
 const i18nStart = source.indexOf("const I18N =");
 const arabicStart = source.indexOf("\n  ar: {", i18nStart);
